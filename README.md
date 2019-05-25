@@ -1,3 +1,27 @@
+# TON Research Repo
+
+This repo is **enthusiasts research place**. We will post news and updates there.
+
+### Future steps:
+
+### Creating FAQ & Video tutorial:
+_✨feel free to propose your topics_
+
+- How to get test Grams 💸 (WIP)
+- Step-by-step guide: **How to build a TON client** 🛠 (WIP)
+
+### You will find there
+- Future releases of binaries 🏗
+- FAQ with most popular quesitons (WIP)
+
+#### Questions⁉️
+If you have any questions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
+
+### Feedback / Contact us:
+
+- Telegam public discussion group: https://t.me/copperbits
+
+## Readme:
 This is a distribution of a preliminary version of the TON Blockchain Lite Client along with the relevant portions of the TON Blockchain Library. It is not necessarily representative of the totality of the TON Blockchain code developed so far; rather it is a simplified stable version, containing only those files that are necessary for compiling the Lite Client, and sometimes outdated versions of these files sufficient for this purpose.
 
 Use this software at your own risk; consult the DISCLAIMER for more information.
@@ -6,7 +30,7 @@ The software is licensed under GNU Lesser General Public License version 2 or la
 
 The software is likely to compile and work properly on most Linux systems. It should work on macOS and even Windows; however, we do not guarantee this for this preliminary version.
 
-# Basic compilation and installation instructions
+## Basic compilation and installation instructions
 
 1) Download and unpack the newest version of this archive, available at
 
@@ -53,6 +77,3 @@ Basic help info can be obtained by typing "help" into the Lite Client. Type "qui
 More details on these activities, including step-by-step instructions for creating a simple wallet smart contract (along with its source code), may be found in the HOWTO file included in this archive.
 
 7) Some documentation on the TON Blockchain and TON Virtual Machine may be found at the download page https://test.ton.org/download . Be aware that this documentation may not be completely in sync with the version currently employed by the Test Network, because some minor implementation details are likely to be changed during the final development and testing phases.
-
-Discussion group: 
-https://t.me/copperbits
