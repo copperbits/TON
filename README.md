@@ -38,19 +38,19 @@ This open development community and **enthusiasts research place**. We will post
 
 ### Creating FAQ & Video tutorial (WIP):
 _✨feel free to propose your topics_
-- Step-by-step guide: **How to build a TON client** 🛠 (WIP)
-- How to get test Grams 💸 (WIP)
+- Step-by-step guide: **How to build a TON client**
+- How to get test Grams
 - Development:
   - Write first hello-world smart contract
   - How to deploy a smart contract
   - How to send transactions
 
 ### Also, you will find there:
-- Future releases of binaries 🏗
+- Future releases of binaries
 - A FAQ with most popular questions (WIP)
 
 ### Got questions?
- If you have any ⁉️ about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
+ If you have any quistions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
 
 ## Contact us:
 
