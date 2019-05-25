@@ -1,4 +1,4 @@
-# TON Research Repo
+# TON Research
 
 This repo is **enthusiasts research place**. We will post news and updates there.
 
@@ -22,7 +22,7 @@ If you have any questions about project/installation - feel free to [open an iss
 
 ### Feedback / Contact us:
 
-- Telegam public discussion group: https://t.me/copperbits
+- [Telegam public discussion group](https://t.me/copperbits)
 
 ## Releases: 🏗
 
@@ -30,11 +30,38 @@ If you have any questions about project/installation - feel free to [open an iss
 
 [First release](https://github.com/copperbits/TON/releases/tag/test-1)
 
+<!--
 ### Ubuntu 🐧
-(TBD)
+// TODO
+### Windows
+// TODO -->
 
-### Windows 
-(TBD)
+## Installation
+
+### Mac:
+
+- Go to command line, where binary placed -> Install (`./test-lite-client -C ton-lite-client-test1.config.json
+`)
+- run `help` to getting started
+<!--
+## Setup
+
+// TODO -->
+
+## Contributing
+
+Your contributions are really appreciated. You can follow [CONTRIBUTING](https://github.com/zhuochun/md-writer/blob/master/CONTRIBUTING.md) guide to get everything started.
+
+## Project
+
+<!-- - View [CHANGELOG][] :notebook_with_decorative_cover: -->
+- Bugs, suggestions or feature requests, [open an issue](https://github.com/copperbits/TON/issues/new) :octocat:
+- Star [GitHub repo](https://github.com/copperbits/TON/) to support this project :+1:
+- License in [GNU Lesser General Public License v2.1
+](https://github.com/copperbits/TON/blob/master/LICENSE) :unlock:
+- Shipped by [CooperBits team](https://t.me/copperbits) :sunny: and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
+
+
 
 ## Readme:
 This is a distribution of a preliminary version of the TON Blockchain Lite Client along with the relevant portions of the TON Blockchain Library. It is not necessarily representative of the totality of the TON Blockchain code developed so far; rather it is a simplified stable version, containing only those files that are necessary for compiling the Lite Client, and sometimes outdated versions of these files sufficient for this purpose.
