@@ -53,3 +53,6 @@ Basic help info can be obtained by typing "help" into the Lite Client. Type "qui
 More details on these activities, including step-by-step instructions for creating a simple wallet smart contract (along with its source code), may be found in the HOWTO file included in this archive.
 
 7) Some documentation on the TON Blockchain and TON Virtual Machine may be found at the download page https://test.ton.org/download . Be aware that this documentation may not be completely in sync with the version currently employed by the Test Network, because some minor implementation details are likely to be changed during the final development and testing phases.
+
+Discussion group: 
+https://t.me/copperbits
