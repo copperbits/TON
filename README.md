@@ -2,12 +2,18 @@
 
 This open development community and **enthusiasts research place**. We will post our news and updates this project there.
 
+## Quicklinks:
+
+- [Telegram Open Network Whitepaper](https://github.com/copperbits/TON/blob/master/ton.pdf)
+- [Telegram Open Network Virtual Machine](https://github.com/copperbits/TON/blob/master/tvm.pdf)
+- [Telegram Open Network Blockchain](https://github.com/copperbits/TON/blob/master/tblkch.pdf)
+- [Fift: A Brief Introduction](https://github.com/copperbits/TON/blob/master/fiftbase.pdf) (Smart contract language for TON )
+
 ---
 ## Table of contents:
 
 <!-- toc -->
 
-- [Quicklinks:](#quicklinks)
 - [What we already did:](#what-we-already-did)
 - [Future steps:](#future-steps)
   * [Creating FAQ & Video tutorial (WIP):](#creating-faq--video-tutorial-wip)
@@ -20,14 +26,6 @@ This open development community and **enthusiasts research place**. We will post
 - [Contact us (Telegam):](#contact-us-telegam)
 
 <!-- tocstop -->
-
-## Quicklinks:
-
-- [Telegram Open Network Whitepaper](https://github.com/copperbits/TON/blob/master/ton.pdf)
-- [Telegram Open Network Virtual Machine](https://github.com/copperbits/TON/blob/master/tvm.pdf)
-- [Telegram Open Network Blockchain](https://github.com/copperbits/TON/blob/master/tblkch.pdf)
-- [Fift: A Brief Introduction](https://github.com/copperbits/TON/blob/master/fiftbase.pdf)
-
 
 ## What we already did:
 - 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
