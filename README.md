@@ -1,12 +1,29 @@
-
 # TON Research
 
 This repo is **enthusiasts research place**. We will post news and updates there.
 
 <!-- toc -->
+
+- [Future steps:](#future-steps)
+  * [Creating FAQ & Video tutorial:](#creating-faq--video-tutorial)
+  * [Also you will find there:](#also-you-will-find-there)
+  * [Git questions?](#git-questions)
+- [Feedback / Contact us:](#feedback--contact-us)
+- [Lite Client Releases: 🏗](#lite-client-releases-%F0%9F%8F%97)
+  * [macOS 🍏](#macos-%F0%9F%8D%8F)
+  * [Ubuntu 🐧](#ubuntu-%F0%9F%90%A7)
+  * [Windows](#windows)
+- [Installation](#installation)
+  * [Mac:](#mac)
+- [Setup](#setup)
+- [Contributing](#contributing)
+- [Project](#project)
+- [Readme:](#readme)
+- [Basic compilation and installation instructions](#basic-compilation-and-installation-instructions)
+
 <!-- tocstop -->
 
-### Future steps:
+## Future steps:
 
 ### Creating FAQ & Video tutorial:
 _✨feel free to propose your topics_
@@ -21,10 +38,10 @@ _✨feel free to propose your topics_
 - Future releases of binaries 🏗
 - FAQ with most popular quesitons (WIP)
 
-### Questions⁉️
-If you have any questions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
+### Git questions?
+⁉️ If you have any questions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
 
-### Feedback / Contact us:
+## Feedback / Contact us:
 
 - [Telegam public discussion group](https://t.me/copperbits)
 
