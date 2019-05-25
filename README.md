@@ -18,13 +18,16 @@ The TON Blockchain Test Network is updated quite often, so we cannot guarantee t
 
 3) Suppose that you have unpacked this archive to directory ~/lite-client, where ~ is your home directory, and that you have created an empty directory ~/liteclient-build. Then run the following in a terminal on a Linux system:
 
+```bash
 cd ~/liteclient-build
 cmake ~/lite-client
 cmake --build . --target test-lite-client
-
+```
 You might also want to build some extra utilities useful for smart-contract development:
 
+```bash
 cmake --build . --target fift
+```
 
 4) Download the newest configuration file from https://test.ton.org/ton-lite-client-test1.config.json :
 
@@ -32,12 +35,16 @@ wget https://test.ton.org/ton-lite-client-test1.config.json
 
 5) Run the Lite Client:
 
+```bash
 ./test-lite-client -C ton-lite-client-test1.config.json
+```
 
 If everything was installed successfully, the Lite Client will connect to a special server (a full node for the TON Blockchain Test Network #1) and will send some queries to the server.
 If you indicate a writeable "database" directory as an extra argument to the client, it will download and save the block and the state corresponding to the newest masterchain block:
 
+```bash
 ./test-lite-client -C ton-lite-client-test1.config.json -D ~/ton-db-dir
+```
 
 Basic help info can be obtained by typing "help" into the Lite Client. Type "quit" or press Ctrl-C to exit.
 
