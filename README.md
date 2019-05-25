@@ -1,6 +1,10 @@
+
 # TON Research
 
 This repo is **enthusiasts research place**. We will post news and updates there.
+
+<!-- toc -->
+<!-- tocstop -->
 
 ### Future steps:
 
@@ -13,18 +17,18 @@ _✨feel free to propose your topics_
   - How to deploy smart contract
   - How to send transactions
 
-### You will find there
+### Also you will find there:
 - Future releases of binaries 🏗
 - FAQ with most popular quesitons (WIP)
 
-#### Questions⁉️
+### Questions⁉️
 If you have any questions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
 
 ### Feedback / Contact us:
 
 - [Telegam public discussion group](https://t.me/copperbits)
 
-## Releases: 🏗
+## Lite Client Releases: 🏗
 
 ### macOS 🍏
 
@@ -40,8 +44,9 @@ If you have any questions about project/installation - feel free to [open an iss
 
 ### Mac:
 
-- Go to command line, where binary placed -> Install (`./test-lite-client -C ton-lite-client-test1.config.json
-`)
+- Go to command line, where binary placed
+- Run: (`./test-lite-client -C ton-lite-client-test1.config.json`)
+- Profit! 🎉
 - run `help` to getting started
 <!--
 ## Setup
