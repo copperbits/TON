@@ -42,15 +42,15 @@ _✨feel free to propose your topics_
 - How to get test Grams 💸 (WIP)
 - Development:
   - Write first hello-world smart contract
-  - How to deploy smart contract
+  - How to deploy a smart contract
   - How to send transactions
 
-### Also you will find there:
+### Also, you will find there:
 - Future releases of binaries 🏗
-- FAQ with most popular quesitons (WIP)
+- A FAQ with most popular questions (WIP)
 
 ### Got questions?
- If you have any ⁉️ about project / installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
+ If you have any ⁉️ about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
 
 ## Contact us:
 
@@ -81,7 +81,7 @@ _✨feel free to propose your topics_
 
 ## Contributing
 
-Your contributions are really appreciated. You can follow [CONTRIBUTING](https://github.com/copperbits/TON/blob/master/CONTRIBUTING.md) guide to get everything started.
+Your contributions are appreciated. You can follow [CONTRIBUTING](https://github.com/copperbits/TON/blob/master/CONTRIBUTING.md) guide to get everything started.
 
 ---
 
