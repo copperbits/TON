@@ -35,6 +35,7 @@ This open development community and **enthusiasts research place**. We will post
 - 📩 Sent transactions to TON network
 - 🎓 Now we are writing tutorials / FAQ / HOWTO how to use TON.
 - 👉 _any request and suggestions are [very welcome](https://github.com/copperbits/TON/issues/new)!_
+- 🏗 Instructions for building lite client on [Ubuntu 16.04](docs/ubuntu16.04.sh)
 
 ![CLient lunch](img/run_client.png)
 
