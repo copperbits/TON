@@ -2,6 +2,25 @@
 
 This open development community and **enthusiasts research place**. We will post our news and updates this project there.
 
+---
+## Table of contents:
+
+<!-- toc -->
+
+- [Quicklinks:](#quicklinks)
+- [What we already did:](#what-we-already-did)
+- [Future steps:](#future-steps)
+  * [Creating FAQ & Video tutorial (WIP):](#creating-faq--video-tutorial-wip)
+  * [Also, you will find there:](#also-you-will-find-there)
+  * [Got questions?](#got-questions)
+- [Installation & Setup](#installation--setup)
+  * [Releases (macOS) 🏗](#releases-macos-%F0%9F%8F%97)
+- [Project](#project)
+- [Contributing](#contributing)
+- [Contact us (Telegam):](#contact-us-telegam)
+
+<!-- tocstop -->
+
 ## Quicklinks:
 
 - [Telegram Open Network Whitepaper](https://github.com/copperbits/TON/blob/master/ton.pdf)
@@ -9,23 +28,6 @@ This open development community and **enthusiasts research place**. We will post
 - [Telegram Open Network Blockchain](https://github.com/copperbits/TON/blob/master/tblkch.pdf)
 - [Fift: A Brief Introduction](https://github.com/copperbits/TON/blob/master/fiftbase.pdf)
 
----
-## Table of contents:
-
-<!-- toc -->
-
-- [What we already did:](#what-we-already-did)
-- [Future steps:](#future-steps)
-  * [Creating FAQ & Video tutorial (WIP):](#creating-faq--video-tutorial-wip)
-  * [Also, you will find there:](#also-you-will-find-there)
-  * [Got questions?](#got-questions)
-- [Installation & Setup (macOS)](#installation--setup-macos)
-  * [🏗 [Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)](#%F0%9F%8F%97-lite-client-latest-releasehttpsgithubcomcopperbitstonreleasestagtest-1)
-- [Project](#project)
-- [Contributing](#contributing)
-- [Contact us: [Telegam public group](https://t.me/copperbits)](#contact-us-telegam-public-grouphttpstmecopperbits)
-
-<!-- tocstop -->
 
 ## What we already did:
 - 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
@@ -56,7 +58,7 @@ _✨feel free to propose your topics_
 
 
 
-## Installation & Setup (macOS)
+## Installation & Setup
 
 - Download [latest release](https://github.com/copperbits/TON/releases/)
 - Go to command line, where binary placed
@@ -66,7 +68,9 @@ _✨feel free to propose your topics_
 ```
 - run `help` to get started
 
-### 🏗 [Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)
+### Releases (macOS) 🏗
+
+[Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)
 
 ## Project
 
@@ -81,7 +85,8 @@ _✨feel free to propose your topics_
 
 Your contributions are appreciated. You can follow [CONTRIBUTING](https://github.com/copperbits/TON/blob/master/CONTRIBUTING.md) guide to get everything started.
 
-## Contact us: [Telegam public group](https://t.me/copperbits)
+## Contact us (Telegam):
+- [Telegam public group](https://t.me/copperbits)
 
 ---
 
