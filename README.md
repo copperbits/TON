@@ -24,6 +24,18 @@ If you have any questions about project/installation - feel free to [open an iss
 
 - Telegam public discussion group: https://t.me/copperbits
 
+## Releases: 🏗
+
+### macOS 🍏
+
+[First release](https://github.com/copperbits/TON/releases/tag/test-1)
+
+### Ubuntu 🐧
+(TBD)
+
+### Windows 
+(TBD)
+
 ## Readme:
 This is a distribution of a preliminary version of the TON Blockchain Lite Client along with the relevant portions of the TON Blockchain Library. It is not necessarily representative of the totality of the TON Blockchain code developed so far; rather it is a simplified stable version, containing only those files that are necessary for compiling the Lite Client, and sometimes outdated versions of these files sufficient for this purpose.
 
