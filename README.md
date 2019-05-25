@@ -6,9 +6,12 @@ This repo is **enthusiasts research place**. We will post news and updates there
 
 ### Creating FAQ & Video tutorial:
 _✨feel free to propose your topics_
-
-- How to get test Grams 💸 (WIP)
 - Step-by-step guide: **How to build a TON client** 🛠 (WIP)
+- How to get test Grams 💸 (WIP)
+- Development:
+  - Write first hello-world smartcontract
+  - How to deploy smart contract
+  - How to send transactions
 
 ### You will find there
 - Future releases of binaries 🏗
