@@ -2,14 +2,15 @@ The aim of this document is to provide step-by-step instructions for compiling a
 
 Download and installation instructions may be found in README. We assume here that the Lite Client is already properly downloaded, compiled and installed.
 
-1. Smart-contract addresses
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Smart-contract addresses
+===========================
 
 Smart-contract addresses in the TON Network consist of two parts: (a) the workchain ID (a signed 32-bit integer) and (b) the address inside the workchain (64-512 bits depending on the workchain). Currently, only the masterchain (workchain_id=-1) and occasionally the basic workchain (workchain_id=0) are running in the TON Blockchain Test Network. Both of them have 256-bit addresses, so we henceforth assume that workchain_id is either 0 or -1 and that the address inside the workchain is exactly 256-bit.
 
 Under the conditions stated above, the smart-contract address can be represented in the following forms:
 
 A) "Raw": <decimal workchain_id>:<64 hexadecimal digits with address>
+
 B) "User-friendly", which is obtained by first generating:
 - one tag byte (0x11 for "bounceable" addresses, 0x51 for "non-bounceable"; add +0x80 if the address should not be accepted by software running in the production network)
 - one byte containing a signed 8-bit integer with the workchain_id (0x00 for the basic workchain, 0xff for the masterchain)
@@ -22,32 +23,35 @@ Example:
 
 The "test giver" (a special smart contract residing in the masterchain of the Test Network that gives up to 20 test Grams to anybody who asks) has the address
 
--1:8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d
+`-1:8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d`
 
 in the "raw" form (notice that uppercase Latin letters 'A'..'F' may be used instead of 'a'..'f')
 
 and
 
-Ef+BVndbeTJeXWLnQtm5bDC2UVpc0vH2TF2ksZPAPwcODSkb (base64) or
-Ef-BVndbeTJeXWLnQtm5bDC2UVpc0vH2TF2ksZPAPwcODSkb (base64url)
+`Ef+BVndbeTJeXWLnQtm5bDC2UVpc0vH2TF2ksZPAPwcODSkb` (base64) or
+
+`Ef-BVndbeTJeXWLnQtm5bDC2UVpc0vH2TF2ksZPAPwcODSkb` (base64url)
 
 
 in the "user-friendly" form (to be displayed by user-friendly clients). Notice that both forms (base64 and base64url) are valid and must be accepted.
 
-2. Inspecting the state of a smart contract
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Inspecting the state of a smart contract
+========================================
 
 Inspecting the state of smart contracts with the aid of the TON Lite Client is easy. For the sample smart contract described above, you would run the Lite Client and enter the following commands:
 
+```
 > last
 ...
 > getaccount -1:8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d
 or
 > getaccount Ef-BVndbeTJeXWLnQtm5bDC2UVpc0vH2TF2ksZPAPwcODSkb
+```
 
 You will see something like this:
 
-------------------------------------
+```
 got account state for -1:8156775B79325E5D62E742D9B96C30B6515A5CD2F1F64C5DA4B193C03F070E0D with respect to blocks (-1,8000000000000000,1645):4D5E1B928490BE34A4F03C9BC996661B8AD4E988F1460DB69BE3634B1E843DAF:9D85BB116D1DA4BFD999E9092BBD43B3A9F96EC9C9ED7AFDC81B27B08D3861A0 and (-1,8000000000000000,1645):4D5E1B928490BE34A4F03C9BC996661B8AD4E988F1460DB69BE3634B1E843DAF:9D85BB116D1DA4BFD999E9092BBD43B3A9F96EC9C9ED7AFDC81B27B08D3861A0
 account state is (account
   addr:(addr_std
@@ -82,7 +86,7 @@ account state is (account
 x{CFF8156775B79325E5D62E742D9B96C30B6515A5CD2F1F64C5DA4B193C03F070E0D2068086C0000000000000000000000001C0E35FA931A000134_}
  x{FF0020DDA4F260D31F01ED44D0D31FD166BAF2A1F80001D307D4D1821804A817C80073FB0201FB00A4C8CB1FC9ED54}
  x{00000000}
-------------------------------------
+```
 
 The first information line "got account state ... for ..." shows the account address and the masterchain block identifier with respect to which the account state has been dumped. Notice that even if the account state changes in a subsequent block, the `getaccount xxx` command will return the same result until the reference block is updated to a newer value by a `last` command. In this way one can study the state of all accounts and obtain consistent results.
 
@@ -96,8 +100,8 @@ We can also see that x{00000000} (the actual value you see may be different) is 
 
 The current balance of the smart contract is easily seen in the pretty-printed portion of the output. In this case, we see ... balance:(currencies:(grams:(nanograms:(... value:1000000000000000...)))), which is the balance of the account in (test) nanograms (a million test Grams in this example; the actual number you see may be smaller). If you study the TL-B scheme provided in crypto/block/scheme.tlb, you will be able to find this number (10^15) in binary big-endian form in the raw dump portion as well (it is located near the end of the data bits of the root cell).
 
-3. Compiling a new smart contract
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Compiling a new smart contract
+==============================
 
 Before uploading a new smart contract into the TON Blockchain, you need to determine its code and data and save them in serialized form into a file (called a "bag-of-cells" or BOC file, usually with a .boc suffix). Let us consider the case of a simple wallet smart contract, which stores a 32-bit operations counter and a 256-bit Ed25519 public key of its owner in its persistent data.
 
@@ -107,7 +111,7 @@ One such tool is the Fift interpreter, which is included in this distribution an
 
 Create the file `new-wallet.fif` containing the source of our new smart contract:
 
-------------------------------------
+```
 "Asm.fif" include
 
 -1 constant wc  // create a wallet in workchain -1 (masterchain)
@@ -152,7 +156,7 @@ dup ."External message for initialization is " <s csr. cr
 2 boc+>B dup Bx. cr
 "new-wallet-query.boc" tuck B>file
 ."(Saved to file " type .")" cr
---------------------------------------------
+```
 
 Incidentally, you can find this sample file in crypto/block/new-wallet.fif.
 
@@ -164,7 +168,7 @@ assuming that you have copied new-wallet.fif into the current directory. You may
 
 If everything worked, you'll see something like the following
 
---------------------------------------------
+```
 StateInit: x{34_}
  x{FF0020DDA4F260810200D71820D70B1FED44D0D7091FD709FFD15112BAF2A122F901541044F910F2A2F80001D7091F3120D74A97D70907D402FB00DED1A4C8CB1FCBFFC9ED54}
  x{00000000F61CF0BC8E891AD7636E0CD35229D579323AA2DA827EB85D8071407464DC2FA3}
@@ -179,7 +183,7 @@ External message for initialization is x{89FEC18082838D4F72DAD0C2BCF523A4CB5A1E7
 
 B5EE9C724104030100000000DA0002CF89FEC18082838D4F72DAD0C2BCF523A4CB5A1E7535245D35D39203A9F507EBA781A0119401748E6F89C1BA026A363C9F58765508DFF6854475357210D0D69F07C3A5453CEEDF1A0383FC405B57FF10CE060C2377BDD954A336DE5161F0AC1C61084180E0000000100102008CFF0020DDA4F260810200D71820D70B1FED44D0D7091FD709FFD15112BAF2A122F901541044F910F2A2F80001D7091F3120D74A97D70907D402FB00DED1A4C8CB1FCBFFC9ED54004800000000F61CF0BC8E891AD7636E0CD35229D579323AA2DA827EB85D8071407464DC2FA32DB9BE63
 (Saved to file new-wallet-query.boc)
---------------------------------------------
+```
 
 In a nutshell, the Fift assembler (loaded by the "Asm.fif" include line) is used to compile the source code of the smart contract (contained in <{ SETCP0 ... c4 POPCTR }> lines) into its internal representation. The initial data of the smart contract is also created (by <b 0 32 u, ... b> lines), containing a 32-bit sequence number (equal to zero) and a 256-bit public key from a newly-generated Ed25519 keypair. The corresponding private key is saved into the file `new-wallet.pk` (be careful not to run this code twice in the same directory, otherwise this private key file will be overwritten).
 
@@ -187,12 +191,14 @@ The code and data for the new smart contract are combined into a StateInit struc
 
 Finally, the external message is serialized into a bag of cells (represented by B5EE...BE63) and saved into the file `new-wallet-query.boc`. Essentially, this file is your compiled smart contract with all additional information necessary to upload it into the TON Blockchain.
 
-4. Transferring some funds to the new smart contract
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Transferring some funds to the new smart contract
+=================================================
 
 You might try to upload the new smart contract immediately by running the Lite Client and typing
 
+```
 > sendfile new-wallet-query.boc
+```
 
 Unfortunately, this won't work, because smart contracts must have a positive balance to be able to pay for storing and processing their data in the blockchain. So you have to transfer some funds to your new smart contract address first, displayed during its generation as -1:60c0...c0d0 (in raw form) and 0f9..EKD (in user-friendly form).
 
@@ -200,19 +206,21 @@ In a real scenario, you would either transfer some Grams from your already exist
 
 In the Test Network, you have another option: you can ask the "test giver" to give you some test Grams (up to 20). Let us explain how to do it.
 
-5. Using the test giver smart contract
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using the test giver smart contract
+===================================
 
 You need to know the address of the test giver smart contract. We'll assume that it is -1:8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d, or, equivalently, Ef-BVndbeTJeXWLnQtm5bDC2UVpc0vH2TF2ksZPAPwcODSkb, as indicated in one of the previous examples. You inspect the state of this smart contract in the Lite Client by typing
 
+```
 > last
 > getaccount Ef-BVndbeTJeXWLnQtm5bDC2UVpc0vH2TF2ksZPAPwcODSkb
+```
 
 as explained above in Section 2. The only number you need from the output is the 32-bit sequence number stored in the smart contract data (it is zero in the example above, but generally it will be non-zero).
 
 Next, you create an external message to the test giver asking it to send another message to your (uninitialized) smart contract carrying a specified amount of test Grams. There is a special Fift source file for generating this external message, located at crypto/block/testgiver.fif:
 
---------------------------------------------
+```
 // "testgiver.addr" file>B 256 B>u@ 
 0x8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d
 dup constant wallet_addr ."Test giver address = " x. cr
@@ -241,7 +249,7 @@ dup ."enveloping message: " <s csr. cr
 dup ."resulting external message: " <s csr. cr
 2 boc+>B dup Bx. cr
 "wallet-query.boc" B>file
----------------------------------------------
+```
 
 In general, you will need to edit the line containing the destination address (0x60c0...c0d0 in our example) and the sequence number of the test giver (the "0" in the "0 constant seqno" line). The newly-created message to the new smart contract must have its bounce bit clear, otherwise the transfer will be "bounced" to its sender.
 
@@ -249,7 +257,7 @@ This Fift code creates an internal message from the test giver smart contract to
 
 The external message is serialized and saved into the file `wallet-query.boc`. Some output is generated in the process:
 
----------------------------------------------
+```
 Test giver address = 8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d 
 enveloping message: x{0000000001}
  x{427FB06020A0E353DCB6B430AF3D48E932D6879D4D49174D74E480EA7D41FAE9E068280C6A98B4000000000000000000000000000047494654}
@@ -258,10 +266,10 @@ resulting external message: x{89FEA71F4F9849FF1D54203B094BE356FD065FC3B0966139BF
  x{427FB06020A0E353DCB6B430AF3D48E932D6879D4D49174D74E480EA7D41FAE9E068280C6A98B4000000000000000000000000000047494654}
 
 B5EE9C7241040201000000006600014F89FEA71F4F9849FF1D54203B094BE356FD065FC3B0966139BFDE9DD286E755901EFA00000000000C010072427FB06020A0E353DCB6B430AF3D48E932D6879D4D49174D74E480EA7D41FAE9E068280C6A98B40000000000000000000000000000474946545D6254A9
----------------------------------------------
+```
 
-6. Uploading the external message to the test giver smart contract
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Uploading the external message to the test giver smart contract
+===============================================================
 
 Now we can invoke the Lite Client, check the state of the test giver (if the sequence number has changed, our external message will fail), and then type
 
@@ -272,12 +280,14 @@ We will see some output:
 
 which means that the external message has been delivered to the collator pool. Afterwards one of the collators might choose to include this external message in a block, creating a transaction for the test giver smart contract to process this external message. We can check whether the state of the test giver has changed:
 
+```
 > last
 > getaccount Ef-BVndbeTJeXWLnQtm5bDC2UVpc0vH2TF2ksZPAPwcODSkb
+```
 
 (If you forget to type `last`, you are likely to see the unchanged state of the test giver smart contract.) The resulting output would be:
 
----------------------------------------------
+```
 got account state for -1:8156775B79325E5D62E742D9B96C30B6515A5CD2F1F64C5DA4B193C03F070E0D with respect to blocks (-1,8000000000000000,10441):2DCFB7F734913261B85B8866DFF7CBEF07205EAA0769F4EE15E242AB520A2CC5:4F96F417BCD74D5DAE0CC3CCC285E513B85652002D9AD8CC884781D8465E3591 and (-1,8000000000000000,10441):2DCFB7F734913261B85B8866DFF7CBEF07205EAA0769F4EE15E242AB520A2CC5:4F96F417BCD74D5DAE0CC3CCC285E513B85652002D9AD8CC884781D8465E3591
 account state is (account
   addr:(addr_std
@@ -312,19 +322,25 @@ account state is (account
 x{CFF8156775B79325E5D62E742D9B96C30B6515A5CD2F1F64C5DA4B193C03F070E0D2068086C00000000000000009F65D110DC0E35F450FA914134_}
  x{FF0020DDA4F260D31F01ED44D0D31FD166BAF2A1F80001D307D4D1821804A817C80073FB0201FB00A4C8CB1FC9ED54}
  x{00000001}
----------------------------------------------
+```
 
 You may notice that the sequence number stored in the persistent data has changed (in our example, to one), and the last_trans_lt field (the logical time of the last transaction of this account) has been increased.
 
 Now we can inspect the state of our new smart contract:
 
+```
 > getaccount 0f9gwEFBxqe5bWhhXnqR0mWtDzqaki6a6ckB1PqD9dPA0EKD
+```
+
 or
+
+```
 > getaccount -1:60c04141c6a7b96d68615e7a91d265ad0f3a9a922e9ae9c901d4fa83f5d3c0d0
+```
 
 Now we see
 
----------------------------------------------
+```
 got account state for -1:60C04141C6A7B96D68615E7A91D265AD0F3A9A922E9AE9C901D4FA83F5D3C0D0 with respect to blocks (-1,8000000000000000,16481):890F4D549428B2929F5D5E0C5719FBCDA60B308BA4B907797C9E846E644ADF26:22387176928F7BCEF654411CA820D858D57A10BBF1A0E153E1F77DE2EFB2A3FB and (-1,8000000000000000,16481):890F4D549428B2929F5D5E0C5719FBCDA60B308BA4B907797C9E846E644ADF26:22387176928F7BCEF654411CA820D858D57A10BBF1A0E153E1F77DE2EFB2A3FB
 account state is (account
   addr:(addr_std
@@ -343,16 +359,16 @@ account state is (account
         dict:hme_empty))
     state:account_uninit))
 x{CFF60C04141C6A7B96D68615E7A91D265AD0F3A9A922E9AE9C901D4FA83F5D3C0D02025BC2E4A0D9400000000F492A0511406354C5A004_}
----------------------------------------------
+```
 
 Our new smart contract has some positive balance (of 6.666 test Grams), but has no code or data (reflected by `state:account_uninit`).
 
-7. Uploading the code and data of the new smart contract
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Uploading the code and data of the new smart contract
+=====================================================
 
 Now you can finally upload the external message with the StateInit of the new smart contract, containing its code and data:
 
----------------------------------------------
+```
 > sendfile new-wallet-query.boc
 ... external message status is 1
 > last
@@ -393,18 +409,18 @@ account state is (account
 x{CFF60C04141C6A7B96D68615E7A91D265AD0F3A9A922E9AE9C901D4FA83F5D3C0D020680F0C2E4A0EB280000000F7BB57909405928024A134_}
  x{FF0020DDA4F260810200D71820D70B1FED44D0D7091FD709FFD15112BAF2A122F901541044F910F2A2F80001D7091F3120D74A97D70907D402FB00DED1A4C8CB1FCBFFC9ED54}
  x{00000001F61CF0BC8E891AD7636E0CD35229D579323AA2DA827EB85D8071407464DC2FA3}
----------------------------------------------
+```
 
 You will see that the smart contract has been initialized using code and data from the StateInit of the external message, and its balance has been slightly decreased because of the processing fees. Now it is up and running, and you can activate it by generating new external messages and uploading them to the TON Blockchain using the "sendfile" command of the Lite Client.
 
-8. Using the simple wallet smart contract
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using the simple wallet smart contract
+======================================
 
 Actually, the simple wallet smart contract used in this example can be used to transfer test Grams to any other accounts. It is in this respect similar to the test giver smart contract discussed above, with the difference that it processes only external messages signed by the correct private key (of its owner). In our case, it is the private key saved into the file "new-wallet.pk" during the compilation of the smart contract (see Section 3).
 
 An example of how you might use this smart contract is provided in sample file crypto/block/wallet.fif :
 
---------------------------------------------------------
+```
 #!/usr/bin/fift -s
 def? $1 { "new-wallet" =: $1 } ifnot
 $1 $len { "new-wallet" =: $1 } ifnot
@@ -437,7 +453,7 @@ dup hash wallet_pk ed25519_sign_uint
 dup ."resulting external message: " <s csr. cr
 2 boc+>B dup Bx. cr
 $1 +"-query.boc" B>file
--------------------------------------
+```
 
 You can hard-code the address of your smart contract here by changing the fourth line to, say,
 

@@ -1,4 +1,4 @@
-This archive is a distribution of a preliminary version of the TON Blockchain Lite Client along with the relevant portions of the TON Blockchain Library. It is not necessarily representative of the totality of the TON Blockchain code developed so far; rather it is a simplified stable version, containing only those files that are necessary for compiling the Lite Client, and sometimes outdated versions of these files sufficient for this purpose.
+This is a distribution of a preliminary version of the TON Blockchain Lite Client along with the relevant portions of the TON Blockchain Library. It is not necessarily representative of the totality of the TON Blockchain code developed so far; rather it is a simplified stable version, containing only those files that are necessary for compiling the Lite Client, and sometimes outdated versions of these files sufficient for this purpose.
 
 Use this software at your own risk; consult the DISCLAIMER for more information.
 
@@ -6,7 +6,7 @@ The software is licensed under GNU Lesser General Public License version 2 or la
 
 The software is likely to compile and work properly on most Linux systems. It should work on macOS and even Windows; however, we do not guarantee this for this preliminary version.
 
-BASIC COMPILATION AND INSTALLATION INSTRUCTIONS
+# Basic compilation and installation instructions
 
 1) Download and unpack the newest version of this archive, available at
 
