@@ -17,13 +17,13 @@ This open development community and **enthusiasts research place**. We will post
 - [What we already did:](#what-we-already-did)
 - [Future steps:](#future-steps)
   * [Creating FAQ & Video tutorial (WIP):](#creating-faq--video-tutorial-wip)
-  * [Also you will find there:](#also-you-will-find-there)
+  * [Also, you will find there:](#also-you-will-find-there)
   * [Got questions?](#got-questions)
-- [Contact us:](#contact-us)
-- [Lite Client Releases: 🏗](#lite-client-releases-%F0%9F%8F%97)
 - [Installation & Setup (macOS)](#installation--setup-macos)
+  * [🏗 [Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)](#%F0%9F%8F%97-lite-client-latest-releasehttpsgithubcomcopperbitstonreleasestagtest-1)
 - [Project](#project)
 - [Contributing](#contributing)
+- [Contact us: [Telegam public group](https://t.me/copperbits)](#contact-us-telegam-public-grouphttpstmecopperbits)
 
 <!-- tocstop -->
 
@@ -33,6 +33,8 @@ This open development community and **enthusiasts research place**. We will post
 - 📩 Sent transactions to TON network
 - 🎓 Now we are writing tutorials / FAQ / HOWTO how to use TON.
 - 👉 _any request and suggestions are [very welcome](https://github.com/copperbits/TON/issues/new)!_
+
+![CLient lunch](img/run_client.png)
 
 ## Future steps:
 
@@ -52,13 +54,7 @@ _✨feel free to propose your topics_
 ### Got questions?
  If you have any quistions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
 
-## Contact us:
 
-- [Telegam public discussion group](https://t.me/copperbits)
-
-## Lite Client Releases: 🏗
-
-[Latest release](https://github.com/copperbits/TON/releases/tag/test-1)
 
 ## Installation & Setup (macOS)
 
@@ -69,6 +65,8 @@ _✨feel free to propose your topics_
 ./test-lite-client -C ton-lite-client-test1.config.json
 ```
 - run `help` to get started
+
+### 🏗 [Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)
 
 ## Project
 
@@ -82,6 +80,8 @@ _✨feel free to propose your topics_
 ## Contributing
 
 Your contributions are appreciated. You can follow [CONTRIBUTING](https://github.com/copperbits/TON/blob/master/CONTRIBUTING.md) guide to get everything started.
+
+## Contact us: [Telegam public group](https://t.me/copperbits)
 
 ---
 
