@@ -44,6 +44,7 @@ If you have any questions about project/installation - feel free to [open an iss
 
 ### Mac:
 
+- Download [latest release](https://github.com/copperbits/TON/releases/)
 - Go to command line, where binary placed
 - Run: (`./test-lite-client -C ton-lite-client-test1.config.json`)
 - Profit! 🎉
