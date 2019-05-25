@@ -1,0 +1,32 @@
+#!/usr/bin/fift -s
+def? $1 { "new-wallet" =: $1 } ifnot
+$1 $len { "new-wallet" =: $1 } ifnot
+$1 +".addr" file>B 256 B>u@ dup constant wallet_addr
+."Wallet address = " x. cr
+$1 +".pk" file>B dup Blen 32 <> abort"Private key must be exactly 32 bytes long"
+constant wallet_pk
+
+// 0x1111111122222222333333334444444455555555666666667777777788888888 constant dest_addr
+0x13CB612A00A7C092C7DFD2EA45D603A9B54591BA4C88F71E707E009B879F0FB2 constant dest_addr
+-1 constant wc
+0 constant seqno
+
+1000000000 constant Gram
+{ Gram swap */ } : Gram*/
+
+.666 Gram*/ constant amount
+
+// b x --> b'  ( serializes a Gram amount )
+{ -1 { 1+ 2dup 8 * ufits } until
+  rot over 4 u, -rot 8 * u, } : Gram, 
+  
+// create a message
+<b b{011000100} s, wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "TEST" $, b>
+<b seqno 32 u, 1 8 u, swap ref, b>
+dup ."signing message: " <s csr. cr
+dup hash wallet_pk ed25519_sign_uint
+<b b{1000100} s, wc 8 i, wallet_addr 256 u, 0 Gram, b{00} s,
+   swap B, swap <s s, b>
+dup ."resulting external message: " <s csr. cr
+2 boc+>B dup Bx. cr
+$1 +"-query.boc" B>file

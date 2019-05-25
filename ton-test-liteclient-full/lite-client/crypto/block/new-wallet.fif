@@ -1,0 +1,44 @@
+"Asm.fif" include
+
+-1 constant wc  // create a wallet in workchain -1 (masterchain)
+
+// Create new simple wallet
+<{  SETCP0 DUP IFNOTRET INC 32 THROWIF  // return if recv_internal, fail unless recv_external
+    512 INT LDSLICEX DUP 32 PLDU   // sign cs cnt
+    c4 PUSHCTR CTOS 32 LDU 256 LDU ENDS  // sign cs cnt cnt' pubk
+    s1 s2 XCPU            // sign cs cnt pubk cnt' cnt
+    EQUAL 33 THROWIFNOT   // ( seqno mismatch? )
+    s2 PUSH HASHSU        // sign cs cnt pubk hash
+    s0 s4 s4 XC2PU        // pubk cs cnt hash sign pubk
+    CHKSIGNU              // pubk cs cnt ?
+    34 THROWIFNOT         // signature mismatch
+    ACCEPT
+    SWAP 32 LDU NIP 
+    DUP SREFS IF:<{
+      8 LDU LDREF         // pubk cnt mode msg cs
+      s0 s2 XCHG SENDRAWMSG  // pubk cnt cs ; ( message sent )
+    }>
+    ENDS
+    INC NEWC 32 STU 256 STU ENDC c4 POPCTR
+}>c
+// code
+<b 0 32 u, 
+   newkeypair swap dup constant wallet_pk 
+   "new-wallet.pk" B>file
+   B, 
+b> // data
+// no libraries
+<b b{00110} s, rot ref, swap ref, b>  // create StateInit
+dup ."StateInit: " <s csr. cr
+dup hash dup constant wallet_addr
+."new wallet address = " wc . .": " dup x. cr
+wc over 7 smca>$ type cr
+256 u>B "new-wallet.addr" B>file
+<b 0 32 u, b>
+dup ."signing message: " <s csr. cr
+dup hash wallet_pk ed25519_sign_uint rot
+<b b{1000100} s, wc 8 i, wallet_addr 256 u, b{000010} s, swap <s s, b{0} s, swap B, swap <s s, b>
+dup ."External message for initialization is " <s csr. cr
+2 boc+>B dup Bx. cr
+"new-wallet-query.boc" tuck B>file
+."(Saved to file " type .")" cr
