@@ -2,12 +2,12 @@
 
 This open development community and **enthusiasts research place**. We will post our news and updates this project there.
 
-## Quicklinks:
+## TON whitepapers:
 
-- [Telegram Open Network Whitepaper](https://github.com/copperbits/TON/blob/master/ton.pdf)
-- [Telegram Open Network Virtual Machine](https://github.com/copperbits/TON/blob/master/tvm.pdf)
-- [Telegram Open Network Blockchain](https://github.com/copperbits/TON/blob/master/tblkch.pdf)
-- [Fift: A Brief Introduction](https://github.com/copperbits/TON/blob/master/fiftbase.pdf) (Smart contract language for TON )
+- [Telegram Open Network Whitepaper](https://test.ton.org/ton.pdf)
+- [Telegram Open Network Virtual Machine](https://test.ton.org/tvm.pdf)
+- [Telegram Open Network Blockchain](https://test.ton.org/tblkch.pdf)
+- [Fift: A Brief Introduction](https://test.ton.org/fiftbase.pdf) (Smart contract language for TON )
 
 ---
 ## Table of contents:
