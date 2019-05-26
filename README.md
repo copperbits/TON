@@ -58,6 +58,30 @@ _✨feel free to propose your topics_
 
 ## Installation & Setup
 
+### Docker
+
+The easiest way to run the node in a docker container:
+
+```
+dorcker run -d copperbits/ton
+```
+
+You might want to run in interactive mode and mount current dir into the container to be able to compile fif files:
+
+```
+docker run -ti -v "$(pwd):/data" --name ton copperbits/ton
+```
+
+Compile a fif file (if your container is running and current dir is mounted):
+
+```
+docker exec ton fift test.fif
+```
+
+### Releases (macOS)
+
+[Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)
+
 - Download [latest release](https://github.com/copperbits/TON/releases/)
 - Go to command line, where binary placed
 - Run:
@@ -69,10 +93,6 @@ _✨feel free to propose your topics_
 ## Tutorial (how to)
 
 [HOWTO.md](./HOWTO.md)
-
-### Releases (macOS) 🏗
-
-[Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)
 
 ## Project
 
