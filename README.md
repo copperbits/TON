@@ -30,7 +30,7 @@ This open development community and **enthusiasts research place**. We will post
 ## What we already did:
 - 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
 - 🖥 Started Lite Client on macOS
-- 📩 Explain, how to send transactions to TON network
+- 📩 Explain, how to send  transactions to TON network
 - 🎓 Now we are writing tutorials / FAQ / HOWTO how to use TON.
 - 🏗 Instructions for building lite client on [Ubuntu 16.04](docs/ubuntu16.04.sh)
 - 🐳 Packaged lite client into [Docker](#docker) container
@@ -63,7 +63,7 @@ There is two options. By running Docker or precompilled binary for macOS below:
 The easiest way to run the node in a docker container:
 
 ```
-dorcker run -d copperbits/ton
+docker run -d copperbits/ton
 ```
 
 You might want to run in interactive mode and mount current dir into the container to be able to compile fif files:
