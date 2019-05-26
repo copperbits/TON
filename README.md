@@ -16,11 +16,12 @@ This open development community and **enthusiasts research place**. We will post
 
 - [What we already did:](#what-we-already-did)
 - [Future steps:](#future-steps)
-  * [Got questions?](#got-questions)
 - [Installation & Setup](#installation--setup)
+  * [Docker](#docker)
+  * [Releases (macOS)](#releases-macos)
 - [Tutorial (how to)](#tutorial-how-to)
-  * [Releases (macOS) 🏗](#releases-macos-%F0%9F%8F%97)
-- [Project](#project)
+- [Got questions?](#got-questions)
+- [Project links:](#project-links)
 - [Contributing](#contributing)
 - [Contact us on telegam](#contact-us-on-telegam)
 
@@ -29,9 +30,10 @@ This open development community and **enthusiasts research place**. We will post
 ## What we already did:
 - 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
 - 🖥 Started Lite Client on macOS
-- 📩 Sent transactions to TON network
+- 📩 Explain, how to send transactions to TON network
 - 🎓 Now we are writing tutorials / FAQ / HOWTO how to use TON.
 - 🏗 Instructions for building lite client on [Ubuntu 16.04](docs/ubuntu16.04.sh)
+- 🐳 Packaged lite client into [Docker](#docker) container
 
 - 👉 _any request and suggestions are [very welcome](https://github.com/copperbits/TON/issues/new)!_
 
@@ -52,11 +54,9 @@ _✨feel free to propose your topics_
 - Future releases of binaries
 - A FAQ with most popular questions (WIP)
 
-### Got questions?
- If you have any quistions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
-
-
 ## Installation & Setup
+
+There is two options. By running Docker or precompilled binary for macOS below:
 
 ### Docker
 
@@ -94,9 +94,11 @@ docker exec ton fift test.fif
 
 [HOWTO.md](./HOWTO.md)
 
-## Project
+## Got questions?
+ If you have any quistions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
 
-<!-- - View [CHANGELOG][] :notebook_with_decorative_cover: -->
+## Project links:
+
 - Bugs, suggestions or feature requests, [open an issue](https://github.com/copperbits/TON/issues/new) :octocat:
 - Star [GitHub repo](https://github.com/copperbits/TON/) to support this project :+1:
 - License in [GNU Lesser General Public License v2.1
