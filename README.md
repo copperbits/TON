@@ -16,14 +16,13 @@ This open development community and **enthusiasts research place**. We will post
 
 - [What we already did:](#what-we-already-did)
 - [Future steps:](#future-steps)
-  * [Creating FAQ & Video tutorial (WIP):](#creating-faq--video-tutorial-wip)
-  * [Also, you will find there:](#also-you-will-find-there)
   * [Got questions?](#got-questions)
 - [Installation & Setup](#installation--setup)
+- [Tutorial (how to)](#tutorial-how-to)
   * [Releases (macOS) 🏗](#releases-macos-%F0%9F%8F%97)
 - [Project](#project)
 - [Contributing](#contributing)
-- [Contact us (Telegam):](#contact-us-telegam)
+- [Contact us on telegam:](#contact-us-on-telegam)
 
 <!-- tocstop -->
 
@@ -40,7 +39,7 @@ This open development community and **enthusiasts research place**. We will post
 
 ## Future steps:
 
-### Creating FAQ & Video tutorial (WIP):
+**Creating FAQ & Video tutorial (WIP):**
 _✨feel free to propose your topics_
 - Step-by-step guide: **How to build a TON client**
 - How to get test Grams
@@ -49,7 +48,7 @@ _✨feel free to propose your topics_
   - How to deploy a smart contract
   - How to send transactions
 
-### Also, you will find there:
+**Also, you will find there:**
 - Future releases of binaries
 - A FAQ with most popular questions (WIP)
 
@@ -66,6 +65,10 @@ _✨feel free to propose your topics_
 ./test-lite-client -C ton-lite-client-test1.config.json
 ```
 - run `help` to get started
+
+## Tutorial (how to)
+
+[HOWTO.md](./HOWTO.md)
 
 ### Releases (macOS) 🏗
 
@@ -84,7 +87,7 @@ _✨feel free to propose your topics_
 
 Your contributions are appreciated. You can follow [CONTRIBUTING](https://github.com/copperbits/TON/blob/master/CONTRIBUTING.md) guide to get everything started.
 
-## Contact us (Telegam):
+## Contact us on telegam:
 - [Telegam public group](https://t.me/copperbits)
 
 ---
@@ -122,20 +125,22 @@ You might also want to build some extra utilities useful for smart-contract deve
 4. Download the newest configuration file from https://test.ton.org/ton-lite-client-test1.config.json :
 
   ```bash
-  wget https://test.ton.org/ton-lite-client-test1.config.json```
+  wget https://test.ton.org/ton-lite-client-test1.config.json
+  ```
 
 5. Run the Lite Client:
 
   ```bash
   ./test-lite-client -C ton-lite-client-test1.config.json
   ```
-If everything was installed successfully, the Lite Client will connect to a special server (a full node for the TON Blockchain Test Network #1) and will send some queries to the server.
-If you indicate a writeable "database" directory as an extra argument to the client, it will download and save the block and the state corresponding to the newest masterchain block:
+
+  If everything was installed successfully, the Lite Client will connect to a special server (a full node for the TON Blockchain Test Network #1) and will send some queries to the server.
+  If you indicate a writeable "database" directory as an extra argument to the client, it will download and save the block and the state corresponding to the newest masterchain block:
 
   ```bash
   ./test-lite-client -C ton-lite-client-test1.config.json -D ~/ton-db-dir
   ```
-Basic help info can be obtained by typing "help" into the Lite Client. Type "quit" or press Ctrl-C to exit.
+  Basic help info can be obtained by typing "help" into the Lite Client. Type "quit" or press Ctrl-C to exit.
 
 6. Now you can create new smart contracts, examine the state of existing smart contracts, send external messages to smart contracts and so on. You can also use Fift (if you have compiled it) to compile, execute, and debug your smart contracts locally.
 
