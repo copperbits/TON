@@ -7,7 +7,7 @@ This open development community and **enthusiasts research place**. We will post
 - [Telegram Open Network Whitepaper](https://test.ton.org/ton.pdf)
 - [Telegram Open Network Virtual Machine](https://test.ton.org/tvm.pdf)
 - [Telegram Open Network Blockchain](https://test.ton.org/tblkch.pdf)
-- [Fift: A Brief Introduction](https://test.ton.org/fiftbase.pdf) (Smart contract language for TON )
+- [Fift: A Brief Introduction](https://test.ton.org/fiftbase.pdf) (Smart contract language for TON)
 
 ---
 ## Table of contents:
@@ -22,7 +22,7 @@ This open development community and **enthusiasts research place**. We will post
   * [Releases (macOS) 🏗](#releases-macos-%F0%9F%8F%97)
 - [Project](#project)
 - [Contributing](#contributing)
-- [Contact us on telegam:](#contact-us-on-telegam)
+- [Contact us on telegam](#contact-us-on-telegam)
 
 <!-- tocstop -->
 
@@ -101,14 +101,14 @@ docker exec ton fift test.fif
 - Star [GitHub repo](https://github.com/copperbits/TON/) to support this project :+1:
 - License in [GNU Lesser General Public License v2.1
 ](https://github.com/copperbits/TON/blob/master/LICENSE) :unlock:
-- Shipped by [CooperBits team](https://t.me/copperbits) :sunny: and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
+- Shipped by [CooperBits team](https://t.me/ton_research) :sunny: and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
 
 ## Contributing
 
 Your contributions are appreciated. You can follow [CONTRIBUTING](https://github.com/copperbits/TON/blob/master/CONTRIBUTING.md) guide to get everything started.
 
-## Contact us on telegam:
-- [Telegam public group](https://t.me/copperbits)
+## Contact us on telegam
+- [Telegam public group](https://t.me/ton_research)
 
 ---
 
