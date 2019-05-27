@@ -23,7 +23,7 @@ General information, compilation and installation instructions
 - [Telegram Open Network Tutorial](https://www.youtube.com/watch?v=J7K2nq5lf7I&feature=youtu.be) - How to use light client (detailed guideline of [HOWTO](/HOWTO.md) on video) by [@rstormsf (Roman Storm)](https://twitter.com/rstormsf)
 
 ## Articles
-- [Telegram Open Network (TON), Polkadot, Cosmos Network](https://medium.com/@buttonwallet/telegram-open-network-ton-polkadot-cosmos-network-future-of-blockchains-7b466b8f2e40) - Expainer by Button wallet
+- [Telegram Open Network (TON), Polkadot, Cosmos Network](https://medium.com/@buttonwallet/telegram-open-network-ton-polkadot-cosmos-network-future-of-blockchains-7b466b8f2e40) - Explainer by Button wallet
 
 ---
 ## Original Readme
