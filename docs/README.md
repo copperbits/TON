@@ -4,26 +4,31 @@ General information, compilation and installation instructions
 
 <!-- toc -->
 
-- [Programming](#programming)
+- [Tutorials](#tutorials)
+- [Block explorers](#block-explorers)
 - [Videos](#videos)
 - [Articles](#articles)
 - [Original Readme](#original-readme)
-  * [Basic compilation and installation instructions](#basic-compilation-and-installation-instructions)
 
 <!-- tocstop -->
 
-## Programming
+## Tutorials
 
-- [Original HOWTO](/docs/HOWTO.md) - Step-by-step instructions for compiling and creating a simple smart contract (a simple wallet)
-- [Build instructions for ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/ubuntu16.04.sh)
+- [Original Readme](#original-readme)- text below
+- [Original HOWTO](/docs/HOWTO.md) - Step-by-step instructions for compiling and creating a simple smart contract
+- [ubuntu16.04.sh](https://github.com/copperbits/TON/blob/master/docs/ubuntu16.04.sh) - Build instructions for ubuntu 16.04
+
+## Block explorers
+
 - [TON explorer](https://explorer.test.ton.cryptoprocessing.io) - beta explorer for test network
+- [Open source TONexplorer](http://tonwatcher.com) - by @EmelyanenkoK
 
 ## Videos
 
-- [Telegram Open Network Tutorial](https://www.youtube.com/watch?v=J7K2nq5lf7I&feature=youtu.be) - How to use light client (detailed guideline of [HOWTO](/docs/HOWTO.md) on video) by [@rstormsf (Roman Storm)](https://twitter.com/rstormsf)
+- [Telegram Open Network Tutorial](https://www.youtube.com/watch?v=J7K2nq5lf7I&feature=youtu.be) - How to use light client by [@rstormsf](https://twitter.com/rstormsf)
 
 ## Articles
-- [Telegram Open Network (TON), Polkadot, Cosmos Network](https://medium.com/@buttonwallet/telegram-open-network-ton-polkadot-cosmos-network-future-of-blockchains-7b466b8f2e40) - Explainer by Button wallet
+- [Telegram Open Network (TON), Polkadot, Cosmos Network](https://medium.com/@buttonwallet/telegram-open-network-ton-polkadot-cosmos-network-future-of-blockchains-7b466b8f2e40) - Review by Button wallet
 
 ---
 ## Original Readme
@@ -38,7 +43,7 @@ The software is licensed under GNU Lesser General Public License version 2 or la
 
 The software is likely to compile and work properly on most Linux systems. It should work on macOS and even Windows; however, we do not guarantee this for this preliminary version.
 
-### Basic compilation and installation instructions
+**Basic compilation and installation instructions**
 
 1. Download and unpack the newest version of this archive, available at
 https://test.ton.org/download
