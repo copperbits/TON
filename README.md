@@ -31,11 +31,12 @@ This is open development community and **enthusiasts research place**. We will p
 - 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
 - 🖥 Started Lite Client on macOS
 - 📩 Explain, how to send  transactions to TON network
-- 🎓 Now we are writing tutorials / FAQ / HOWTO how to use TON.
-- 🏗 Instructions for building lite client on [Ubuntu 16.04](docs/ubuntu16.04.sh)
-- 🐳 Packaged lite client into [Docker](#docker) container
+- 🎓 Now we are [writing tutorials](https://www.youtube.com/watch?v=J7K2nq5lf7I) / FAQ / HOWTO how to use TON.
+- 🐧 Added build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/ubuntu16.04.sh)
+- 🐳 Packaged lite client into [Docker](https://github.com/copperbits/TON#docker)  container
+- 👓 Launched a [beta explorer](https://explorer.test.ton.cryptoprocessing.io/) for test network
 
-- 👉 _any request and suggestions are [very welcome](https://github.com/copperbits/TON/issues/new)!_
+👉 _pull request and suggestions are **[very welcome](https://github.com/copperbits/TON/issues/new)**!_
 
 ![CLient lunch](img/run_client.png)
 
