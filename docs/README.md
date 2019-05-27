@@ -6,6 +6,7 @@ General information, compilation and installation instructions
 
 - [Tutorials](#tutorials)
 - [Block explorers](#block-explorers)
+- [Faucet](#faucet)
 - [Videos](#videos)
 - [Articles](#articles)
 - [Original Readme](#original-readme)
@@ -22,6 +23,11 @@ General information, compilation and installation instructions
 
 - [TON explorer](https://explorer.test.ton.cryptoprocessing.io) - beta explorer for test network
 - [Open source TONexplorer](http://tonwatcher.com) - by @EmelyanenkoK
+
+## Faucet
+
+- [Faucet for TON](https://faucet.copperbits.io) - UI friendly faucet to get test Grams
+
 
 ## Videos
 
