@@ -8,15 +8,15 @@ General information, compilation and installation instructions
 ### Programming
 
 - [Original HOWTO](/HOWTO.md) - Step-by-step instructions for compiling and creating a simple smart contract (a simple wallet)
-
+- [Build instructions for ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/ubuntu16.04.sh)
 - [TON explorer](https://explorer.test.ton.cryptoprocessing.io) - beta explorer for test network
-
-### Articles
-- [Telegram Open Network (TON), Polkadot, Cosmos Network — Future of blockchains?](https://medium.com/@buttonwallet/telegram-open-network-ton-polkadot-cosmos-network-future-of-blockchains-7b466b8f2e40) - Expainer by Button wallet
 
 ### Videos
 
-- [Telegram Open Network Tutorial](https://www.youtube.com/watch?v=J7K2nq5lf7I&feature=youtu.be) - How to use light client by [@rstormsf (Roman Storm)](https://twitter.com/rstormsf)
+- [Telegram Open Network Tutorial](https://www.youtube.com/watch?v=J7K2nq5lf7I&feature=youtu.be) - How to use light client (detailed guideline of [HOWTO](/HOWTO.md) on video) by [@rstormsf (Roman Storm)](https://twitter.com/rstormsf)
+
+### Articles
+- [Telegram Open Network (TON), Polkadot, Cosmos Network](https://medium.com/@buttonwallet/telegram-open-network-ton-polkadot-cosmos-network-future-of-blockchains-7b466b8f2e40) - Expainer by Button wallet
 
 ---
 ## Original Readme
