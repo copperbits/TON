@@ -1,120 +1,28 @@
-# TON Research
 
-This open development community and **enthusiasts research place**. We will post our news and updates this project there.
+# Documentation
 
-## TON whitepapers:
+General information, compilation and installation instructions
 
-- [Telegram Open Network Whitepaper](https://test.ton.org/ton.pdf)
-- [Telegram Open Network Virtual Machine](https://test.ton.org/tvm.pdf)
-- [Telegram Open Network Blockchain](https://test.ton.org/tblkch.pdf)
-- [Fift: A Brief Introduction](https://test.ton.org/fiftbase.pdf) (Smart contract language for TON)
+## By community:
 
----
-## Table of contents:
+### Programming
 
-<!-- toc -->
+- [Original HOWTO](/HOWTO.md) - Step-by-step instructions for compiling and creating a simple smart contract (a simple wallet)
 
-- [What we already did:](#what-we-already-did)
-- [Future steps:](#future-steps)
-- [Installation & Setup](#installation--setup)
-  * [Docker](#docker)
-  * [Releases (macOS)](#releases-macos)
-- [Tutorial (how to)](#tutorial-how-to)
-- [Got questions?](#got-questions)
-- [Project links:](#project-links)
-- [Contributing](#contributing)
-- [Contact us on telegam](#contact-us-on-telegam)
+- [TON explorer](https://explorer.test.ton.cryptoprocessing.io) - beta explorer for test network
 
-<!-- tocstop -->
+### Articles
+- [Telegram Open Network (TON), Polkadot, Cosmos Network — Future of blockchains?](https://medium.com/@buttonwallet/telegram-open-network-ton-polkadot-cosmos-network-future-of-blockchains-7b466b8f2e40) - Expainer by Button wallet
 
-## What we already did:
-- 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
-- 🖥 Started Lite Client on macOS
-- 📩 Explain, how to send  transactions to TON network
-- 🎓 Now we are writing tutorials / FAQ / HOWTO how to use TON.
-- 🏗 Instructions for building lite client on [Ubuntu 16.04](docs/ubuntu16.04.sh)
-- 🐳 Packaged lite client into [Docker](#docker) container
+### Videos
 
-- 👉 _any request and suggestions are [very welcome](https://github.com/copperbits/TON/issues/new)!_
-
-![CLient lunch](img/run_client.png)
-
-## Future steps:
-
-**Creating FAQ & Video tutorial (WIP):**
-_✨feel free to propose your topics_
-- Step-by-step guide: **How to build a TON client**
-- How to get test Grams
-- Development:
-  - Write first hello-world smart contract
-  - How to deploy a smart contract
-  - How to send transactions
-
-**Also, you will find there:**
-- Future releases of binaries
-- A FAQ with most popular questions (WIP)
-
-## Installation & Setup
-
-There is two options. By running Docker or precompilled binary for macOS below:
-
-### Docker
-
-The easiest way to run the node in a docker container:
-
-```
-docker run -d copperbits/ton
-```
-
-You might want to run in interactive mode and mount current dir into the container to be able to compile fif files:
-
-```
-docker run -ti -v "$(pwd):/data" --name ton copperbits/ton
-```
-
-Compile a fif file (if your container is running and current dir is mounted):
-
-```
-docker exec ton fift test.fif
-```
-
-### Releases (macOS)
-
-[Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)
-
-- Download [latest release](https://github.com/copperbits/TON/releases/)
-- Go to command line, where binary placed
-- Run:
-```bash
-./test-lite-client -C ton-lite-client-test1.config.json
-```
-- run `help` to get started
-
-## Tutorial (how to)
-
-[HOWTO.md](./HOWTO.md)
-
-## Got questions?
- If you have any quistions about project/installation - feel free to [open an issue!](https://github.com/copperbits/TON/issues/new)
-
-## Project links:
-
-- Bugs, suggestions or feature requests, [open an issue](https://github.com/copperbits/TON/issues/new) :octocat:
-- Star [GitHub repo](https://github.com/copperbits/TON/) to support this project :+1:
-- License in [GNU Lesser General Public License v2.1
-](https://github.com/copperbits/TON/blob/master/LICENSE) :unlock:
-- Shipped by [CooperBits team](https://t.me/ton_research) :sunny: and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
-
-## Contributing
-
-Your contributions are appreciated. You can follow [CONTRIBUTING](https://github.com/copperbits/TON/blob/master/CONTRIBUTING.md) guide to get everything started.
-
-## Contact us on telegam
-- [Telegam public group](https://t.me/ton_research)
+- [Telegram Open Network Tutorial](https://www.youtube.com/watch?v=J7K2nq5lf7I&feature=youtu.be) - How to use light client by [@rstormsf (Roman Storm)](https://twitter.com/rstormsf)
 
 ---
+## Original Readme
 
-Readme:
+_(reformated a bit, for markdown support)_
+
 This is a distribution of a preliminary version of the TON Blockchain Lite Client along with the relevant portions of the TON Blockchain Library. It is not necessarily representative of the totality of the TON Blockchain code developed so far; rather it is a simplified stable version, containing only those files that are necessary for compiling the Lite Client, and sometimes outdated versions of these files sufficient for this purpose.
 
 Use this software at your own risk; consult the DISCLAIMER for more information.
@@ -123,7 +31,7 @@ The software is licensed under GNU Lesser General Public License version 2 or la
 
 The software is likely to compile and work properly on most Linux systems. It should work on macOS and even Windows; however, we do not guarantee this for this preliminary version.
 
-Basic compilation and installation instructions
+### Basic compilation and installation instructions
 
 1. Download and unpack the newest version of this archive, available at
 https://test.ton.org/download
