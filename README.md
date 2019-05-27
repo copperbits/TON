@@ -105,11 +105,11 @@ All this information shipped by [cooperbits team](https://t.me/ton_research) and
 - **Questions?** Feel free to [open an issue](https://github.com/copperbits/TON/issues/new). Or ask us on [Telegam public group](https://t.me/ton_research)
 - If you find **bugs, got suggestions**, or even feature requests: [open an issue](https://github.com/copperbits/TON/issues/new) :octocat:
 - Star [GitHub repo](https://github.com/copperbits/TON/) to **support this project** :+1:
-- **Want to share something?** Feel free to add related staff to [awesome-ton](https://github.com/copperbits/awesome-ton) repo
+- **Want to share something?** Feel free to add related stuff to [awesome-ton](https://github.com/copperbits/awesome-ton) repo
 - The **license** in [GNU Lesser General Public License v2.1
 ](https://github.com/copperbits/TON/blob/master/LICENSE) :unlock:
 - Your **contributions are appreciated**. You can follow [CONTRIBUTING](https://github.com/copperbits/TON/blob/master/CONTRIBUTING.md) guide to get everything started.
 
 ## Contact us
 
-Here is [Telegam public group](https://t.me/ton_research) -  feel free to **ask any questions and propousals** there :+1:
+Here is [Telegam public group](https://t.me/ton_research) -  feel free to **ask any questions and proposals** there :+1:
