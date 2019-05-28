@@ -73,12 +73,12 @@ account state is (account
         split_depth:nothing
         special:nothing
         code:(just
-          value:(raw@^Cell 
+          value:(raw@^Cell
             x{}
              x{FF0020DDA4F260D31F01ED44D0D31FD166BAF2A1F80001D307D4D1821804A817C80073FB0201FB00A4C8CB1FC9ED54}
             ))
         data:(just
-          value:(raw@^Cell 
+          value:(raw@^Cell
             x{}
              x{00000000}
             ))
@@ -127,7 +127,7 @@ Create the file `new-wallet.fif` containing the source of our new smart contract
     CHKSIGNU              // pubk cs cnt ?
     34 THROWIFNOT         // signature mismatch
     ACCEPT
-    SWAP 32 LDU NIP 
+    SWAP 32 LDU NIP
     DUP SREFS IF:<{
       8 LDU LDREF         // pubk cnt mode msg cs
       s0 s2 XCHG SENDRAWMSG  // pubk cnt cs ; ( message sent )
@@ -136,10 +136,10 @@ Create the file `new-wallet.fif` containing the source of our new smart contract
     INC NEWC 32 STU 256 STU ENDC c4 POPCTR
 }>c
 // code
-<b 0 32 u, 
-   newkeypair swap dup constant wallet_pk 
+<b 0 32 u,
+   newkeypair swap dup constant wallet_pk
    "new-wallet.pk" B>file
-   B, 
+   B,
 b> // data
 // no libraries
 <b b{00110} s, rot ref, swap ref, b>  // create StateInit
@@ -173,7 +173,7 @@ StateInit: x{34_}
  x{FF0020DDA4F260810200D71820D70B1FED44D0D7091FD709FFD15112BAF2A122F901541044F910F2A2F80001D7091F3120D74A97D70907D402FB00DED1A4C8CB1FCBFFC9ED54}
  x{00000000F61CF0BC8E891AD7636E0CD35229D579323AA2DA827EB85D8071407464DC2FA3}
 
-new wallet address = -1 : 60c04141c6a7b96d68615e7a91d265ad0f3a9a922e9ae9c901d4fa83f5d3c0d0 
+new wallet address = -1 : 60c04141c6a7b96d68615e7a91d265ad0f3a9a922e9ae9c901d4fa83f5d3c0d0
 0f9gwEFBxqe5bWhhXnqR0mWtDzqaki6a6ckB1PqD9dPA0EKD
 signing message: x{00000000}
 
@@ -221,7 +221,7 @@ as explained above in Section 2. The only number you need from the output is the
 Next, you create an external message to the test giver asking it to send another message to your (uninitialized) smart contract carrying a specified amount of test Grams. There is a special Fift source file for generating this external message, located at crypto/block/testgiver.fif:
 
 ```
-// "testgiver.addr" file>B 256 B>u@ 
+// "testgiver.addr" file>B 256 B>u@
 0x8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d
 dup constant wallet_addr ."Test giver address = " x. cr
 
@@ -238,8 +238,8 @@ constant dest_addr
 
 // b x --> b'  ( serializes a Gram amount )
 { -1 { 1+ 2dup 8 * ufits } until
-  rot over 4 u, -rot 8 * u, } : Gram, 
-  
+  rot over 4 u, -rot 8 * u, } : Gram,
+
 // create a message (NB: 01b00.., b = bounce)
 <b b{010000100} s, wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "GIFT" $, b>
 <b seqno 32 u, 1 8 u, swap ref, b>
@@ -258,7 +258,7 @@ This Fift code creates an internal message from the test giver smart contract to
 The external message is serialized and saved into the file `wallet-query.boc`. Some output is generated in the process:
 
 ```
-Test giver address = 8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d 
+Test giver address = 8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d
 enveloping message: x{0000000001}
  x{427FB06020A0E353DCB6B430AF3D48E932D6879D4D49174D74E480EA7D41FAE9E068280C6A98B4000000000000000000000000000047494654}
 
@@ -309,12 +309,12 @@ account state is (account
         split_depth:nothing
         special:nothing
         code:(just
-          value:(raw@^Cell 
+          value:(raw@^Cell
             x{}
              x{FF0020DDA4F260D31F01ED44D0D31FD166BAF2A1F80001D307D4D1821804A817C80073FB0201FB00A4C8CB1FC9ED54}
             ))
         data:(just
-          value:(raw@^Cell 
+          value:(raw@^Cell
             x{}
              x{00000001}
             ))
@@ -396,12 +396,12 @@ account state is (account
         split_depth:nothing
         special:nothing
         code:(just
-          value:(raw@^Cell 
+          value:(raw@^Cell
             x{}
              x{FF0020DDA4F260810200D71820D70B1FED44D0D7091FD709FFD15112BAF2A122F901541044F910F2A2F80001D7091F3120D74A97D70907D402FB00DED1A4C8CB1FCBFFC9ED54}
             ))
         data:(just
-          value:(raw@^Cell 
+          value:(raw@^Cell
             x{}
              x{00000001F61CF0BC8E891AD7636E0CD35229D579323AA2DA827EB85D8071407464DC2FA3}
             ))
@@ -441,8 +441,8 @@ constant wallet_pk
 
 // b x --> b'  ( serializes a Gram amount )
 { -1 { 1+ 2dup 8 * ufits } until
-  rot over 4 u, -rot 8 * u, } : Gram, 
-  
+  rot over 4 u, -rot 8 * u, } : Gram,
+
 // create a message
 <b b{011000100} s, wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "TEST" $, b>
 <b seqno 32 u, 1 8 u, swap ref, b>
@@ -465,4 +465,4 @@ When you run this code (by invoking the Fift interpreter), you create an externa
 
 Of course, a true TON Blockchain wallet application would hide all the intermediate steps explained above. It would first communicate the address of the new smart contract to the user, asking them to transfer some funds to the indicated address (displayed in its non-bounceable user-friendly form) from another wallet or a cryptocurrency exchange, and then would provide a simple interface to display the current balance and to transfer funds to whatever other addresses the user wants. (The aim of this document is to explain how to create new non-trivial smart contracts and experiment with the TON Blockchain Test Network, rather than to explain how one could use the Lite Client instead of a more user-friendly wallet application.)
 
-One final remark: The above examples used smart contracts in the masterchain (workchain -1). They would work in exactly the same way in the basic workchain (workchain 0), if one changes the "-1 constant wc" to "0 constant wc" in relevant places. The only difference is that the processing and storage fees in the basic workchain are 10-100 times lower than in the masterchain. However, during the early testing phases of the TON Blockchain Test Network the basic workchain may occasionally be unavailable, so the examples above are given for the masterchain. 
+One final remark: The above examples used smart contracts in the masterchain (workchain -1). They would work in exactly the same way in the basic workchain (workchain 0), if one changes the "-1 constant wc" to "0 constant wc" in relevant places. The only difference is that the processing and storage fees in the basic workchain are 10-100 times lower than in the masterchain. However, during the early testing phases of the TON Blockchain Test Network the basic workchain may occasionally be unavailable, so the examples above are given for the masterchain.
