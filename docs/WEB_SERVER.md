@@ -17,8 +17,7 @@ Web server uses port `8000` and listens requests to such endpoints:
 
 1. If you have issues with locating Boost lib in your system during a compile process, just modify the line with `get_target_property` instruction in file **CMakeLists.txt** by adding the location of boost:
 
-```get_target_property(lib_include_dirs ${lib} INTERFACE_INCLUDE_DIRECTORIES)
-    target_include_directories(${target} SYSTEM PUBLIC ${lib_include_dirs} /usr/local/Cellar/boost/1.69.0_2/include)```
+```get_target_property(lib_include_dirs ${lib} INTERFACE_INCLUDE_DIRECTORIES)target_include_directories(${target} SYSTEM PUBLIC ${lib_include_dirs} /usr/local/Cellar/boost/1.69.0_2/include)```
 
 
 ## TODO
