@@ -71,6 +71,7 @@ class TestNode : public td::actor::Actor {
 
   bool ready_ = false;
   bool inited_ = false;
+  bool update_on_demand_enabled_ = true;
   std::string db_root_;
 
   int server_time_ = 0;
@@ -145,6 +146,9 @@ class TestNode : public td::actor::Actor {
   }
   void set_liteserver_idx(td::int32 idx) {
     liteserver_idx_ = idx;
+  }
+  void set_update_on_demand(bool value) {
+    update_on_demand_enabled_ = value;
   }
 
   void start_up() override {
@@ -929,6 +933,7 @@ int main(int argc, char* argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
 
   td::actor::ActorOwn<TestNode> x;
+  int autoupdate = 0;
 
   td::OptionsParser p;
   p.set_description("test basic adnl functionality");
@@ -970,6 +975,14 @@ int main(int argc, char* argv[]) {
     td::actor::send_closure(x, &TestNode::set_liteserver_idx, idx);
     return td::Status::OK();
   });
+  p.add_option('a', "autoupdate", "start autoupdate loop", [&](td::Slice arg) {
+    autoupdate = td::to_integer<int>(arg);
+    return td::Status::OK();
+  });
+  p.add_option('u', "update-on-demand", "update state before each call", [&]() {
+    td::actor::send_closure(x, &TestNode::set_update_on_demand, true);
+    return td::Status::OK();
+  });
   p.add_option('d', "daemonize", "set SIGHUP", [&]() {
     td::set_signal_handler(td::SignalType::HangUp, [](int sig) {
 #if TD_DARWIN || TD_LINUX
@@ -1008,7 +1021,9 @@ int main(int argc, char* argv[]) {
   // web server thread
   std::thread webserver = std::thread(run_web_server, &scheduler, &x);
   // updater thread called 'last' command
-  std::thread updater = std::thread(run_updater, &scheduler, &x);
+  if(autoupdate) {
+    std::thread updater = std::thread(run_updater, &scheduler, &x);
+  }
 
   scheduler.run();
 
