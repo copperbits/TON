@@ -15,9 +15,9 @@ Web server uses port `8000` and listens requests to such endpoints:
 
 1. A separate thread launched for auto-updating the chain data by sending a `last` command periodically
 
-1. If you have issues with locating Boost lib in your system during a compile process, just modify the line with `get_target_property` instruction in file **CMakeLists.txt** by adding the location of boost:
+1. If you have issues with locating Boost lib in your system during a compile process, just modify the line with `target_include_directories` instruction in file **CMakeLists.txt** by adding the location of boost:
 
-```get_target_property(lib_include_dirs ${lib} INTERFACE_INCLUDE_DIRECTORIES)target_include_directories(${target} SYSTEM PUBLIC ${lib_include_dirs} /usr/local/Cellar/boost/1.69.0_2/include)```
+```target_include_directories(${target} SYSTEM PUBLIC ${lib_include_dirs} /usr/local/Cellar/boost/1.69.0_2/include)```
 
 
 ## TODO
