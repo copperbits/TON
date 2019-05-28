@@ -223,6 +223,9 @@ class AdnlEd25519Priv {
   td::UInt256 data_;
 
  public:
+  ~AdnlEd25519Priv() {
+    data_ = td::UInt256::zero();
+  }
   AdnlEd25519Priv(const ton_api::adnl_id_pk_ed25519 &obj) {
     data_ = obj.key_;
   }
@@ -247,6 +250,9 @@ class AdnlAESPriv {
   td::UInt256 data_;
 
  public:
+  ~AdnlAESPriv() {
+    data_ = td::UInt256::zero();
+  }
   AdnlAESPriv(const ton_api::adnl_id_pk_aes &obj) {
     data_ = obj.key_;
   }

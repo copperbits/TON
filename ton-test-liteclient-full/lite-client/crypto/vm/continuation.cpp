@@ -1,6 +1,5 @@
 #include "vm/dispatch.h"
 #include "vm/continuation.h"
-#include "vm/cellops.h"
 
 #include "vm/log.h"
 
@@ -45,7 +44,7 @@ ControlRegs& ControlRegs::operator&=(const ControlRegs& save) {
   return *this;
 }
 
-int ExcQuitCont::jump(VmState* st) const& {
+int ExcQuitCont::jump(VmState* st) const & {
   int n = 0;
   try {
     n = st->get_stack().pop_smallint_range(0xffff);
@@ -56,7 +55,7 @@ int ExcQuitCont::jump(VmState* st) const& {
   return ~n;
 }
 
-int PushIntCont::jump(VmState* st) const& {
+int PushIntCont::jump(VmState* st) const & {
   VM_LOG(st) << "execute implicit PUSH " << push_val << " (slow)";
   st->get_stack().push_smallint(push_val);
   return st->jump(next);
@@ -68,7 +67,7 @@ int PushIntCont::jump_w(VmState* st) & {
   return st->jump(std::move(next));
 }
 
-int ArgContExt::jump(VmState* st) const& {
+int ArgContExt::jump(VmState* st) const & {
   st->adjust_cr(data.save);
   if (data.cp != -1) {
     st->force_cp(data.cp);
@@ -84,7 +83,7 @@ int ArgContExt::jump_w(VmState* st) & {
   return st->jump_to(std::move(ext));
 }
 
-int RepeatCont::jump(VmState* st) const& {
+int RepeatCont::jump(VmState* st) const & {
   VM_LOG(st) << "repeat " << count << " more times (slow)\n";
   if (count <= 0) {
     return st->jump(after);
@@ -121,7 +120,7 @@ int VmState::repeat(Ref<Continuation> body, Ref<Continuation> after, long long c
   }
 }
 
-int AgainCont::jump(VmState* st) const& {
+int AgainCont::jump(VmState* st) const & {
   VM_LOG(st) << "again an infinite loop iteration (slow)\n";
   if (!body->has_c0()) {
     st->set_c0(Ref<AgainCont>{this});
@@ -143,7 +142,7 @@ int VmState::again(Ref<Continuation> body) {
   return jump(Ref<AgainCont>{true, std::move(body)});
 }
 
-int UntilCont::jump(VmState* st) const& {
+int UntilCont::jump(VmState* st) const & {
   VM_LOG(st) << "until loop body end (slow)\n";
   if (st->get_stack().pop_bool()) {
     VM_LOG(st) << "until loop terminated\n";
@@ -178,7 +177,7 @@ int VmState::until(Ref<Continuation> body, Ref<Continuation> after) {
   return jump(std::move(body));
 }
 
-int WhileCont::jump(VmState* st) const& {
+int WhileCont::jump(VmState* st) const & {
   if (chkcond) {
     VM_LOG(st) << "while loop condition end (slow)\n";
     if (!st->get_stack().pop_bool()) {
@@ -237,7 +236,7 @@ int VmState::loop_while(Ref<Continuation> cond, Ref<Continuation> body, Ref<Cont
   return jump(std::move(cond));
 }
 
-int OrdCont::jump(VmState* st) const& {
+int OrdCont::jump(VmState* st) const & {
   st->adjust_cr(data.save);
   st->set_code(code, data.cp);
   return 0;

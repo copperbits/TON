@@ -2,6 +2,8 @@
 
 This is open development community and **enthusiasts research place**. We will post our news and updates this project there.
 
+Last codebase update was performed on May 28, 2019. `sha256sum('ton-test-liteclient-full.tar.xz')`=`8fec2db9c7649228046cf916dbaf9dabdc4a8237fd3ca91e86f0af85a9a69d2c`.
+
 ## TON whitepapers:
 
 - [List of available files](https://test.ton.org/download.html) – List of available files

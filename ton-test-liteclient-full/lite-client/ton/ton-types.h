@@ -186,7 +186,16 @@ struct BlockIdExt {
   }
   BlockIdExt() : id(workchainIdNotYet, 0, 0) {
   }
-
+  void invalidate() {
+    id.workchain = workchainInvalid;
+  }
+  void invalidate_clear() {
+    id.workchain = workchainInvalid;
+    id.shard = 0;
+    id.seqno = 0;
+    root_hash.set_zero();
+    file_hash.set_zero();
+  }
   bool operator==(const BlockIdExt& b) const {
     return id == b.id && root_hash == b.root_hash && file_hash == b.file_hash;
   }

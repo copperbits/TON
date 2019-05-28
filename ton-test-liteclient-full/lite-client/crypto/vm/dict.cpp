@@ -1,6 +1,5 @@
 #include "vm/dict.h"
 #include "vm/cells.h"
-#include "vm/cellops.h"
 #include "vm/cellslice.h"
 #include "vm/stack.hpp"
 #include "vm/fmt.hpp"

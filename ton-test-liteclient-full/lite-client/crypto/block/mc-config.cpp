@@ -12,6 +12,7 @@
 #include <algorithm>
 
 namespace block {
+using td::Ref;
 
 td::Result<std::unique_ptr<Config>> Config::extract_config(std::shared_ptr<vm::StaticBagOfCellsDb> static_boc,
                                                            int mode) {
@@ -29,7 +30,7 @@ td::Result<std::unique_ptr<Config>> Config::extract_config(std::shared_ptr<vm::S
   return extract_config(root.move_as_ok(), mode);
 }
 
-td::Result<std::unique_ptr<Config>> Config::extract_config(td::Ref<vm::Cell> mc_state_root, int mode) {
+td::Result<std::unique_ptr<Config>> Config::extract_config(Ref<vm::Cell> mc_state_root, int mode) {
   if (mc_state_root.is_null()) {
     return td::Status::Error("configuration state root cell is null");
   }
@@ -163,6 +164,18 @@ td::Status Config::unpack() {
   // ...
   cleanup();
   return td::Status::OK();
+}
+
+std::unique_ptr<vm::Dictionary> Config::extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root) {
+  gen::ShardStateUnsplit::Record root_info;
+  gen::McStateExtra::Record extra_info;
+  if (mc_state_root.not_null()                       //
+      && tlb::unpack_cell(mc_state_root, root_info)  //
+      && tlb::unpack_cell(root_info.custom->prefetch_ref(), extra_info)) {
+    return std::make_unique<vm::Dictionary>(std::move(extra_info.shard_hashes), 32);
+  } else {
+    return {};
+  }
 }
 
 td::Result<std::pair<WorkchainSet, std::unique_ptr<vm::Dictionary>>> Config::unpack_workchain_list_ext(
@@ -454,19 +467,19 @@ ShardConfig::ShardConfig(const ShardConfig& other)
   init();
 }
 
-bool ShardConfig::get_shard_hash_raw(vm::CellSlice& cs, ton::ShardIdFull id, ton::ShardIdFull& true_id,
-                                     bool exact) const {
+bool ShardConfig::get_shard_hash_raw_from(vm::Dictionary& dict, vm::CellSlice& cs, ton::ShardIdFull id,
+                                          ton::ShardIdFull& true_id, bool exact, Ref<vm::Cell>* leaf) {
   if (id.is_masterchain() || !id.is_valid()) {
     return false;
   }
-  auto root = shard_hashes_dict_->lookup_ref(td::BitArray<32>{id.workchain});
+  auto root = dict.lookup_ref(td::BitArray<32>{id.workchain});
   if (root.is_null()) {
     return false;
   }
   unsigned long long z = id.shard, m = -1LL;
   int len = id.pfx_len();
   while (true) {
-    cs.load(vm::NoVmOrd{}, std::move(root));
+    cs.load(vm::NoVmOrd{}, leaf ? root : std::move(root));
     int t = (int)cs.fetch_ulong(1);
     if (t < 0) {
       return false;  // throw DictError ?
@@ -475,6 +488,9 @@ bool ShardConfig::get_shard_hash_raw(vm::CellSlice& cs, ton::ShardIdFull id, ton
         return false;
       }
       true_id = ton::ShardIdFull{id.workchain, (id.shard | m) - (m >> 1)};
+      if (leaf) {
+        *leaf = std::move(root);
+      }
       return true;
     }
     if (!len || cs.size_ext() != 0x20000) {
@@ -485,6 +501,11 @@ bool ShardConfig::get_shard_hash_raw(vm::CellSlice& cs, ton::ShardIdFull id, ton
     --len;
     m >>= 1;
   }
+}
+
+bool ShardConfig::get_shard_hash_raw(vm::CellSlice& cs, ton::ShardIdFull id, ton::ShardIdFull& true_id,
+                                     bool exact) const {
+  return shard_hashes_dict_ && get_shard_hash_raw_from(*shard_hashes_dict_, cs, id, true_id, exact);
 }
 
 Ref<McShardHash> ShardConfig::get_shard_hash(ton::ShardIdFull id, bool exact) const {

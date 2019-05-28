@@ -277,6 +277,8 @@ class ShardConfig {
   Ref<McShardHash> get_shard_hash(ton::ShardIdFull id, bool exact = true) const;
   bool contains(ton::BlockIdExt blkid) const;
   bool get_shard_hash_raw(vm::CellSlice& cs, ton::ShardIdFull id, ton::ShardIdFull& true_id, bool exact = true) const;
+  static bool get_shard_hash_raw_from(vm::Dictionary& shard_hashes_dict, vm::CellSlice& cs, ton::ShardIdFull id,
+                                      ton::ShardIdFull& true_id, bool exact = true, Ref<vm::Cell>* leaf = nullptr);
   std::vector<ton::BlockId> get_shard_hash_ids(bool skip_mc = false) const;
   std::vector<ton::BlockId> get_shard_hash_ids(const std::function<bool(ton::ShardIdFull, bool)>& filter) const;
   std::vector<ton::BlockId> get_neighbor_shard_hash_ids(ton::ShardIdFull myself) const;
@@ -380,6 +382,7 @@ class Config : public ShardConfig {
   td::Result<std::vector<StoragePrices>> get_storage_prices() const;
   static CatchainValidatorsConfig unpack_catchain_validators_config(Ref<vm::Cell> cell);
   CatchainValidatorsConfig get_catchain_validators_config() const;
+  static std::unique_ptr<vm::Dictionary> extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root);
   bool set_block_id_ext(const ton::BlockIdExt& block_id_ext);
   ton::ZeroStateIdExt get_zerostate_id() const {
     return zerostate_id_;
