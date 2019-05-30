@@ -186,7 +186,7 @@ msg_export_new$001 out_msg:^MsgEnvelope
     transaction:^Transaction = OutMsg;
 msg_export_tr$011  out_msg:^MsgEnvelope 
     imported:^InMsg = OutMsg;
-msg_export_deq$110 out_msg:^MsgEnvelope 
+msg_export_deq$110 out_msg:^MsgEnvelope  // out_msg_hash:bits256 ?
     import_block_lt:uint64 = OutMsg;
 msg_export_tr_req$111 out_msg:^MsgEnvelope 
     imported:^InMsg = OutMsg;

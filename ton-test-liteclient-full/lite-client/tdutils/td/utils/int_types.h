@@ -59,6 +59,13 @@ struct UInt {
       raw[i] = 0;
     }
   }
+  void set_zero_s() {
+    volatile uint8 *p = raw;
+    auto n = size / 8;
+    while (n--) {
+      *p++ = 0;
+    }
+  }
   static UInt zero() {
     UInt v;
     v.set_zero();

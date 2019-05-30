@@ -92,6 +92,9 @@ struct BitPtrGen {
     offs += size;
     return *this;
   }
+  int compare(BitPtrGen<const Pt> other, std::size_t size, std::size_t* same_upto = nullptr) const {
+    return bitstring::bits_memcmp(*this, other, size, same_upto);
+  }
   long long get_int(unsigned bits) const {
     return bitstring::bits_load_long(*this, bits);
   }
@@ -243,7 +246,7 @@ class BitSliceGen {
     ensure_throw(set_size_bool(bits));
     return *this;
   }
-  BitSliceGen subslice(unsigned from, unsigned bits) const& {
+  BitSliceGen subslice(unsigned from, unsigned bits) const & {
     return BitSliceGen(*this, from, bits);
   }
   BitSliceGen subslice(unsigned from, unsigned bits) && {
@@ -507,6 +510,9 @@ class BitArray {
   std::string to_binary() const {
     return bitstring::bits_to_binary(cbits(), size());
   }
+  int compare(const BitArray& other) const {
+    return (n % 8 == 0) ? memcmp(data(), other.data(), n / 8) : bitstring::bits_memcmp(bits(), other.bits(), n);
+  }
   bool operator==(const BitArray& other) const {
     return (n % 8 == 0) ? (bytes == other.bytes) : !bitstring::bits_memcmp(bits(), other.bits(), n);
   }
@@ -516,11 +522,14 @@ class BitArray {
   bool operator<(const BitArray& other) const {
     return (n % 8 == 0) ? (bytes < other.bytes) : (bitstring::bits_memcmp(bits(), other.bits(), n) < 0);
   }
+  int compare(ConstBitPtr other) const {
+    return bitstring::bits_memcmp(bits(), other, n);
+  }
   bool operator==(ConstBitPtr other) const {
-    return !bitstring::bits_memcmp(bits(), other, n);
+    return !compare(other);
   }
   bool operator!=(ConstBitPtr other) const {
-    return bitstring::bits_memcmp(bits(), other, n);
+    return compare(other);
   }
   BitPtr::BitSelector operator[](int i) {
     return bits()[i];

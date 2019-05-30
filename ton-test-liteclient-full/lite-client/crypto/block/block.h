@@ -79,16 +79,40 @@ struct ShardId {
   void init();
 };
 
+struct EnqueuedMsgDescr {
+  ton::AccountIdPrefixFull src_prefix_, cur_prefix_, next_prefix_, dest_prefix_;
+  ton::LogicalTime lt_;
+  ton::LogicalTime enqueued_lt_;
+  ton::Bits256 hash_;
+  Ref<vm::Cell> msg_;
+  Ref<vm::Cell> msg_env_;
+  EnqueuedMsgDescr() = default;
+  EnqueuedMsgDescr(ton::AccountIdPrefixFull cur_pfx, ton::AccountIdPrefixFull next_pfx, ton::LogicalTime lt,
+                   ton::LogicalTime enqueued_lt, td::ConstBitPtr hash)
+      : cur_prefix_(cur_pfx), next_prefix_(next_pfx), lt_(lt), enqueued_lt_(enqueued_lt), hash_(hash) {
+  }
+  bool is_valid() const {
+    return next_prefix_.is_valid();
+  }
+  bool check_key(td::ConstBitPtr key) const;
+  bool invalidate() {
+    next_prefix_.workchain = cur_prefix_.workchain = ton::workchainInvalid;
+    return false;
+  }
+  bool unpack(vm::CellSlice& cs);
+};
+
+using compute_shard_end_lt_func_t = std::function<ton::LogicalTime(ton::AccountIdPrefixFull)>;
+
 struct MsgProcessedUpto {
   ton::ShardId shard;
   ton::BlockSeqno mc_seqno;
   ton::LogicalTime last_inmsg_lt;
   ton::Bits256 last_inmsg_hash;
-  ton::LogicalTime our_end_lt;  // corresponds to end_lt of our block seen from mc_seqno
+  compute_shard_end_lt_func_t compute_shard_end_lt;
   MsgProcessedUpto() = default;
-  MsgProcessedUpto(ton::ShardId _shard, ton::BlockSeqno _mcseqno, ton::LogicalTime _lt, td::ConstBitPtr _hash,
-                   ton::LogicalTime _endlt = 0)
-      : shard(_shard), mc_seqno(_mcseqno), last_inmsg_lt(_lt), last_inmsg_hash(_hash), our_end_lt(_endlt) {
+  MsgProcessedUpto(ton::ShardId _shard, ton::BlockSeqno _mcseqno, ton::LogicalTime _lt, td::ConstBitPtr _hash)
+      : shard(_shard), mc_seqno(_mcseqno), last_inmsg_lt(_lt), last_inmsg_hash(_hash) {
   }
   bool operator<(const MsgProcessedUpto& other) const & {
     return shard < other.shard || (shard == other.shard && mc_seqno < other.mc_seqno);
@@ -97,7 +121,7 @@ struct MsgProcessedUpto {
   bool contains(ton::ShardId other_shard, ton::LogicalTime other_lt, td::ConstBitPtr other_hash,
                 ton::BlockSeqno other_mc_seqno) const &;
   // NB: this is for checking whether we have already imported an internal message
-  bool already_processed(ton::ShardId msg_next_addr, ton::LogicalTime msg_lt, td::ConstBitPtr msg_hash) const;
+  bool already_processed(const EnqueuedMsgDescr& msg) const;
 };
 
 struct MsgProcessedUptoCollection {
@@ -108,9 +132,14 @@ struct MsgProcessedUptoCollection {
   }
   MsgProcessedUptoCollection(ton::ShardIdFull _owner, Ref<vm::CellSlice> cs_ref);
   static std::unique_ptr<MsgProcessedUptoCollection> unpack(ton::ShardIdFull _owner, Ref<vm::CellSlice> cs_ref);
+  bool is_valid() const {
+    return valid;
+  }
   bool insert(ton::LogicalTime last_proc_lt, td::ConstBitPtr last_proc_hash, ton::BlockSeqno mc_seqno);
   bool compactify();
   bool pack(vm::CellBuilder& cb);
+  // NB: this is for checking whether we have already imported an internal message
+  bool already_processed(const EnqueuedMsgDescr& msg) const;
 };
 
 namespace tlb {
@@ -337,9 +366,9 @@ struct MsgAddressInt final : TLB_Complex {
   int get_tag(const vm::CellSlice& cs) const override {
     return (int)cs.prefetch_ulong(2);
   }
-  ton::ShardIdFull get_shard(vm::CellSlice&& cs) const;
-  ton::ShardIdFull get_shard(const vm::CellSlice& cs) const;
-  ton::ShardIdFull get_shard(Ref<vm::CellSlice> cs_ref) const;
+  ton::AccountIdPrefixFull get_prefix(vm::CellSlice&& cs) const;
+  ton::AccountIdPrefixFull get_prefix(const vm::CellSlice& cs) const;
+  ton::AccountIdPrefixFull get_prefix(Ref<vm::CellSlice> cs_ref) const;
   bool extract_std_address(Ref<vm::CellSlice> cs_ref, ton::WorkchainId& workchain, ton::StdSmcAddress& addr,
                            bool rewrite = true) const;
   bool extract_std_address(vm::CellSlice& cs, ton::WorkchainId& workchain, ton::StdSmcAddress& addr,
@@ -875,6 +904,9 @@ struct EnqueuedMsg final : TLB_Complex {
     return cs.advance_ext(0x10040);
   }
   bool validate_skip(vm::CellSlice& cs) const override;
+  bool unpack(vm::CellSlice& cs, EnqueuedMsgDescr& descr) const {
+    return descr.unpack(cs);
+  }
 };
 
 extern const EnqueuedMsg t_EnqueuedMsg;
@@ -1071,10 +1103,11 @@ bool valid_config_data(Ref<vm::Cell> cell, const td::BitArray<256>& addr, bool c
 bool add_extra_currency(Ref<vm::Cell> extra1, Ref<vm::Cell> extra2, Ref<vm::Cell>& res);
 bool sub_extra_currency(Ref<vm::Cell> extra1, Ref<vm::Cell> extra2, Ref<vm::Cell>& res);
 
-ton::ShardIdFull interpolate_addr(ton::ShardIdFull src, ton::ShardIdFull dest, int used_dest_bits);
+ton::AccountIdPrefixFull interpolate_addr(ton::AccountIdPrefixFull src, ton::AccountIdPrefixFull dest,
+                                          int used_dest_bits);
 // result: (transit_addr_dest_bits, nh_addr_dest_bits)
-std::pair<int, int> perform_hypercube_routing(ton::ShardIdFull src, ton::ShardIdFull dest, ton::ShardIdFull cur,
-                                              int used_dest_bits = 0);
+std::pair<int, int> perform_hypercube_routing(ton::AccountIdPrefixFull src, ton::AccountIdPrefixFull dest,
+                                              ton::ShardIdFull cur, int used_dest_bits = 0);
 
 bool unpack_block_prev_blk(Ref<vm::Cell> block_root, ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
                            ton::BlockIdExt& mc_blkid, bool& after_split);

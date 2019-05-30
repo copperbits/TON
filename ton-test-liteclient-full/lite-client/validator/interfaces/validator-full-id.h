@@ -13,8 +13,10 @@ class ValidatorFullId : public AdnlNodeIdFullImpl {
   NodeIdShort short_id() const;
   operator Ed25519_PublicKey() const;
 
-  ValidatorFullId(AdnlNodeIdFull id);
-  ValidatorFullId(Ed25519_PublicKey key);
+  ValidatorFullId(AdnlNodeIdFull id) : AdnlNodeIdFullImpl{std::move(id)} {
+  }
+  ValidatorFullId(Ed25519_PublicKey key) : AdnlNodeIdFullImpl{adnlid::AdnlEd25519Pub{key.as_uint256()}} {
+  }
 };
 
 }  // namespace validator

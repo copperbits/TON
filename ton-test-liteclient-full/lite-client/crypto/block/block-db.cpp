@@ -7,7 +7,7 @@
 #include "td/utils/port/FileFd.h"
 #include "td/utils/port/path.h"
 #include "td/utils/filesystem.h"
-#include "vm/cellops.h"
+#include "vm/cellslice.h"
 #include "vm/boc.h"
 #include "vm/db/StaticBagOfCellsDb.h"
 
@@ -575,7 +575,7 @@ void BlockDbImpl::get_top_block_id(ton::ShardIdFull shard, int authority, td::Pr
 
 void BlockDbImpl::get_top_block_state_id(ton::ShardIdFull shard, int authority, td::Promise<ton::BlockIdExt> promise) {
   LOG(DEBUG) << "in BlockDb::get_top_block_state_id()";
-  auto it = state_info.upper_bound(ton::BlockId {shard, std::numeric_limits<td::uint32>::max()});
+  auto it = state_info.upper_bound(ton::BlockId{shard, std::numeric_limits<td::uint32>::max()});
   if (it != state_info.begin() && ton::ShardIdFull{(--it)->first} == shard) {
     promise(it->second->blk);
     return;

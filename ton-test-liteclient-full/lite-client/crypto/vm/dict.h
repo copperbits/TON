@@ -194,6 +194,9 @@ struct LabelParser {
   void skip_label() {
     remainder.write().advance(s_bits);
   }
+  void clear() {
+    remainder.clear();
+  }
 
  private:
   bool parse_label(CellSlice& cs, int max_label_len);
@@ -225,6 +228,7 @@ class AugmentedDictionary : public DictionaryBase {
   const AugmentationData& aug;
 
  public:
+  typedef std::function<int(td::ConstBitPtr, int, vm::CellSlice&)> filter_func_t;
   AugmentedDictionary(int _n, const AugmentationData& _aug, bool validate = true);
   AugmentedDictionary(Ref<CellSlice> _root, int _n, const AugmentationData& _aug, bool validate = true);
   AugmentedDictionary(Ref<Cell> cell, int _n, const AugmentationData& _aug, bool validate = true);
@@ -244,6 +248,7 @@ class AugmentedDictionary : public DictionaryBase {
   bool set_ref(td::ConstBitPtr key, int key_len, Ref<Cell> val_ref, SetMode mode = SetMode::Set);
   bool set_builder(td::ConstBitPtr key, int key_len, const CellBuilder& value, SetMode mode = SetMode::Set);
   Ref<CellSlice> lookup_delete(td::ConstBitPtr key, int key_len);
+  int filter(filter_func_t check);
   bool validate();
   void force_validate();
   template <unsigned n>
@@ -281,6 +286,7 @@ class AugmentedDictionary : public DictionaryBase {
   std::pair<Ref<Cell>, bool> dict_set(Ref<Cell> dict, td::ConstBitPtr key, int n, const CellSlice& value,
                                       SetMode mode = SetMode::Set) const;
   std::pair<Ref<CellSlice>, Ref<Cell>> dict_lookup_delete(Ref<Cell> dict, td::ConstBitPtr key, int n) const;
+  std::pair<Ref<Cell>, int> dict_filter(Ref<Cell> dict, td::BitPtr key, int n, const filter_func_t& check_leaf) const;
   Ref<Cell> finish_create_leaf(CellBuilder& cb, const CellSlice& value) const;
   Ref<Cell> finish_create_fork(CellBuilder& cb, Ref<Cell> c1, Ref<Cell> c2, int n) const;
 };
