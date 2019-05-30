@@ -5906,6 +5906,32 @@ class validatorSession_message_approvedBlock final : public validatorSession_rou
   void store(td::TlStorerToString &s, const char *field_name) const final;
 };
 
+class validatorSession_message_rejectedBlock final : public validatorSession_round_Message {
+ public:
+  std::int32_t round_;
+  td::UInt256 candidate_;
+  td::BufferSlice reason_;
+
+  validatorSession_message_rejectedBlock();
+
+  validatorSession_message_rejectedBlock(std::int32_t round_, td::UInt256 const &candidate_, td::BufferSlice &&reason_);
+
+  static const std::int32_t ID = -1786229141;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
+
+  explicit validatorSession_message_rejectedBlock(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
 class validatorSession_message_commit final : public validatorSession_round_Message {
  public:
   std::int32_t round_;

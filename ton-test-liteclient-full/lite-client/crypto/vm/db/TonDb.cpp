@@ -3,7 +3,9 @@
 #include "td/utils/tl_helpers.h"
 #include "td/utils/Random.h"
 
+#if TDDB_USE_ROCKSDB
 #include "td/db/RocksDb.h"
+#endif
 
 namespace vm {
 
@@ -294,8 +296,12 @@ std::string TonDbImpl::stats() const {
 }
 
 td::Result<TonDb> TonDbImpl::open(td::Slice path) {
+#if TDDB_USE_ROCKSDB
   TRY_RESULT(rocksdb, td::RocksDb::open(path.str()));
   return std::make_unique<TonDbImpl>(std::make_unique<td::RocksDb>(std::move(rocksdb)));
+#else
+  return td::Status::Error("TonDb is not supported in this build");
+#endif
 }
 
 }  // namespace vm

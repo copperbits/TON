@@ -103,6 +103,9 @@ struct AccountIdPrefixFull {
   bool is_masterchain() const {
     return workchain == masterchainId;
   }
+  ShardIdFull as_leaf_shard() const {
+    return ShardIdFull{workchain, account_id_prefix | 1};
+  }
   std::string to_str() const {
     char buffer[64];
     return std::string{
@@ -138,6 +141,14 @@ struct BlockId {
   }
   bool is_valid_full() const {
     return is_valid() && shard && !(shard & 7) && seqno <= 0x7fffffff && (!is_masterchain() || shard == shardIdAll);
+  }
+  void invalidate() {
+    workchain = workchainInvalid;
+  }
+  void invalidate_clear() {
+    invalidate();
+    shard = 0;
+    seqno = 0;
   }
   bool operator==(const BlockId& other) const {
     return workchain == other.workchain && seqno == other.seqno && shard == other.shard;
@@ -187,12 +198,10 @@ struct BlockIdExt {
   BlockIdExt() : id(workchainIdNotYet, 0, 0) {
   }
   void invalidate() {
-    id.workchain = workchainInvalid;
+    id.invalidate();
   }
   void invalidate_clear() {
-    id.workchain = workchainInvalid;
-    id.shard = 0;
-    id.seqno = 0;
+    id.invalidate_clear();
     root_hash.set_zero();
     file_hash.set_zero();
   }

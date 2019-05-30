@@ -150,8 +150,14 @@ class TLB {
   }
   bool print_special(PrettyPrinter& pp, vm::CellSlice& cs) const;
   bool print_ref(PrettyPrinter& pp, Ref<vm::Cell> cell_ref) const;
+  bool print(PrettyPrinter& pp, Ref<vm::CellSlice> cs_ref) const {
+    return print(pp, *cs_ref);
+  }
   bool print_skip(std::ostream& os, vm::CellSlice& cs, int indent = 0) const;
   bool print(std::ostream& os, const vm::CellSlice& cs, int indent = 0) const;
+  bool print(std::ostream& os, Ref<vm::CellSlice> cs_ref, int indent = 0) const {
+    return print(os, *cs_ref, indent);
+  }
   bool print_ref(std::ostream& os, Ref<vm::Cell> cell_ref, int indent = 0) const;
 
  protected:

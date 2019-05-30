@@ -240,6 +240,7 @@ validatorSession.message.finishSession = validatorSession.Message;
 validatorSession.message.submittedBlock round:int root_hash:int256 file_hash:int256 
                collated_data_file_hash:int256 = validatorSession.round.Message;
 validatorSession.message.approvedBlock round:int candidate:int256 = validatorSession.round.Message;
+validatorSession.message.rejectedBlock round:int candidate:int256 reason:bytes = validatorSession.round.Message;
 validatorSession.message.commit round:int candidate:int256 signature:bytes = validatorSession.round.Message;
 
 validatorSession.message.vote round:int attempt:int candidate:int256 = validatorSession.round.Message;

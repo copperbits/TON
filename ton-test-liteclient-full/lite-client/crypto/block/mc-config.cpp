@@ -45,8 +45,8 @@ td::Result<std::unique_ptr<Config>> Config::extract_config(Ref<vm::Cell> mc_stat
 
 Config::Config(Ref<vm::Cell> mc_state_root, int _mode) : mode(_mode), state_root(std::move(mc_state_root)) {
   config_addr.set_zero();
-  block_hash.set_zero();
-  block_file_hash.set_zero();
+  block_id.root_hash.set_zero();
+  block_id.file_hash.set_zero();
 }
 
 td::Status Config::unpack_wrapped() {
@@ -76,7 +76,9 @@ td::Status Config::unpack() {
   }
   global_id_ = root_info.global_id;
   block::ShardId shard_id{root_info.shard_id};
-  block_id = ton::BlockId{ton::ShardIdFull(shard_id), (unsigned)root_info.seq_no};
+  block_id.id = ton::BlockId{ton::ShardIdFull(shard_id), (unsigned)root_info.seq_no};
+  block_id.root_hash.set_zero();
+  block_id.file_hash.set_zero();
   vert_seqno = root_info.vert_seq_no;
   utime = root_info.gen_utime;
   lt = root_info.gen_lt;
@@ -141,7 +143,7 @@ td::Status Config::unpack() {
     }
   }
   std::unique_ptr<vm::Dictionary> prev_blocks_dict = std::make_unique<vm::Dictionary>(extra_info.r1.prev_blocks, 32);
-  if (block_id.seqno) {
+  if (block_id.id.seqno) {
     block::gen::ExtBlkRef::Record extref = {};
     if (!(tlb::csr_unpack_safe(prev_blocks_dict->lookup(td::BitArray<32>{1 - 1}), extref) && !extref.seq_no)) {
       return td::Status::Error("OldMcBlocks in masterchain state does not contain a valid zero state reference");
@@ -247,10 +249,9 @@ td::Result<std::unique_ptr<ValidatorSet>> Config::unpack_validator_set(Ref<vm::C
 }
 
 bool Config::set_block_id_ext(const ton::BlockIdExt& block_id_ext) {
-  if (block_id == block_id_ext.id) {
-    block_hash = block_id_ext.root_hash;
-    block_file_hash = block_id_ext.file_hash;
-    if (!block_id.seqno) {
+  if (block_id.id == block_id_ext.id) {
+    block_id = block_id_ext;
+    if (!block_id.id.seqno) {
       zerostate_id_.workchain = ton::masterchainId;
       zerostate_id_.root_hash = block_id_ext.root_hash;
       zerostate_id_.file_hash = block_id_ext.file_hash;
@@ -349,11 +350,11 @@ Ref<McShardHash> McShardHash::unpack(vm::CellSlice& cs, ton::ShardIdFull id) {
 
 bool McShardHash::pack(vm::CellBuilder& cb) const {
   if (!(is_valid()                                        // (validate)
-        && cb.store_long_bool(blk.id.seqno, 32)           // shard_descr$_ seq_no:uint32
+        && cb.store_long_bool(blk_.id.seqno, 32)          // shard_descr$_ seq_no:uint32
         && cb.store_long_bool(start_lt_, 64)              // start_lt:uint64
         && cb.store_long_bool(end_lt_, 64)                // end_lt:uint64
-        && cb.store_bits_bool(blk.root_hash)              // root_hash:bits256
-        && cb.store_bits_bool(blk.file_hash)              // file_hash:bits256
+        && cb.store_bits_bool(blk_.root_hash)             // root_hash:bits256
+        && cb.store_bits_bool(blk_.file_hash)             // file_hash:bits256
         && cb.store_bool_bool(before_split_)              // before_split:Bool
         && cb.store_bool_bool(before_merge_)              // before_merge:Bool
         && cb.store_bool_bool(want_split_)                // want_split:Bool
@@ -414,7 +415,7 @@ Ref<McShardDescr> McShardDescr::from_block(Ref<vm::Cell> block_root, Ref<vm::Cel
     LOG(ERROR) << "state update in a block is not a Merkle update";
     return {};
   }
-  if (cs.size_refs() != 2 || cs.prefetch_ref(1)->get_hash(1) != state_root->get_hash()) {
+  if (cs.size_refs() != 2 || cs.prefetch_ref(1)->get_hash(0) != state_root->get_hash()) {
     LOG(ERROR) << "invalid Merkle update for block state : resulting state hash mismatch";
     return {};
   }
@@ -429,9 +430,9 @@ Ref<McShardDescr> McShardDescr::from_block(Ref<vm::Cell> block_root, Ref<vm::Cel
 }
 
 void Config::reset_mc_hash() {
-  if (block_id.is_masterchain() && !block_hash.is_zero()) {
+  if (block_id.is_masterchain() && !block_id.root_hash.is_zero()) {
     // TODO: use block_start_lt instead of lt if available
-    set_mc_hash(Ref<McShardHash>(true, block_id, lt, lt, utime, block_hash, block_file_hash));
+    set_mc_hash(Ref<McShardHash>(true, block_id.id, lt, lt, utime, block_id.root_hash, block_id.file_hash));
   } else {
     set_mc_hash(Ref<McShardHash>{});
   }
@@ -544,9 +545,33 @@ ton::CatchainSeqno ShardConfig::get_shard_cc_seqno(ton::ShardIdFull shard) const
   return std::max(cc_seqno, info.next_catchain_seqno) + 1;
 }
 
+ton::LogicalTime ShardConfig::get_shard_end_lt_ext(ton::AccountIdPrefixFull acc, ton::ShardIdFull& actual_shard) const {
+  if (!acc.is_valid()) {
+    actual_shard.workchain = ton::workchainInvalid;
+    return 0;
+  }
+  if (acc.is_masterchain()) {
+    actual_shard = ton::ShardIdFull(ton::masterchainId);
+    CHECK(mc_shard_hash_.not_null());
+    return mc_shard_hash_->end_lt_;
+  }
+  vm::CellSlice cs;
+  unsigned long long end_lt;
+  return get_shard_hash_raw(cs, acc.as_leaf_shard(), actual_shard, false)  // lookup ShardDescr containing acc
+                 && cs.advance(96)                   // shard_descr$_ seq_no:uint32 start_lt:uint64
+                 && cs.fetch_ulong_bool(64, end_lt)  // end_lt:uint64
+             ? end_lt
+             : 0;
+}
+
+ton::LogicalTime ShardConfig::get_shard_end_lt(ton::AccountIdPrefixFull acc) const {
+  ton::ShardIdFull tmp;
+  return get_shard_end_lt_ext(acc, tmp);
+}
+
 bool ShardConfig::contains(ton::BlockIdExt blkid) const {
   auto entry = get_shard_hash(blkid.shard_full());
-  return entry.not_null() && entry->blk == blkid;
+  return entry.not_null() && entry->blk_ == blkid;
 }
 
 static int process_workchain_shard_hashes(Ref<vm::Cell>& branch, ton::ShardIdFull shard,
@@ -609,15 +634,14 @@ std::vector<ton::BlockId> ShardConfig::get_shard_hash_ids(
     return {};
   }
   std::vector<ton::BlockId> res;
-  bool mcout =
-      mc_shard_hash_.is_null() || !mc_shard_hash_->blk.id.seqno;  // include masterchain as a shard if seqno > 0
+  bool mcout = mc_shard_hash_.is_null() || !mc_shard_hash_->seqno();  // include masterchain as a shard if seqno > 0
   bool ok = shard_hashes_dict_->check_for_each(
       [&res, &mcout, mc_shard_hash_ = mc_shard_hash_, &filter ](Ref<vm::CellSlice> cs_ref, td::ConstBitPtr key, int n)
           ->bool {
             int workchain = (int)key.get_int(n);
             if (workchain >= 0 && !mcout) {
               if (filter(ton::ShardIdFull{ton::masterchainId}, true)) {
-                res.emplace_back(mc_shard_hash_->blk.id);
+                res.emplace_back(mc_shard_hash_->blk_.id);
               }
               mcout = true;
             }
@@ -655,7 +679,7 @@ std::vector<ton::BlockId> ShardConfig::get_shard_hash_ids(
     return {};
   }
   if (!mcout && filter(ton::ShardIdFull{ton::masterchainId}, true)) {
-    res.emplace_back(mc_shard_hash_->blk.id);
+    res.emplace_back(mc_shard_hash_->blk_.id);
   }
   return res;
 }
@@ -665,8 +689,19 @@ std::vector<ton::BlockId> ShardConfig::get_shard_hash_ids(bool skip_mc) const {
       [skip_mc](ton::ShardIdFull shard, bool) -> bool { return !(skip_mc && shard.is_masterchain()); });
 }
 
+std::vector<ton::BlockId> ShardConfig::get_intersecting_shard_hash_ids(ton::ShardIdFull myself) const {
+  return get_shard_hash_ids(
+      [myself](ton::ShardIdFull shard, bool) -> bool { return ton::shard_intersects(myself, shard); });
+}
+
 std::vector<ton::BlockId> ShardConfig::get_neighbor_shard_hash_ids(ton::ShardIdFull myself) const {
   return get_shard_hash_ids([myself](ton::ShardIdFull shard, bool) -> bool { return is_neighbor(myself, shard); });
+}
+
+std::vector<ton::BlockId> ShardConfig::get_proper_neighbor_shard_hash_ids(ton::ShardIdFull myself) const {
+  return get_shard_hash_ids([myself](ton::ShardIdFull shard, bool leaf) -> bool {
+    return is_neighbor(myself, shard) && !(leaf && ton::shard_intersects(myself, shard));
+  });
 }
 
 bool ShardConfig::is_neighbor(ton::ShardIdFull x, ton::ShardIdFull y) {
@@ -752,7 +787,7 @@ td::Result<bool> ShardConfig::may_update_shard_block_info(Ref<McShardHash> new_i
   ton::CatchainSeqno old_cc_seqno = 0;
   for (const auto& ob : old_blkids) {
     auto odef = get_shard_hash(ob.shard_full());
-    if (odef.is_null() || odef->blk != ob) {
+    if (odef.is_null() || odef->blk_ != ob) {
       return td::Status::Error(-666,
                                std::string{"the start block "} + ob.to_str() +
                                    " of a top shard block update is not contained in the previous shard configuration");
@@ -796,7 +831,7 @@ td::Result<bool> ShardConfig::update_shard_block_info(Ref<McShardHash> new_info,
     return res;
   }
   if (!res.move_as_ok()) {
-    return td::Status::Error(-666, std::string{"cannot apply the after-split update for "} + new_info->blk.to_str() +
+    return td::Status::Error(-666, std::string{"cannot apply the after-split update for "} + new_info->blk_.to_str() +
                                        " without a corresponding sibling update");
   }
   bool ok = do_update_shard_info(std::move(new_info));
@@ -805,7 +840,7 @@ td::Result<bool> ShardConfig::update_shard_block_info(Ref<McShardHash> new_info,
         -666,
         std::string{
             "unknown serialization error for (BinTree ShardDescr) while updating shard configuration to include "} +
-            new_info->blk.to_str());
+            new_info->blk_.to_str());
   } else {
     return true;
   }
@@ -824,7 +859,7 @@ td::Result<bool> ShardConfig::update_shard_block_info2(Ref<McShardHash> new_info
   if (res1.move_as_ok() || res2.move_as_ok()) {
     return td::Status::Error(-666, "the two updates in update_shard_block_info2 must follow a shard split event");
   }
-  if (new_info1->blk.id.shard > new_info2->blk.id.shard) {
+  if (new_info1->blk_.id.shard > new_info2->blk_.id.shard) {
     std::swap(new_info1, new_info2);
   }
   bool ok = do_update_shard_info(std::move(new_info1), std::move(new_info2));
@@ -833,7 +868,7 @@ td::Result<bool> ShardConfig::update_shard_block_info2(Ref<McShardHash> new_info
         -666,
         std::string{
             "unknown serialization error for (BinTree ShardDescr) while updating shard configuration to include "} +
-            new_info1->blk.to_str() + " and " + new_info2->blk.to_str());
+            new_info1->blk_.to_str() + " and " + new_info2->blk_.to_str());
   } else {
     return true;
   }
@@ -851,7 +886,7 @@ bool ShardConfig::do_update_shard_info(Ref<McShardHash> new_info1, Ref<McShardHa
   if (new_info1.is_null() || new_info2.is_null() || !ton::shard_is_sibling(new_info1->shard(), new_info2->shard())) {
     return false;
   }
-  if (new_info1->blk.id.shard > new_info2->blk.id.shard) {
+  if (new_info1->blk_.id.shard > new_info2->blk_.id.shard) {
     std::swap(new_info1, new_info2);
   }
   vm::CellBuilder cb, cb1;
@@ -1152,11 +1187,18 @@ Ref<WorkchainInfo> Config::get_workchain_info(ton::WorkchainId workchain_id) con
 }
 
 bool Config::get_old_mc_block_id(ton::BlockSeqno seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt) const {
-  return block::get_old_mc_block_id(prev_blocks_dict_.get(), seqno, blkid, end_lt);
+  if (block_id.is_valid() && seqno == block_id.id.seqno) {
+    blkid = block_id;
+    return true;
+  } else {
+    return block::get_old_mc_block_id(prev_blocks_dict_.get(), seqno, blkid, end_lt);
+  }
 }
 
-bool Config::check_old_mc_block_id(const ton::BlockIdExt& blkid) const {
-  return block::check_old_mc_block_id(prev_blocks_dict_.get(), blkid);
+bool Config::check_old_mc_block_id(const ton::BlockIdExt& blkid, bool strict) const {
+  return (!strict && block_id.is_valid() && blkid.id.seqno == block_id.id.seqno)
+             ? blkid == block_id
+             : block::check_old_mc_block_id(prev_blocks_dict_.get(), blkid);
 }
 
 }  // namespace block

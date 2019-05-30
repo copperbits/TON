@@ -2063,4 +2063,80 @@ Ref<CellSlice> AugmentedDictionary::lookup_delete(td::ConstBitPtr key, int key_l
   return std::move(res.first);
 }
 
+std::pair<Ref<Cell>, int> AugmentedDictionary::dict_filter(Ref<Cell> dict, td::BitPtr key, int n,
+                                                           const AugmentedDictionary::filter_func_t& check_leaf) const {
+  // std::cerr << "augmented dictionary filter for " << n << "-bit key = " << (key + n - key_bits).to_hex(key_bits - n)
+  //           << std::endl;
+  if (dict.is_null()) {
+    // empty dictionary, return unchanged
+    return {{}, 0};
+  }
+  LabelParser label{std::move(dict), n, 2};
+  assert(label.l_bits >= 0 && label.l_bits <= n);
+  label.extract_label_to(key);
+  key += label.l_bits;
+  if (label.l_bits == n) {
+    // leaf
+    int res = check_leaf(key - key_bits, key_bits, label.remainder.write());
+    return {{}, res < 0 ? res : !res};
+  }
+  // fork, process left and right subtrees
+  ++key;
+  key[-1] = false;
+  int delta = label.l_bits + 1;
+  n -= delta;
+  auto left_res = dict_filter(label.remainder->prefetch_ref(0), key, n, check_leaf);
+  if (left_res.second < 0) {
+    return left_res;
+  }
+  key[-1] = true;
+  auto right_res = dict_filter(label.remainder->prefetch_ref(1), key, n, check_leaf);
+  if ((left_res.second | right_res.second) <= 0) {
+    // error in right, or both left and right unchanged
+    return right_res;
+  }
+  auto left = left_res.second ? std::move(left_res.first) : label.remainder->prefetch_ref(0);
+  auto right = right_res.second ? std::move(right_res.first) : label.remainder->prefetch_ref(1);
+  auto changes = left_res.second + right_res.second;
+  label.clear();
+  if (left.is_null()) {
+    if (right.is_null()) {
+      // both branches are empty => the result is an empty tree
+      return {{}, changes};
+    }
+    std::swap(left, right);
+  } else if (right.is_null()) {
+    key[-1] = false;
+  } else {
+    // both new branches are non-empty => create new fork
+    CellBuilder cb;
+    append_dict_label(cb, key - delta, label.l_bits, n + delta);
+    return {finish_create_fork(cb, std::move(left), std::move(right), n + 1), changes};
+  }
+  // only one child (in `left`) remains, collapse an edge
+  // NB: similar to code in lookup_delete()
+  assert(left.not_null() && right.is_null());
+  LabelParser label2{std::move(left), n, 2};
+  label2.extract_label_to(key);
+  CellBuilder cb;
+  append_dict_label(cb, key - delta, delta + label2.l_bits, n + delta);
+  if (!cell_builder_add_slice_bool(cb, *label2.remainder)) {
+    throw VmError{Excno::cell_ov, "cannot change label of an old augmented dictionary cell while merging edges"};
+  }
+  label2.remainder.clear();
+  return {cb.finalize(), changes};
+}
+
+int AugmentedDictionary::filter(AugmentedDictionary::filter_func_t check_leaf) {
+  force_validate();
+  unsigned char buffer[Dictionary::max_key_bytes];
+  auto res = dict_filter(get_root_cell(), td::BitPtr{buffer}, key_bits, check_leaf);
+  if (res.second > 0) {
+    // std::cerr << "after filter (" << res.second << " changes): new augmented dictionary root is:\n";
+    // vm::load_cell_slice(res.first).print_rec(std::cerr);
+    set_root_cell(std::move(res.first));
+  }
+  return res.second;
+}
+
 }  // namespace vm

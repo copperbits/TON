@@ -28,6 +28,10 @@ class PrefixedKeyValueReader : public KeyValueReader {
   std::string prefix_;
 };
 
+class KeyValueUtils {
+ public:
+};
+
 class KeyValue : public KeyValueReader {
  public:
   virtual Status set(Slice key, Slice value) = 0;
@@ -90,4 +94,5 @@ class PrefixedKeyValue : public KeyValue {
   std::shared_ptr<KeyValue> kv_;
   std::string prefix_;
 };
+
 }  // namespace td

@@ -12,12 +12,6 @@ add_subdirectory(third-party/crc32c EXCLUDE_FROM_ALL)
 set(CRC32C_FOUND 1)
 set(HAVE_SSE42)
 
-set(WITH_TESTS OFF CACHE BOOL "build with tests")
-set(WITH_TOOLS OFF CACHE BOOL "build with tools")
-set(FAIL_ON_WARNINGS OFF CACHE BOOL "fail on warnings")
-add_subdirectory(third-party/rocksdb EXCLUDE_FROM_ALL)
-set(HAVE_SSE42)
-
 option(USE_LIBRAPTORQ "use libraptorq for tests" OFF)
 if (USE_LIBRAPTORQ)
   set(USE_LZ4 OFF CACHE BOOL "use lz4")
