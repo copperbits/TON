@@ -2,7 +2,6 @@
 
 This is open development community and **enthusiasts research place**. We will post our news and updates this project there.
 
-Last codebase update was performed on May 28, 2019. `sha256sum('ton-test-liteclient-full.tar.xz')`=`8fec2db9c7649228046cf916dbaf9dabdc4a8237fd3ca91e86f0af85a9a69d2c`.
 
 ## TON whitepapers:
 
@@ -14,6 +13,12 @@ Last codebase update was performed on May 28, 2019. `sha256sum('ton-test-litecli
   - [README](https://test.ton.org/README.txt) -
   General information, compilation and installation instructions
   - [HOWTO](https://test.ton.org/HOWTO.txt) - Step-by-step description of creation of a new smart contract with the aid of the Lite Client
+
+## TON source code
+
+Code was downloaded from https://test.ton.org/download.html 
+
+Last codebase update was performed on May 30, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`14c91834381fe023cf909fb906377c04129d3fb4fb7f93ba58d53139e48dffed`.
 
 ---
 ## Table of contents:
