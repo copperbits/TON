@@ -1,11 +1,14 @@
+#!/usr/bin/fift -s
 // "testgiver.addr" file>B 256 B>u@ 
 0x8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d
 dup constant wallet_addr ."Test giver address = " x. cr
+-1 constant wallet_wc
 
+// "new-wallet.addr" file>B 256 B>u@
 0x60c04141c6a7b96d68615e7a91d265ad0f3a9a922e9ae9c901d4fa83f5d3c0d0
-constant dest_addr
+dup constant dest_addr ."Destination address = " x. cr
+-1 constant dest_wc
 
--1 constant wc
 0 constant seqno
 
 1000000000 constant Gram
@@ -18,11 +21,12 @@ constant dest_addr
   rot over 4 u, -rot 8 * u, } : Gram, 
   
 // create a message (NB: 01b00.., b = bounce)
-<b b{010000100} s, wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "GIFT" $, b>
+<b b{010000100} s, dest_wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "GIFT" $, b>
 <b seqno 32 u, 1 8 u, swap ref, b>
 dup ."enveloping message: " <s csr. cr
-<b b{1000100} s, wc 8 i, wallet_addr 256 u, 0 Gram, b{00} s,
+<b b{1000100} s, wallet_wc 8 i, wallet_addr 256 u, 0 Gram, b{00} s,
    swap <s s, b>
 dup ."resulting external message: " <s csr. cr
 2 boc+>B dup Bx. cr
-"wallet-query.boc" B>file
+"wallet-query.boc" tuck B>file
+."(Saved to file " type .")" cr

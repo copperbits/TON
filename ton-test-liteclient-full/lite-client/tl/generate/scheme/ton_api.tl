@@ -157,6 +157,7 @@ dht.query node:dht.node = True;
 
 ---types---
 
+overlay.node.toSign id:int256 overlay:int256 version:int = overlay.node.ToSign;
 overlay.node id:adnl.id.Full overlay:int256 version:int signature:bytes = overlay.Node;
 overlay.nodes nodes:(vector overlay.node) = overlay.Nodes;
 
@@ -239,6 +240,7 @@ validatorSession.message.finishSession = validatorSession.Message;
 validatorSession.message.submittedBlock round:int root_hash:int256 file_hash:int256 
                collated_data_file_hash:int256 = validatorSession.round.Message;
 validatorSession.message.approvedBlock round:int candidate:int256 = validatorSession.round.Message;
+validatorSession.message.rejectedBlock round:int candidate:int256 reason:bytes = validatorSession.round.Message;
 validatorSession.message.commit round:int candidate:int256 signature:bytes = validatorSession.round.Message;
 
 validatorSession.message.vote round:int attempt:int candidate:int256 = validatorSession.round.Message;
@@ -456,6 +458,7 @@ liteServer.masterchainInfo last:tonNode.blockIdExt state_root_hash:int256 init:t
 liteServer.currentTime now:int = liteServer.CurrentTime;
 liteServer.blockData id:tonNode.blockIdExt data:bytes = liteServer.BlockData;
 liteServer.blockState id:tonNode.blockIdExt root_hash:int256 file_hash:int256 data:bytes = liteServer.BlockState;
+liteServer.blockHeader id:tonNode.blockIdExt mode:# header_proof:bytes = liteServer.BlockHeader;
 liteServer.sendMsgStatus status:int = liteServer.SendMsgStatus;
 liteServer.accountState id:tonNode.blockIdExt shardblk:tonNode.blockIdExt shard_proof:bytes proof:bytes state:bytes = liteServer.AccountState;
 liteServer.shardInfo id:tonNode.blockIdExt shardblk:tonNode.blockIdExt shard_proof:bytes shard_descr:bytes = liteServer.ShardInfo;
@@ -469,9 +472,10 @@ liteServer.getMasterchainInfo = liteServer.MasterchainInfo;
 liteServer.getTime = liteServer.CurrentTime;
 liteServer.getBlock id:tonNode.blockIdExt = liteServer.BlockData;
 liteServer.getState id:tonNode.blockIdExt = liteServer.BlockState;
+liteServer.getBlockHeader id:tonNode.blockIdExt mode:# = liteServer.BlockHeader;
 liteServer.sendMessage body:bytes = liteServer.SendMsgStatus;
 liteServer.getAccountState id:tonNode.blockIdExt account:liteServer.accountId = liteServer.AccountState;
-liteServer.getShardInfo id:tonNode.blockIdExt workchain:int shard:long = liteServer.ShardInfo;
+liteServer.getShardInfo id:tonNode.blockIdExt workchain:int shard:long exact:Bool = liteServer.ShardInfo;
 liteServer.getAllShardsInfo id:tonNode.blockIdExt = liteServer.AllShardsInfo;
 
 liteServer.debug.setVerbosity verbosity:liteServer.debug.verbosity = liteServer.debug.Verbosity;

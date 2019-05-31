@@ -30,22 +30,22 @@ namespace ton_api{
 using BaseObject = ::ton::TlObject;
 
 template <class Type>
-using object_storage = ::ton::tl_object_storage<Type>;
+using object_ptr = ::ton::tl_object_ptr<Type>;
 
 template <class Type, class... Args>
-object_storage<Type> create_object(Args &&... args) {
-  return object_storage<Type>(new Type(std::forward<Args>(args)...));
+object_ptr<Type> make_object(Args &&... args) {
+  return object_ptr<Type>(new Type(std::forward<Args>(args)...));
 }
 
 template <class ToType, class FromType>
-object_storage<ToType> move_object_as(FromType &&from) {
-  return object_storage<ToType>(static_cast<ToType *>(from.release()));
+object_ptr<ToType> move_object_as(FromType &&from) {
+  return object_ptr<ToType>(static_cast<ToType *>(from.release()));
 }
 
 std::string to_string(const BaseObject &value);
 
 template <class T>
-std::string to_string(const object_storage<T> &value) {
+std::string to_string(const object_ptr<T> &value) {
   if (value == nullptr) {
     return "null";
   }
@@ -72,8 +72,6 @@ class adnl_packetContents;
 class adnl_PacketHeader;
 
 class adnl_config_global;
-
-class adnl_fileTransfer_Message;
 
 class adnl_id_Full;
 
@@ -111,6 +109,38 @@ class config_global;
 
 class config_local;
 
+class db_candidate;
+
+class db_block_Info;
+
+class db_blockdb_value;
+
+class db_blockdb_key_value;
+
+class db_candidate_id;
+
+class db_celldb_value;
+
+class db_celldb_key_value;
+
+class db_filedb_Key;
+
+class db_filedb_value;
+
+class db_root_config;
+
+class db_root_dbDescription;
+
+class db_root_Key;
+
+class db_state_destroyedSessions;
+
+class db_state_initBlockId;
+
+class db_state_Key;
+
+class db_state_shardClient;
+
 class dht_key;
 
 class dht_keyDescription;
@@ -135,10 +165,6 @@ class dht_config_global;
 
 class dht_config_Local;
 
-class dummydb_block;
-
-class dummydb_gcValidatorSessionList;
-
 class dummyworkchain0_config_global;
 
 class dummyworkchain0_config_local;
@@ -151,7 +177,11 @@ class liteServer_accountId;
 
 class liteServer_accountState;
 
+class liteServer_allShardsInfo;
+
 class liteServer_blockData;
+
+class liteServer_blockHeader;
 
 class liteServer_blockState;
 
@@ -163,6 +193,8 @@ class liteServer_masterchainInfo;
 
 class liteServer_sendMsgStatus;
 
+class liteServer_shardInfo;
+
 class liteServer_debug_verbosity;
 
 class liteclient_config_global;
@@ -173,15 +205,27 @@ class overlay_Broadcast;
 
 class overlay_broadcastList;
 
+class overlay_Certificate;
+
+class overlay_certificateId;
+
 class overlay_message;
 
 class overlay_node;
 
 class overlay_nodes;
 
+class overlay_broadcast_id;
+
+class overlay_broadcast_toSign;
+
 class overlay_broadcastFer_id;
 
+class overlay_broadcastFer_partId;
+
 class overlay_config_Local;
+
+class overlay_node_toSign;
 
 class rldp_Message;
 
@@ -274,19 +318,19 @@ class Object;
 class Object: public TlObject {
  public:
 
-  static object_storage<Object> fetch(td::TlParser &p);
+  static object_ptr<Object> fetch(td::TlParser &p);
 };
 
 class Function: public TlObject {
  public:
 
-  static object_storage<Function> fetch(td::TlParser &p);
+  static object_ptr<Function> fetch(td::TlParser &p);
 };
 
 class Hashable: public Object {
  public:
 
-  static object_storage<Hashable> fetch(td::TlParser &p);
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 };
 
 class hashable_bool final : public Hashable {
@@ -302,9 +346,7 @@ class hashable_bool final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_bool> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_bool>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_bool(td::TlParser &p);
 
@@ -328,9 +370,7 @@ class hashable_int32 final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_int32> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_int32>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_int32(td::TlParser &p);
 
@@ -354,9 +394,7 @@ class hashable_int64 final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_int64> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_int64>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_int64(td::TlParser &p);
 
@@ -380,9 +418,7 @@ class hashable_int256 final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_int256> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_int256>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_int256(td::TlParser &p);
 
@@ -406,9 +442,7 @@ class hashable_bytes final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_bytes> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_bytes>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_bytes(td::TlParser &p);
 
@@ -433,9 +467,7 @@ class hashable_pair final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_pair> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_pair>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_pair(td::TlParser &p);
 
@@ -459,9 +491,7 @@ class hashable_vector final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_vector> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_vector>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_vector(td::TlParser &p);
 
@@ -487,9 +517,7 @@ class hashable_validatorSessionOldRound final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_validatorSessionOldRound> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_validatorSessionOldRound>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_validatorSessionOldRound(td::TlParser &p);
 
@@ -515,9 +543,7 @@ class hashable_validatorSessionRoundAttempt final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_validatorSessionRoundAttempt> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_validatorSessionRoundAttempt>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_validatorSessionRoundAttempt(td::TlParser &p);
 
@@ -547,9 +573,7 @@ class hashable_validatorSessionRound final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_validatorSessionRound> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_validatorSessionRound>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_validatorSessionRound(td::TlParser &p);
 
@@ -573,9 +597,7 @@ class hashable_blockSignature final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_blockSignature> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_blockSignature>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_blockSignature(td::TlParser &p);
 
@@ -602,9 +624,7 @@ class hashable_sentBlock final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_sentBlock> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_sentBlock>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_sentBlock(td::TlParser &p);
 
@@ -625,9 +645,7 @@ class hashable_sentBlockEmpty final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_sentBlockEmpty> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_sentBlockEmpty>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_sentBlockEmpty(td::TlParser &p);
 
@@ -652,9 +670,7 @@ class hashable_vote final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_vote> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_vote>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_vote(td::TlParser &p);
 
@@ -679,9 +695,7 @@ class hashable_blockCandidate final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_blockCandidate> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_blockCandidate>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_blockCandidate(td::TlParser &p);
 
@@ -706,9 +720,7 @@ class hashable_blockCandidateAttempt final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_blockCandidateAttempt> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_blockCandidateAttempt>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_blockCandidateAttempt(td::TlParser &p);
 
@@ -732,9 +744,7 @@ class hashable_cntVector final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_cntVector> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_cntVector>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_cntVector(td::TlParser &p);
 
@@ -758,9 +768,7 @@ class hashable_cntSortedVector final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_cntSortedVector> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_cntSortedVector>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_cntSortedVector(td::TlParser &p);
 
@@ -786,9 +794,7 @@ class hashable_validatorSession final : public Hashable {
     return ID;
   }
 
-  static object_storage<hashable_validatorSession> fetch(td::TlParser &p) {
-    return create_tl_object<hashable_validatorSession>(p);
-  }
+  static object_ptr<Hashable> fetch(td::TlParser &p);
 
   explicit hashable_validatorSession(td::TlParser &p);
 
@@ -802,27 +808,25 @@ class hashable_validatorSession final : public Hashable {
 class TestObject: public Object {
  public:
 
-  static object_storage<TestObject> fetch(td::TlParser &p);
+  static object_ptr<TestObject> fetch(td::TlParser &p);
 };
 
 class testObject final : public TestObject {
  public:
   std::int32_t value_;
-  object_storage<Object> o_;
-  object_storage<Function> f_;
+  object_ptr<Object> o_;
+  object_ptr<Function> f_;
 
   testObject();
 
-  testObject(std::int32_t value_, object_storage<Object> &&o_, object_storage<Function> &&f_);
+  testObject(std::int32_t value_, object_ptr<Object> &&o_, object_ptr<Function> &&f_);
 
   static const std::int32_t ID = -1521006198;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<testObject> fetch(td::TlParser &p) {
-    return create_tl_object<testObject>(p);
-  }
+  static object_ptr<TestObject> fetch(td::TlParser &p);
 
   explicit testObject(td::TlParser &p);
 
@@ -846,9 +850,7 @@ class testString final : public TestObject {
     return ID;
   }
 
-  static object_storage<testString> fetch(td::TlParser &p) {
-    return create_tl_object<testString>(p);
-  }
+  static object_ptr<TestObject> fetch(td::TlParser &p);
 
   explicit testString(td::TlParser &p);
 
@@ -872,9 +874,7 @@ class testInt final : public TestObject {
     return ID;
   }
 
-  static object_storage<testInt> fetch(td::TlParser &p) {
-    return create_tl_object<testInt>(p);
-  }
+  static object_ptr<TestObject> fetch(td::TlParser &p);
 
   explicit testInt(td::TlParser &p);
 
@@ -898,9 +898,7 @@ class testVectorBytes final : public TestObject {
     return ID;
   }
 
-  static object_storage<testVectorBytes> fetch(td::TlParser &p) {
-    return create_tl_object<testVectorBytes>(p);
-  }
+  static object_ptr<TestObject> fetch(td::TlParser &p);
 
   explicit testVectorBytes(td::TlParser &p);
 
@@ -914,7 +912,7 @@ class testVectorBytes final : public TestObject {
 class adnl_Address: public Object {
  public:
 
-  static object_storage<adnl_Address> fetch(td::TlParser &p);
+  static object_ptr<adnl_Address> fetch(td::TlParser &p);
 };
 
 class adnl_address_udp final : public adnl_Address {
@@ -931,9 +929,7 @@ class adnl_address_udp final : public adnl_Address {
     return ID;
   }
 
-  static object_storage<adnl_address_udp> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_address_udp>(p);
-  }
+  static object_ptr<adnl_Address> fetch(td::TlParser &p);
 
   explicit adnl_address_udp(td::TlParser &p);
 
@@ -958,9 +954,7 @@ class adnl_address_udp6 final : public adnl_Address {
     return ID;
   }
 
-  static object_storage<adnl_address_udp6> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_address_udp6>(p);
-  }
+  static object_ptr<adnl_Address> fetch(td::TlParser &p);
 
   explicit adnl_address_udp6(td::TlParser &p);
 
@@ -985,9 +979,7 @@ class adnl_address_tcp final : public adnl_Address {
     return ID;
   }
 
-  static object_storage<adnl_address_tcp> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_address_tcp>(p);
-  }
+  static object_ptr<adnl_Address> fetch(td::TlParser &p);
 
   explicit adnl_address_tcp(td::TlParser &p);
 
@@ -1012,9 +1004,7 @@ class adnl_address_tcp6 final : public adnl_Address {
     return ID;
   }
 
-  static object_storage<adnl_address_tcp6> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_address_tcp6>(p);
-  }
+  static object_ptr<adnl_Address> fetch(td::TlParser &p);
 
   explicit adnl_address_tcp6(td::TlParser &p);
 
@@ -1027,21 +1017,19 @@ class adnl_address_tcp6 final : public adnl_Address {
 
 class adnl_address_tunnel final : public adnl_Address {
  public:
-  object_storage<adnl_Address> to_;
-  object_storage<adnl_id_Full> tunid_;
+  object_ptr<adnl_Address> to_;
+  object_ptr<adnl_id_Full> tunid_;
 
   adnl_address_tunnel();
 
-  adnl_address_tunnel(object_storage<adnl_Address> &&to_, object_storage<adnl_id_Full> &&tunid_);
+  adnl_address_tunnel(object_ptr<adnl_Address> &&to_, object_ptr<adnl_id_Full> &&tunid_);
 
   static const std::int32_t ID = 1870715901;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<adnl_address_tunnel> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_address_tunnel>(p);
-  }
+  static object_ptr<adnl_Address> fetch(td::TlParser &p);
 
   explicit adnl_address_tunnel(td::TlParser &p);
 
@@ -1054,21 +1042,19 @@ class adnl_address_tunnel final : public adnl_Address {
 
 class adnl_addressList final : public Object {
  public:
-  std::vector<object_storage<adnl_Address>> addrs_;
+  std::vector<object_ptr<adnl_Address>> addrs_;
   std::int32_t version_;
 
   adnl_addressList();
 
-  adnl_addressList(std::vector<object_storage<adnl_Address>> &&addrs_, std::int32_t version_);
+  adnl_addressList(std::vector<object_ptr<adnl_Address>> &&addrs_, std::int32_t version_);
 
   static const std::int32_t ID = -736117392;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<adnl_addressList> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_addressList>(p);
-  }
+  static object_ptr<adnl_addressList> fetch(td::TlParser &p);
 
   explicit adnl_addressList(td::TlParser &p);
 
@@ -1082,7 +1068,7 @@ class adnl_addressList final : public Object {
 class adnl_Message: public Object {
  public:
 
-  static object_storage<adnl_Message> fetch(td::TlParser &p);
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 };
 
 class adnl_message_packet final : public adnl_Message {
@@ -1098,9 +1084,7 @@ class adnl_message_packet final : public adnl_Message {
     return ID;
   }
 
-  static object_storage<adnl_message_packet> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_message_packet>(p);
-  }
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 
   explicit adnl_message_packet(td::TlParser &p);
 
@@ -1125,9 +1109,7 @@ class adnl_message_createChannel final : public adnl_Message {
     return ID;
   }
 
-  static object_storage<adnl_message_createChannel> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_message_createChannel>(p);
-  }
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 
   explicit adnl_message_createChannel(td::TlParser &p);
 
@@ -1153,9 +1135,7 @@ class adnl_message_confirmChannel final : public adnl_Message {
     return ID;
   }
 
-  static object_storage<adnl_message_confirmChannel> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_message_confirmChannel>(p);
-  }
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 
   explicit adnl_message_confirmChannel(td::TlParser &p);
 
@@ -1179,9 +1159,7 @@ class adnl_message_custom final : public adnl_Message {
     return ID;
   }
 
-  static object_storage<adnl_message_custom> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_message_custom>(p);
-  }
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 
   explicit adnl_message_custom(td::TlParser &p);
 
@@ -1202,9 +1180,7 @@ class adnl_message_nop final : public adnl_Message {
     return ID;
   }
 
-  static object_storage<adnl_message_nop> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_message_nop>(p);
-  }
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 
   explicit adnl_message_nop(td::TlParser &p);
 
@@ -1228,9 +1204,7 @@ class adnl_message_reinit final : public adnl_Message {
     return ID;
   }
 
-  static object_storage<adnl_message_reinit> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_message_reinit>(p);
-  }
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 
   explicit adnl_message_reinit(td::TlParser &p);
 
@@ -1255,9 +1229,7 @@ class adnl_message_query final : public adnl_Message {
     return ID;
   }
 
-  static object_storage<adnl_message_query> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_message_query>(p);
-  }
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 
   explicit adnl_message_query(td::TlParser &p);
 
@@ -1282,9 +1254,7 @@ class adnl_message_answer final : public adnl_Message {
     return ID;
   }
 
-  static object_storage<adnl_message_answer> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_message_answer>(p);
-  }
+  static object_ptr<adnl_Message> fetch(td::TlParser &p);
 
   explicit adnl_message_answer(td::TlParser &p);
 
@@ -1297,22 +1267,20 @@ class adnl_message_answer final : public adnl_Message {
 
 class adnl_node final : public Object {
  public:
-  object_storage<adnl_id_Full> id_;
-  object_storage<adnl_addressList> addr_list_;
+  object_ptr<adnl_id_Full> id_;
+  object_ptr<adnl_addressList> addr_list_;
   td::BufferSlice signature_;
 
   adnl_node();
 
-  adnl_node(object_storage<adnl_id_Full> &&id_, object_storage<adnl_addressList> &&addr_list_, td::BufferSlice &&signature_);
+  adnl_node(object_ptr<adnl_id_Full> &&id_, object_ptr<adnl_addressList> &&addr_list_, td::BufferSlice &&signature_);
 
   static const std::int32_t ID = 620296016;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<adnl_node> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_node>(p);
-  }
+  static object_ptr<adnl_node> fetch(td::TlParser &p);
 
   explicit adnl_node(td::TlParser &p);
 
@@ -1325,20 +1293,18 @@ class adnl_node final : public Object {
 
 class adnl_nodes final : public Object {
  public:
-  std::vector<object_storage<adnl_node>> nodes_;
+  std::vector<object_ptr<adnl_node>> nodes_;
 
   adnl_nodes();
 
-  explicit adnl_nodes(std::vector<object_storage<adnl_node>> &&nodes_);
+  explicit adnl_nodes(std::vector<object_ptr<adnl_node>> &&nodes_);
 
   static const std::int32_t ID = -1576412330;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<adnl_nodes> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_nodes>(p);
-  }
+  static object_ptr<adnl_nodes> fetch(td::TlParser &p);
 
   explicit adnl_nodes(td::TlParser &p);
 
@@ -1353,11 +1319,11 @@ class adnl_packetContents final : public Object {
  public:
   td::BufferSlice rand1_;
   std::int32_t flags_;
-  object_storage<adnl_id_Full> from_;
-  object_storage<adnl_id_short> from_short_;
-  object_storage<adnl_Message> message_;
-  std::vector<object_storage<adnl_Message>> messages_;
-  object_storage<adnl_addressList> address_;
+  object_ptr<adnl_id_Full> from_;
+  object_ptr<adnl_id_short> from_short_;
+  object_ptr<adnl_Message> message_;
+  std::vector<object_ptr<adnl_Message>> messages_;
+  object_ptr<adnl_addressList> address_;
   std::int64_t seqno_;
   std::int32_t recv_addr_list_version_;
   std::int64_t confirm_seqno_;
@@ -1369,14 +1335,14 @@ class adnl_packetContents final : public Object {
 
   adnl_packetContents();
 
-  adnl_packetContents(td::BufferSlice &&rand1_, std::int32_t flags_, object_storage<adnl_id_Full> &&from_, object_storage<adnl_id_short> &&from_short_, object_storage<adnl_Message> &&message_, std::vector<object_storage<adnl_Message>> &&messages_, object_storage<adnl_addressList> &&address_, std::int64_t seqno_, std::int32_t recv_addr_list_version_, std::int64_t confirm_seqno_, std::int32_t reinit_date_, std::int32_t dst_reinit_date_, td::BufferSlice &&signature_, td::BufferSlice &&rand2_);
+  adnl_packetContents(td::BufferSlice &&rand1_, std::int32_t flags_, object_ptr<adnl_id_Full> &&from_, object_ptr<adnl_id_short> &&from_short_, object_ptr<adnl_Message> &&message_, std::vector<object_ptr<adnl_Message>> &&messages_, object_ptr<adnl_addressList> &&address_, std::int64_t seqno_, std::int32_t recv_addr_list_version_, std::int64_t confirm_seqno_, std::int32_t reinit_date_, std::int32_t dst_reinit_date_, td::BufferSlice &&signature_, td::BufferSlice &&rand2_);
 
   static const std::int32_t ID = 672164373;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<adnl_packetContents> fetch(td::TlParser &p);
+  static object_ptr<adnl_packetContents> fetch(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -1388,7 +1354,7 @@ class adnl_packetContents final : public Object {
 class adnl_PacketHeader: public Object {
  public:
 
-  static object_storage<adnl_PacketHeader> fetch(td::TlParser &p);
+  static object_ptr<adnl_PacketHeader> fetch(td::TlParser &p);
 };
 
 class adnl_packetHeader_secp256k1 final : public adnl_PacketHeader {
@@ -1405,9 +1371,7 @@ class adnl_packetHeader_secp256k1 final : public adnl_PacketHeader {
     return ID;
   }
 
-  static object_storage<adnl_packetHeader_secp256k1> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_packetHeader_secp256k1>(p);
-  }
+  static object_ptr<adnl_PacketHeader> fetch(td::TlParser &p);
 
   explicit adnl_packetHeader_secp256k1(td::TlParser &p);
 
@@ -1431,9 +1395,7 @@ class adnl_packetHeader_unenc final : public adnl_PacketHeader {
     return ID;
   }
 
-  static object_storage<adnl_packetHeader_unenc> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_packetHeader_unenc>(p);
-  }
+  static object_ptr<adnl_PacketHeader> fetch(td::TlParser &p);
 
   explicit adnl_packetHeader_unenc(td::TlParser &p);
 
@@ -1458,9 +1420,7 @@ class adnl_packetHeader_channel final : public adnl_PacketHeader {
     return ID;
   }
 
-  static object_storage<adnl_packetHeader_channel> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_packetHeader_channel>(p);
-  }
+  static object_ptr<adnl_PacketHeader> fetch(td::TlParser &p);
 
   explicit adnl_packetHeader_channel(td::TlParser &p);
 
@@ -1473,140 +1433,20 @@ class adnl_packetHeader_channel final : public adnl_PacketHeader {
 
 class adnl_config_global final : public Object {
  public:
-  object_storage<adnl_nodes> static_nodes_;
+  object_ptr<adnl_nodes> static_nodes_;
 
   adnl_config_global();
 
-  explicit adnl_config_global(object_storage<adnl_nodes> &&static_nodes_);
+  explicit adnl_config_global(object_ptr<adnl_nodes> &&static_nodes_);
 
   static const std::int32_t ID = -1099988784;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<adnl_config_global> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_config_global>(p);
-  }
+  static object_ptr<adnl_config_global> fetch(td::TlParser &p);
 
   explicit adnl_config_global(td::TlParser &p);
-
-  void store(td::TlStorerCalcLength &s) const final;
-
-  void store(td::TlStorerUnsafe &s) const final;
-
-  void store(td::TlStorerToString &s, const char *field_name) const final;
-};
-
-class adnl_fileTransfer_Message: public Object {
- public:
-
-  static object_storage<adnl_fileTransfer_Message> fetch(td::TlParser &p);
-};
-
-class adnl_fileTransfer_request final : public adnl_fileTransfer_Message {
- public:
-  td::UInt256 hash_;
-  td::UInt256 id_;
-
-  adnl_fileTransfer_request();
-
-  adnl_fileTransfer_request(td::UInt256 const &hash_, td::UInt256 const &id_);
-
-  static const std::int32_t ID = -1580411891;
-  std::int32_t get_id() const final {
-    return ID;
-  }
-
-  static object_storage<adnl_fileTransfer_request> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_fileTransfer_request>(p);
-  }
-
-  explicit adnl_fileTransfer_request(td::TlParser &p);
-
-  void store(td::TlStorerCalcLength &s) const final;
-
-  void store(td::TlStorerUnsafe &s) const final;
-
-  void store(td::TlStorerToString &s, const char *field_name) const final;
-};
-
-class adnl_fileTransfer_ack final : public adnl_fileTransfer_Message {
- public:
-  td::UInt256 hash_;
-  td::UInt256 id_;
-  std::int32_t seqno_;
-
-  adnl_fileTransfer_ack();
-
-  adnl_fileTransfer_ack(td::UInt256 const &hash_, td::UInt256 const &id_, std::int32_t seqno_);
-
-  static const std::int32_t ID = 1969703669;
-  std::int32_t get_id() const final {
-    return ID;
-  }
-
-  static object_storage<adnl_fileTransfer_ack> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_fileTransfer_ack>(p);
-  }
-
-  explicit adnl_fileTransfer_ack(td::TlParser &p);
-
-  void store(td::TlStorerCalcLength &s) const final;
-
-  void store(td::TlStorerUnsafe &s) const final;
-
-  void store(td::TlStorerToString &s, const char *field_name) const final;
-};
-
-class adnl_fileTransfer_finish final : public adnl_fileTransfer_Message {
- public:
-  td::UInt256 hash_;
-  td::UInt256 id_;
-
-  adnl_fileTransfer_finish();
-
-  adnl_fileTransfer_finish(td::UInt256 const &hash_, td::UInt256 const &id_);
-
-  static const std::int32_t ID = 153778610;
-  std::int32_t get_id() const final {
-    return ID;
-  }
-
-  static object_storage<adnl_fileTransfer_finish> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_fileTransfer_finish>(p);
-  }
-
-  explicit adnl_fileTransfer_finish(td::TlParser &p);
-
-  void store(td::TlStorerCalcLength &s) const final;
-
-  void store(td::TlStorerUnsafe &s) const final;
-
-  void store(td::TlStorerToString &s, const char *field_name) const final;
-};
-
-class adnl_fileTransfer_data final : public adnl_fileTransfer_Message {
- public:
-  td::UInt256 hash_;
-  td::UInt256 id_;
-  std::int32_t seqno_;
-  object_storage<fer_Type> fer_;
-  td::BufferSlice data_;
-
-  adnl_fileTransfer_data();
-
-  adnl_fileTransfer_data(td::UInt256 const &hash_, td::UInt256 const &id_, std::int32_t seqno_, object_storage<fer_Type> &&fer_, td::BufferSlice &&data_);
-
-  static const std::int32_t ID = 1797132051;
-  std::int32_t get_id() const final {
-    return ID;
-  }
-
-  static object_storage<adnl_fileTransfer_data> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_fileTransfer_data>(p);
-  }
-
-  explicit adnl_fileTransfer_data(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -1618,7 +1458,7 @@ class adnl_fileTransfer_data final : public adnl_fileTransfer_Message {
 class adnl_id_Full: public Object {
  public:
 
-  static object_storage<adnl_id_Full> fetch(td::TlParser &p);
+  static object_ptr<adnl_id_Full> fetch(td::TlParser &p);
 };
 
 class adnl_id_ed25519 final : public adnl_id_Full {
@@ -1634,9 +1474,7 @@ class adnl_id_ed25519 final : public adnl_id_Full {
     return ID;
   }
 
-  static object_storage<adnl_id_ed25519> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_ed25519>(p);
-  }
+  static object_ptr<adnl_id_Full> fetch(td::TlParser &p);
 
   explicit adnl_id_ed25519(td::TlParser &p);
 
@@ -1660,9 +1498,7 @@ class adnl_id_aes final : public adnl_id_Full {
     return ID;
   }
 
-  static object_storage<adnl_id_aes> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_aes>(p);
-  }
+  static object_ptr<adnl_id_Full> fetch(td::TlParser &p);
 
   explicit adnl_id_aes(td::TlParser &p);
 
@@ -1686,9 +1522,7 @@ class adnl_id_unenc final : public adnl_id_Full {
     return ID;
   }
 
-  static object_storage<adnl_id_unenc> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_unenc>(p);
-  }
+  static object_ptr<adnl_id_Full> fetch(td::TlParser &p);
 
   explicit adnl_id_unenc(td::TlParser &p);
 
@@ -1712,9 +1546,7 @@ class adnl_id_overlay final : public adnl_id_Full {
     return ID;
   }
 
-  static object_storage<adnl_id_overlay> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_overlay>(p);
-  }
+  static object_ptr<adnl_id_Full> fetch(td::TlParser &p);
 
   explicit adnl_id_overlay(td::TlParser &p);
 
@@ -1728,7 +1560,7 @@ class adnl_id_overlay final : public adnl_id_Full {
 class adnl_id_Pk: public Object {
  public:
 
-  static object_storage<adnl_id_Pk> fetch(td::TlParser &p);
+  static object_ptr<adnl_id_Pk> fetch(td::TlParser &p);
 };
 
 class adnl_id_pk_unenc final : public adnl_id_Pk {
@@ -1744,9 +1576,7 @@ class adnl_id_pk_unenc final : public adnl_id_Pk {
     return ID;
   }
 
-  static object_storage<adnl_id_pk_unenc> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_pk_unenc>(p);
-  }
+  static object_ptr<adnl_id_Pk> fetch(td::TlParser &p);
 
   explicit adnl_id_pk_unenc(td::TlParser &p);
 
@@ -1770,9 +1600,7 @@ class adnl_id_pk_ed25519 final : public adnl_id_Pk {
     return ID;
   }
 
-  static object_storage<adnl_id_pk_ed25519> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_pk_ed25519>(p);
-  }
+  static object_ptr<adnl_id_Pk> fetch(td::TlParser &p);
 
   explicit adnl_id_pk_ed25519(td::TlParser &p);
 
@@ -1796,9 +1624,7 @@ class adnl_id_pk_aes final : public adnl_id_Pk {
     return ID;
   }
 
-  static object_storage<adnl_id_pk_aes> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_pk_aes>(p);
-  }
+  static object_ptr<adnl_id_Pk> fetch(td::TlParser &p);
 
   explicit adnl_id_pk_aes(td::TlParser &p);
 
@@ -1822,9 +1648,7 @@ class adnl_id_pk_overlay final : public adnl_id_Pk {
     return ID;
   }
 
-  static object_storage<adnl_id_pk_overlay> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_pk_overlay>(p);
-  }
+  static object_ptr<adnl_id_Pk> fetch(td::TlParser &p);
 
   explicit adnl_id_pk_overlay(td::TlParser &p);
 
@@ -1848,9 +1672,7 @@ class adnl_id_short final : public Object {
     return ID;
   }
 
-  static object_storage<adnl_id_short> fetch(td::TlParser &p) {
-    return create_tl_object<adnl_id_short>(p);
-  }
+  static object_ptr<adnl_id_short> fetch(td::TlParser &p);
 
   explicit adnl_id_short(td::TlParser &p);
 
@@ -1866,21 +1688,19 @@ class catchain_block final : public Object {
   td::UInt256 incarnation_;
   std::int32_t src_;
   std::int32_t height_;
-  object_storage<catchain_block_data> data_;
+  object_ptr<catchain_block_data> data_;
   td::BufferSlice signature_;
 
   catchain_block();
 
-  catchain_block(td::UInt256 const &incarnation_, std::int32_t src_, std::int32_t height_, object_storage<catchain_block_data> &&data_, td::BufferSlice &&signature_);
+  catchain_block(td::UInt256 const &incarnation_, std::int32_t src_, std::int32_t height_, object_ptr<catchain_block_data> &&data_, td::BufferSlice &&signature_);
 
   static const std::int32_t ID = -699055756;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_block> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_block>(p);
-  }
+  static object_ptr<catchain_block> fetch(td::TlParser &p);
 
   explicit catchain_block(td::TlParser &p);
 
@@ -1894,7 +1714,7 @@ class catchain_block final : public Object {
 class catchain_BlockResult: public Object {
  public:
 
-  static object_storage<catchain_BlockResult> fetch(td::TlParser &p);
+  static object_ptr<catchain_BlockResult> fetch(td::TlParser &p);
 };
 
 class catchain_blockNotFound final : public catchain_BlockResult {
@@ -1907,9 +1727,7 @@ class catchain_blockNotFound final : public catchain_BlockResult {
     return ID;
   }
 
-  static object_storage<catchain_blockNotFound> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_blockNotFound>(p);
-  }
+  static object_ptr<catchain_BlockResult> fetch(td::TlParser &p);
 
   explicit catchain_blockNotFound(td::TlParser &p);
 
@@ -1922,20 +1740,18 @@ class catchain_blockNotFound final : public catchain_BlockResult {
 
 class catchain_blockResult final : public catchain_BlockResult {
  public:
-  object_storage<catchain_block> block_;
+  object_ptr<catchain_block> block_;
 
   catchain_blockResult();
 
-  explicit catchain_blockResult(object_storage<catchain_block> &&block_);
+  explicit catchain_blockResult(object_ptr<catchain_block> &&block_);
 
   static const std::int32_t ID = -1658179513;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_blockResult> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_blockResult>(p);
-  }
+  static object_ptr<catchain_BlockResult> fetch(td::TlParser &p);
 
   explicit catchain_blockResult(td::TlParser &p);
 
@@ -1948,20 +1764,18 @@ class catchain_blockResult final : public catchain_BlockResult {
 
 class catchain_blocks final : public Object {
  public:
-  std::vector<object_storage<catchain_block>> blocks_;
+  std::vector<object_ptr<catchain_block>> blocks_;
 
   catchain_blocks();
 
-  explicit catchain_blocks(std::vector<object_storage<catchain_block>> &&blocks_);
+  explicit catchain_blocks(std::vector<object_ptr<catchain_block>> &&blocks_);
 
   static const std::int32_t ID = 1357697473;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_blocks> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_blocks>(p);
-  }
+  static object_ptr<catchain_blocks> fetch(td::TlParser &p);
 
   explicit catchain_blocks(td::TlParser &p);
 
@@ -1975,7 +1789,7 @@ class catchain_blocks final : public Object {
 class catchain_Difference: public Object {
  public:
 
-  static object_storage<catchain_Difference> fetch(td::TlParser &p);
+  static object_ptr<catchain_Difference> fetch(td::TlParser &p);
 };
 
 class catchain_difference final : public catchain_Difference {
@@ -1991,9 +1805,7 @@ class catchain_difference final : public catchain_Difference {
     return ID;
   }
 
-  static object_storage<catchain_difference> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_difference>(p);
-  }
+  static object_ptr<catchain_Difference> fetch(td::TlParser &p);
 
   explicit catchain_difference(td::TlParser &p);
 
@@ -2006,21 +1818,19 @@ class catchain_difference final : public catchain_Difference {
 
 class catchain_differenceFork final : public catchain_Difference {
  public:
-  object_storage<catchain_block_dep> left_;
-  object_storage<catchain_block_dep> right_;
+  object_ptr<catchain_block_dep> left_;
+  object_ptr<catchain_block_dep> right_;
 
   catchain_differenceFork();
 
-  catchain_differenceFork(object_storage<catchain_block_dep> &&left_, object_storage<catchain_block_dep> &&right_);
+  catchain_differenceFork(object_ptr<catchain_block_dep> &&left_, object_ptr<catchain_block_dep> &&right_);
 
   static const std::int32_t ID = 1227341935;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_differenceFork> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_differenceFork>(p);
-  }
+  static object_ptr<catchain_Difference> fetch(td::TlParser &p);
 
   explicit catchain_differenceFork(td::TlParser &p);
 
@@ -2045,9 +1855,7 @@ class catchain_firstblock final : public Object {
     return ID;
   }
 
-  static object_storage<catchain_firstblock> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_firstblock>(p);
-  }
+  static object_ptr<catchain_firstblock> fetch(td::TlParser &p);
 
   explicit catchain_firstblock(td::TlParser &p);
 
@@ -2071,9 +1879,7 @@ class catchain_sent final : public Object {
     return ID;
   }
 
-  static object_storage<catchain_sent> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_sent>(p);
-  }
+  static object_ptr<catchain_sent> fetch(td::TlParser &p);
 
   explicit catchain_sent(td::TlParser &p);
 
@@ -2086,20 +1892,18 @@ class catchain_sent final : public Object {
 
 class catchain_blockUpdate final : public Object {
  public:
-  object_storage<catchain_block> block_;
+  object_ptr<catchain_block> block_;
 
   catchain_blockUpdate();
 
-  explicit catchain_blockUpdate(object_storage<catchain_block> &&block_);
+  explicit catchain_blockUpdate(object_ptr<catchain_block> &&block_);
 
   static const std::int32_t ID = 593975492;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_blockUpdate> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_blockUpdate>(p);
-  }
+  static object_ptr<catchain_blockUpdate> fetch(td::TlParser &p);
 
   explicit catchain_blockUpdate(td::TlParser &p);
 
@@ -2112,21 +1916,19 @@ class catchain_blockUpdate final : public Object {
 
 class catchain_block_data final : public Object {
  public:
-  object_storage<catchain_block_dep> prev_;
-  std::vector<object_storage<catchain_block_dep>> deps_;
+  object_ptr<catchain_block_dep> prev_;
+  std::vector<object_ptr<catchain_block_dep>> deps_;
 
   catchain_block_data();
 
-  catchain_block_data(object_storage<catchain_block_dep> &&prev_, std::vector<object_storage<catchain_block_dep>> &&deps_);
+  catchain_block_data(object_ptr<catchain_block_dep> &&prev_, std::vector<object_ptr<catchain_block_dep>> &&deps_);
 
   static const std::int32_t ID = -122903008;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_block_data> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_block_data>(p);
-  }
+  static object_ptr<catchain_block_data> fetch(td::TlParser &p);
 
   explicit catchain_block_data(td::TlParser &p);
 
@@ -2153,9 +1955,7 @@ class catchain_block_dep final : public Object {
     return ID;
   }
 
-  static object_storage<catchain_block_dep> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_block_dep>(p);
-  }
+  static object_ptr<catchain_block_dep> fetch(td::TlParser &p);
 
   explicit catchain_block_dep(td::TlParser &p);
 
@@ -2182,9 +1982,7 @@ class catchain_block_id final : public Object {
     return ID;
   }
 
-  static object_storage<catchain_block_id> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_block_id>(p);
-  }
+  static object_ptr<catchain_block_id> fetch(td::TlParser &p);
 
   explicit catchain_block_id(td::TlParser &p);
 
@@ -2198,25 +1996,23 @@ class catchain_block_id final : public Object {
 class catchain_block_inner_Data: public Object {
  public:
 
-  static object_storage<catchain_block_inner_Data> fetch(td::TlParser &p);
+  static object_ptr<catchain_block_inner_Data> fetch(td::TlParser &p);
 };
 
 class catchain_block_data_badBlock final : public catchain_block_inner_Data {
  public:
-  object_storage<catchain_block> block_;
+  object_ptr<catchain_block> block_;
 
   catchain_block_data_badBlock();
 
-  explicit catchain_block_data_badBlock(object_storage<catchain_block> &&block_);
+  explicit catchain_block_data_badBlock(object_ptr<catchain_block> &&block_);
 
   static const std::int32_t ID = -1241359786;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_block_data_badBlock> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_block_data_badBlock>(p);
-  }
+  static object_ptr<catchain_block_inner_Data> fetch(td::TlParser &p);
 
   explicit catchain_block_data_badBlock(td::TlParser &p);
 
@@ -2229,21 +2025,19 @@ class catchain_block_data_badBlock final : public catchain_block_inner_Data {
 
 class catchain_block_data_fork final : public catchain_block_inner_Data {
  public:
-  object_storage<catchain_block_dep> left_;
-  object_storage<catchain_block_dep> right_;
+  object_ptr<catchain_block_dep> left_;
+  object_ptr<catchain_block_dep> right_;
 
   catchain_block_data_fork();
 
-  catchain_block_data_fork(object_storage<catchain_block_dep> &&left_, object_storage<catchain_block_dep> &&right_);
+  catchain_block_data_fork(object_ptr<catchain_block_dep> &&left_, object_ptr<catchain_block_dep> &&right_);
 
   static const std::int32_t ID = 1685731922;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_block_data_fork> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_block_data_fork>(p);
-  }
+  static object_ptr<catchain_block_inner_Data> fetch(td::TlParser &p);
 
   explicit catchain_block_data_fork(td::TlParser &p);
 
@@ -2264,9 +2058,7 @@ class catchain_block_data_nop final : public catchain_block_inner_Data {
     return ID;
   }
 
-  static object_storage<catchain_block_data_nop> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_block_data_nop>(p);
-  }
+  static object_ptr<catchain_block_inner_Data> fetch(td::TlParser &p);
 
   explicit catchain_block_data_nop(td::TlParser &p);
 
@@ -2290,9 +2082,7 @@ class catchain_block_data_vector final : public catchain_block_inner_Data {
     return ID;
   }
 
-  static object_storage<catchain_block_data_vector> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_block_data_vector>(p);
-  }
+  static object_ptr<catchain_block_inner_Data> fetch(td::TlParser &p);
 
   explicit catchain_block_data_vector(td::TlParser &p);
 
@@ -2306,20 +2096,18 @@ class catchain_block_data_vector final : public catchain_block_inner_Data {
 class catchain_config_global final : public Object {
  public:
   td::UInt256 tag_;
-  std::vector<object_storage<adnl_id_Full>> nodes_;
+  std::vector<object_ptr<adnl_id_Full>> nodes_;
 
   catchain_config_global();
 
-  catchain_config_global(td::UInt256 const &tag_, std::vector<object_storage<adnl_id_Full>> &&nodes_);
+  catchain_config_global(td::UInt256 const &tag_, std::vector<object_ptr<adnl_id_Full>> &&nodes_);
 
   static const std::int32_t ID = 361026880;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_config_global> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_config_global>(p);
-  }
+  static object_ptr<catchain_config_global> fetch(td::TlParser &p);
 
   explicit catchain_config_global(td::TlParser &p);
 
@@ -2333,20 +2121,18 @@ class catchain_config_global final : public Object {
 class catchain_config_local final : public Object {
  public:
   td::UInt256 tag_;
-  object_storage<adnl_id_short> id_;
+  object_ptr<adnl_id_short> id_;
 
   catchain_config_local();
 
-  catchain_config_local(td::UInt256 const &tag_, object_storage<adnl_id_short> &&id_);
+  catchain_config_local(td::UInt256 const &tag_, object_ptr<adnl_id_short> &&id_);
 
   static const std::int32_t ID = 1394037726;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<catchain_config_local> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_config_local>(p);
-  }
+  static object_ptr<catchain_config_local> fetch(td::TlParser &p);
 
   explicit catchain_config_local(td::TlParser &p);
 
@@ -2359,25 +2145,23 @@ class catchain_config_local final : public Object {
 
 class config_global final : public Object {
  public:
-  object_storage<adnl_config_global> adnl_;
-  object_storage<dht_config_global> dht_;
-  std::vector<object_storage<catchain_config_global>> catchains_;
-  std::vector<object_storage<dummyworkchain0_config_global>> dummy0_;
-  std::vector<object_storage<validator_config_global>> validators_;
-  std::vector<object_storage<liteclient_config_global>> liteclients_;
+  object_ptr<adnl_config_global> adnl_;
+  object_ptr<dht_config_global> dht_;
+  std::vector<object_ptr<catchain_config_global>> catchains_;
+  std::vector<object_ptr<dummyworkchain0_config_global>> dummy0_;
+  std::vector<object_ptr<validator_config_global>> validators_;
+  std::vector<object_ptr<liteclient_config_global>> liteclients_;
 
   config_global();
 
-  config_global(object_storage<adnl_config_global> &&adnl_, object_storage<dht_config_global> &&dht_, std::vector<object_storage<catchain_config_global>> &&catchains_, std::vector<object_storage<dummyworkchain0_config_global>> &&dummy0_, std::vector<object_storage<validator_config_global>> &&validators_, std::vector<object_storage<liteclient_config_global>> &&liteclients_);
+  config_global(object_ptr<adnl_config_global> &&adnl_, object_ptr<dht_config_global> &&dht_, std::vector<object_ptr<catchain_config_global>> &&catchains_, std::vector<object_ptr<dummyworkchain0_config_global>> &&dummy0_, std::vector<object_ptr<validator_config_global>> &&validators_, std::vector<object_ptr<liteclient_config_global>> &&liteclients_);
 
   static const std::int32_t ID = -1606514086;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<config_global> fetch(td::TlParser &p) {
-    return create_tl_object<config_global>(p);
-  }
+  static object_ptr<config_global> fetch(td::TlParser &p);
 
   explicit config_global(td::TlParser &p);
 
@@ -2392,28 +2176,728 @@ class config_local final : public Object {
  public:
   std::vector<std::int32_t> udp_ports_;
   std::vector<std::int32_t> tcp_ports_;
-  std::vector<object_storage<id_config_local>> local_ids_;
-  std::vector<object_storage<dht_config_Local>> dht_;
-  std::vector<object_storage<overlay_config_Local>> public_overlays_;
-  std::vector<object_storage<catchain_config_local>> catchains_;
-  std::vector<object_storage<dummyworkchain0_config_local>> dummy0_;
-  std::vector<object_storage<validator_config_local>> validators_;
-  std::vector<object_storage<liteserver_config_local>> liteservers_;
+  std::vector<object_ptr<id_config_local>> local_ids_;
+  std::vector<object_ptr<dht_config_Local>> dht_;
+  std::vector<object_ptr<overlay_config_Local>> public_overlays_;
+  std::vector<object_ptr<catchain_config_local>> catchains_;
+  std::vector<object_ptr<dummyworkchain0_config_local>> dummy0_;
+  std::vector<object_ptr<validator_config_local>> validators_;
+  std::vector<object_ptr<liteserver_config_local>> liteservers_;
 
   config_local();
 
-  config_local(std::vector<std::int32_t> &&udp_ports_, std::vector<std::int32_t> &&tcp_ports_, std::vector<object_storage<id_config_local>> &&local_ids_, std::vector<object_storage<dht_config_Local>> &&dht_, std::vector<object_storage<overlay_config_Local>> &&public_overlays_, std::vector<object_storage<catchain_config_local>> &&catchains_, std::vector<object_storage<dummyworkchain0_config_local>> &&dummy0_, std::vector<object_storage<validator_config_local>> &&validators_, std::vector<object_storage<liteserver_config_local>> &&liteservers_);
+  config_local(std::vector<std::int32_t> &&udp_ports_, std::vector<std::int32_t> &&tcp_ports_, std::vector<object_ptr<id_config_local>> &&local_ids_, std::vector<object_ptr<dht_config_Local>> &&dht_, std::vector<object_ptr<overlay_config_Local>> &&public_overlays_, std::vector<object_ptr<catchain_config_local>> &&catchains_, std::vector<object_ptr<dummyworkchain0_config_local>> &&dummy0_, std::vector<object_ptr<validator_config_local>> &&validators_, std::vector<object_ptr<liteserver_config_local>> &&liteservers_);
 
   static const std::int32_t ID = 41976406;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<config_local> fetch(td::TlParser &p) {
-    return create_tl_object<config_local>(p);
-  }
+  static object_ptr<config_local> fetch(td::TlParser &p);
 
   explicit config_local(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_candidate final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  td::BufferSlice data_;
+  td::BufferSlice collated_data_;
+
+  db_candidate();
+
+  db_candidate(object_ptr<tonNode_blockIdExt> &&id_, td::BufferSlice &&data_, td::BufferSlice &&collated_data_);
+
+  static const std::int32_t ID = 329181652;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_candidate> fetch(td::TlParser &p);
+
+  explicit db_candidate(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_block_Info: public Object {
+ public:
+
+  static object_ptr<db_block_Info> fetch(td::TlParser &p);
+};
+
+class db_block_info final : public db_block_Info {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  std::int32_t flags_;
+  object_ptr<tonNode_blockIdExt> prev_left_;
+  object_ptr<tonNode_blockIdExt> prev_right_;
+  object_ptr<tonNode_blockIdExt> next_left_;
+  object_ptr<tonNode_blockIdExt> next_right_;
+  std::int64_t lt_;
+  td::UInt256 state_;
+  enum Flags : std::int32_t {PREV_LEFT_MASK = 2, PREV_RIGHT_MASK = 4, NEXT_LEFT_MASK = 8, NEXT_RIGHT_MASK = 16, LT_MASK = 8192, STATE_MASK = 131072};
+
+  db_block_info();
+
+  db_block_info(object_ptr<tonNode_blockIdExt> &&id_, std::int32_t flags_, object_ptr<tonNode_blockIdExt> &&prev_left_, object_ptr<tonNode_blockIdExt> &&prev_right_, object_ptr<tonNode_blockIdExt> &&next_left_, object_ptr<tonNode_blockIdExt> &&next_right_, std::int64_t lt_, td::UInt256 const &state_);
+
+  static const std::int32_t ID = -1267914022;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_block_Info> fetch(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_block_archivedInfo final : public db_block_Info {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  std::int32_t flags_;
+  object_ptr<tonNode_blockIdExt> next_;
+  enum Flags : std::int32_t {NEXT_MASK = 1};
+
+  db_block_archivedInfo();
+
+  db_block_archivedInfo(object_ptr<tonNode_blockIdExt> &&id_, std::int32_t flags_, object_ptr<tonNode_blockIdExt> &&next_);
+
+  static const std::int32_t ID = 543128145;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_block_Info> fetch(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_blockdb_value final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> next_;
+  td::BufferSlice data_;
+
+  db_blockdb_value();
+
+  db_blockdb_value(object_ptr<tonNode_blockIdExt> &&next_, td::BufferSlice &&data_);
+
+  static const std::int32_t ID = -1299266515;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_blockdb_value> fetch(td::TlParser &p);
+
+  explicit db_blockdb_value(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_blockdb_key_value final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+
+  db_blockdb_key_value();
+
+  explicit db_blockdb_key_value(object_ptr<tonNode_blockIdExt> &&id_);
+
+  static const std::int32_t ID = 609613467;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_blockdb_key_value> fetch(td::TlParser &p);
+
+  explicit db_blockdb_key_value(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_candidate_id final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  td::UInt256 collated_data_file_hash_;
+
+  db_candidate_id();
+
+  db_candidate_id(object_ptr<tonNode_blockIdExt> &&id_, td::UInt256 const &collated_data_file_hash_);
+
+  static const std::int32_t ID = -562931756;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_candidate_id> fetch(td::TlParser &p);
+
+  explicit db_candidate_id(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_celldb_value final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> next_;
+  td::UInt256 hash_;
+
+  db_celldb_value();
+
+  db_celldb_value(object_ptr<tonNode_blockIdExt> &&next_, td::UInt256 const &hash_);
+
+  static const std::int32_t ID = 1409155988;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_celldb_value> fetch(td::TlParser &p);
+
+  explicit db_celldb_value(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_celldb_key_value final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+
+  db_celldb_key_value();
+
+  explicit db_celldb_key_value(object_ptr<tonNode_blockIdExt> &&id_);
+
+  static const std::int32_t ID = -1159797247;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_celldb_key_value> fetch(td::TlParser &p);
+
+  explicit db_celldb_key_value(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_Key: public Object {
+ public:
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+};
+
+class db_filedb_key_empty final : public db_filedb_Key {
+ public:
+
+  db_filedb_key_empty();
+
+  static const std::int32_t ID = 2080319307;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+
+  explicit db_filedb_key_empty(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_key_blockFile final : public db_filedb_Key {
+ public:
+  object_ptr<tonNode_blockIdExt> block_id_;
+
+  db_filedb_key_blockFile();
+
+  explicit db_filedb_key_blockFile(object_ptr<tonNode_blockIdExt> &&block_id_);
+
+  static const std::int32_t ID = -1326783375;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+
+  explicit db_filedb_key_blockFile(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_key_stateFile final : public db_filedb_Key {
+ public:
+  object_ptr<tonNode_blockIdExt> block_id_;
+
+  db_filedb_key_stateFile();
+
+  explicit db_filedb_key_stateFile(object_ptr<tonNode_blockIdExt> &&block_id_);
+
+  static const std::int32_t ID = -1705399599;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+
+  explicit db_filedb_key_stateFile(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_key_shardStateFile final : public db_filedb_Key {
+ public:
+  object_ptr<tonNode_blockIdExt> block_id_;
+  object_ptr<tonNode_blockIdExt> masterchain_block_id_;
+
+  db_filedb_key_shardStateFile();
+
+  db_filedb_key_shardStateFile(object_ptr<tonNode_blockIdExt> &&block_id_, object_ptr<tonNode_blockIdExt> &&masterchain_block_id_);
+
+  static const std::int32_t ID = 1817477977;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+
+  explicit db_filedb_key_shardStateFile(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_key_proof final : public db_filedb_Key {
+ public:
+  object_ptr<tonNode_blockIdExt> block_id_;
+
+  db_filedb_key_proof();
+
+  explicit db_filedb_key_proof(object_ptr<tonNode_blockIdExt> &&block_id_);
+
+  static const std::int32_t ID = -627749396;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+
+  explicit db_filedb_key_proof(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_key_proofLink final : public db_filedb_Key {
+ public:
+  object_ptr<tonNode_blockIdExt> block_id_;
+
+  db_filedb_key_proofLink();
+
+  explicit db_filedb_key_proofLink(object_ptr<tonNode_blockIdExt> &&block_id_);
+
+  static const std::int32_t ID = -1728330290;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+
+  explicit db_filedb_key_proofLink(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_key_signatures final : public db_filedb_Key {
+ public:
+  object_ptr<tonNode_blockIdExt> block_id_;
+
+  db_filedb_key_signatures();
+
+  explicit db_filedb_key_signatures(object_ptr<tonNode_blockIdExt> &&block_id_);
+
+  static const std::int32_t ID = -685175541;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+
+  explicit db_filedb_key_signatures(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_key_candidate final : public db_filedb_Key {
+ public:
+  object_ptr<db_candidate_id> id_;
+
+  db_filedb_key_candidate();
+
+  explicit db_filedb_key_candidate(object_ptr<db_candidate_id> &&id_);
+
+  static const std::int32_t ID = -494269767;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_Key> fetch(td::TlParser &p);
+
+  explicit db_filedb_key_candidate(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_filedb_value final : public Object {
+ public:
+  object_ptr<db_filedb_Key> next_;
+  td::UInt256 hash_;
+
+  db_filedb_value();
+
+  db_filedb_value(object_ptr<db_filedb_Key> &&next_, td::UInt256 const &hash_);
+
+  static const std::int32_t ID = -555303241;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_filedb_value> fetch(td::TlParser &p);
+
+  explicit db_filedb_value(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_root_config final : public Object {
+ public:
+  std::int32_t celldb_version_;
+  std::int32_t blockdb_version_;
+
+  db_root_config();
+
+  db_root_config(std::int32_t celldb_version_, std::int32_t blockdb_version_);
+
+  static const std::int32_t ID = -703495519;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_root_config> fetch(td::TlParser &p);
+
+  explicit db_root_config(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_root_dbDescription final : public Object {
+ public:
+  std::int32_t version_;
+  object_ptr<tonNode_blockIdExt> first_masterchain_block_id_;
+  std::int32_t flags_;
+
+  db_root_dbDescription();
+
+  db_root_dbDescription(std::int32_t version_, object_ptr<tonNode_blockIdExt> &&first_masterchain_block_id_, std::int32_t flags_);
+
+  static const std::int32_t ID = -1273465869;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_root_dbDescription> fetch(td::TlParser &p);
+
+  explicit db_root_dbDescription(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_root_Key: public Object {
+ public:
+
+  static object_ptr<db_root_Key> fetch(td::TlParser &p);
+};
+
+class db_root_key_cellDb final : public db_root_Key {
+ public:
+  std::int32_t version_;
+
+  db_root_key_cellDb();
+
+  explicit db_root_key_cellDb(std::int32_t version_);
+
+  static const std::int32_t ID = 1928966974;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_root_Key> fetch(td::TlParser &p);
+
+  explicit db_root_key_cellDb(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_root_key_blockDb final : public db_root_Key {
+ public:
+  std::int32_t version_;
+
+  db_root_key_blockDb();
+
+  explicit db_root_key_blockDb(std::int32_t version_);
+
+  static const std::int32_t ID = 806534976;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_root_Key> fetch(td::TlParser &p);
+
+  explicit db_root_key_blockDb(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_root_key_config final : public db_root_Key {
+ public:
+
+  db_root_key_config();
+
+  static const std::int32_t ID = 331559556;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_root_Key> fetch(td::TlParser &p);
+
+  explicit db_root_key_config(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_state_destroyedSessions final : public Object {
+ public:
+  std::vector<td::UInt256> sessions_;
+
+  db_state_destroyedSessions();
+
+  explicit db_state_destroyedSessions(std::vector<td::UInt256> &&sessions_);
+
+  static const std::int32_t ID = -1381443196;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_state_destroyedSessions> fetch(td::TlParser &p);
+
+  explicit db_state_destroyedSessions(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_state_initBlockId final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> block_;
+
+  db_state_initBlockId();
+
+  explicit db_state_initBlockId(object_ptr<tonNode_blockIdExt> &&block_);
+
+  static const std::int32_t ID = 1932303605;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_state_initBlockId> fetch(td::TlParser &p);
+
+  explicit db_state_initBlockId(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_state_Key: public Object {
+ public:
+
+  static object_ptr<db_state_Key> fetch(td::TlParser &p);
+};
+
+class db_state_key_destroyedSessions final : public db_state_Key {
+ public:
+
+  db_state_key_destroyedSessions();
+
+  static const std::int32_t ID = -386404007;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_state_Key> fetch(td::TlParser &p);
+
+  explicit db_state_key_destroyedSessions(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_state_key_initBlockId final : public db_state_Key {
+ public:
+
+  db_state_key_initBlockId();
+
+  static const std::int32_t ID = 1971484899;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_state_Key> fetch(td::TlParser &p);
+
+  explicit db_state_key_initBlockId(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_state_key_shardClient final : public db_state_Key {
+ public:
+  std::int32_t workchain_;
+  std::int64_t shard_;
+
+  db_state_key_shardClient();
+
+  db_state_key_shardClient(std::int32_t workchain_, std::int64_t shard_);
+
+  static const std::int32_t ID = 1602154616;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_state_Key> fetch(td::TlParser &p);
+
+  explicit db_state_key_shardClient(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_state_shardClient final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> block_;
+
+  db_state_shardClient();
+
+  explicit db_state_shardClient(object_ptr<tonNode_blockIdExt> &&block_);
+
+  static const std::int32_t ID = 186033821;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_state_shardClient> fetch(td::TlParser &p);
+
+  explicit db_state_shardClient(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -2437,9 +2921,7 @@ class dht_key final : public Object {
     return ID;
   }
 
-  static object_storage<dht_key> fetch(td::TlParser &p) {
-    return create_tl_object<dht_key>(p);
-  }
+  static object_ptr<dht_key> fetch(td::TlParser &p);
 
   explicit dht_key(td::TlParser &p);
 
@@ -2452,23 +2934,21 @@ class dht_key final : public Object {
 
 class dht_keyDescription final : public Object {
  public:
-  object_storage<dht_key> key_;
-  object_storage<adnl_id_Full> id_;
-  object_storage<dht_UpdateRule> update_rule_;
+  object_ptr<dht_key> key_;
+  object_ptr<adnl_id_Full> id_;
+  object_ptr<dht_UpdateRule> update_rule_;
   td::BufferSlice signature_;
 
   dht_keyDescription();
 
-  dht_keyDescription(object_storage<dht_key> &&key_, object_storage<adnl_id_Full> &&id_, object_storage<dht_UpdateRule> &&update_rule_, td::BufferSlice &&signature_);
+  dht_keyDescription(object_ptr<dht_key> &&key_, object_ptr<adnl_id_Full> &&id_, object_ptr<dht_UpdateRule> &&update_rule_, td::BufferSlice &&signature_);
 
   static const std::int32_t ID = 862674694;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_keyDescription> fetch(td::TlParser &p) {
-    return create_tl_object<dht_keyDescription>(p);
-  }
+  static object_ptr<dht_keyDescription> fetch(td::TlParser &p);
 
   explicit dht_keyDescription(td::TlParser &p);
 
@@ -2481,20 +2961,18 @@ class dht_keyDescription final : public Object {
 
 class dht_message final : public Object {
  public:
-  object_storage<dht_node> node_;
+  object_ptr<dht_node> node_;
 
   dht_message();
 
-  explicit dht_message(object_storage<dht_node> &&node_);
+  explicit dht_message(object_ptr<dht_node> &&node_);
 
   static const std::int32_t ID = -1140008050;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_message> fetch(td::TlParser &p) {
-    return create_tl_object<dht_message>(p);
-  }
+  static object_ptr<dht_message> fetch(td::TlParser &p);
 
   explicit dht_message(td::TlParser &p);
 
@@ -2507,23 +2985,21 @@ class dht_message final : public Object {
 
 class dht_node final : public Object {
  public:
-  object_storage<adnl_id_Full> id_;
-  object_storage<adnl_addressList> addr_list_;
+  object_ptr<adnl_id_Full> id_;
+  object_ptr<adnl_addressList> addr_list_;
   std::int32_t version_;
   td::BufferSlice signature_;
 
   dht_node();
 
-  dht_node(object_storage<adnl_id_Full> &&id_, object_storage<adnl_addressList> &&addr_list_, std::int32_t version_, td::BufferSlice &&signature_);
+  dht_node(object_ptr<adnl_id_Full> &&id_, object_ptr<adnl_addressList> &&addr_list_, std::int32_t version_, td::BufferSlice &&signature_);
 
   static const std::int32_t ID = 1725249223;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_node> fetch(td::TlParser &p) {
-    return create_tl_object<dht_node>(p);
-  }
+  static object_ptr<dht_node> fetch(td::TlParser &p);
 
   explicit dht_node(td::TlParser &p);
 
@@ -2536,20 +3012,18 @@ class dht_node final : public Object {
 
 class dht_nodes final : public Object {
  public:
-  std::vector<object_storage<dht_node>> nodes_;
+  std::vector<object_ptr<dht_node>> nodes_;
 
   dht_nodes();
 
-  explicit dht_nodes(std::vector<object_storage<dht_node>> &&nodes_);
+  explicit dht_nodes(std::vector<object_ptr<dht_node>> &&nodes_);
 
   static const std::int32_t ID = 2037686462;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_nodes> fetch(td::TlParser &p) {
-    return create_tl_object<dht_nodes>(p);
-  }
+  static object_ptr<dht_nodes> fetch(td::TlParser &p);
 
   explicit dht_nodes(td::TlParser &p);
 
@@ -2573,9 +3047,7 @@ class dht_pong final : public Object {
     return ID;
   }
 
-  static object_storage<dht_pong> fetch(td::TlParser &p) {
-    return create_tl_object<dht_pong>(p);
-  }
+  static object_ptr<dht_pong> fetch(td::TlParser &p);
 
   explicit dht_pong(td::TlParser &p);
 
@@ -2596,9 +3068,7 @@ class dht_stored final : public Object {
     return ID;
   }
 
-  static object_storage<dht_stored> fetch(td::TlParser &p) {
-    return create_tl_object<dht_stored>(p);
-  }
+  static object_ptr<dht_stored> fetch(td::TlParser &p);
 
   explicit dht_stored(td::TlParser &p);
 
@@ -2612,7 +3082,7 @@ class dht_stored final : public Object {
 class dht_UpdateRule: public Object {
  public:
 
-  static object_storage<dht_UpdateRule> fetch(td::TlParser &p);
+  static object_ptr<dht_UpdateRule> fetch(td::TlParser &p);
 };
 
 class dht_updateRule_signature final : public dht_UpdateRule {
@@ -2625,9 +3095,7 @@ class dht_updateRule_signature final : public dht_UpdateRule {
     return ID;
   }
 
-  static object_storage<dht_updateRule_signature> fetch(td::TlParser &p) {
-    return create_tl_object<dht_updateRule_signature>(p);
-  }
+  static object_ptr<dht_UpdateRule> fetch(td::TlParser &p);
 
   explicit dht_updateRule_signature(td::TlParser &p);
 
@@ -2648,9 +3116,7 @@ class dht_updateRule_anybody final : public dht_UpdateRule {
     return ID;
   }
 
-  static object_storage<dht_updateRule_anybody> fetch(td::TlParser &p) {
-    return create_tl_object<dht_updateRule_anybody>(p);
-  }
+  static object_ptr<dht_UpdateRule> fetch(td::TlParser &p);
 
   explicit dht_updateRule_anybody(td::TlParser &p);
 
@@ -2674,9 +3140,7 @@ class dht_updateRule_nodes final : public dht_UpdateRule {
     return ID;
   }
 
-  static object_storage<dht_updateRule_nodes> fetch(td::TlParser &p) {
-    return create_tl_object<dht_updateRule_nodes>(p);
-  }
+  static object_ptr<dht_UpdateRule> fetch(td::TlParser &p);
 
   explicit dht_updateRule_nodes(td::TlParser &p);
 
@@ -2700,9 +3164,7 @@ class dht_updateRule_overlayNodes final : public dht_UpdateRule {
     return ID;
   }
 
-  static object_storage<dht_updateRule_overlayNodes> fetch(td::TlParser &p) {
-    return create_tl_object<dht_updateRule_overlayNodes>(p);
-  }
+  static object_ptr<dht_UpdateRule> fetch(td::TlParser &p);
 
   explicit dht_updateRule_overlayNodes(td::TlParser &p);
 
@@ -2715,23 +3177,21 @@ class dht_updateRule_overlayNodes final : public dht_UpdateRule {
 
 class dht_value final : public Object {
  public:
-  object_storage<dht_keyDescription> key_;
+  object_ptr<dht_keyDescription> key_;
   td::BufferSlice value_;
   std::int32_t ttl_;
   td::BufferSlice signature_;
 
   dht_value();
 
-  dht_value(object_storage<dht_keyDescription> &&key_, td::BufferSlice &&value_, std::int32_t ttl_, td::BufferSlice &&signature_);
+  dht_value(object_ptr<dht_keyDescription> &&key_, td::BufferSlice &&value_, std::int32_t ttl_, td::BufferSlice &&signature_);
 
   static const std::int32_t ID = -1867700277;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_value> fetch(td::TlParser &p) {
-    return create_tl_object<dht_value>(p);
-  }
+  static object_ptr<dht_value> fetch(td::TlParser &p);
 
   explicit dht_value(td::TlParser &p);
 
@@ -2745,25 +3205,23 @@ class dht_value final : public Object {
 class dht_ValueResult: public Object {
  public:
 
-  static object_storage<dht_ValueResult> fetch(td::TlParser &p);
+  static object_ptr<dht_ValueResult> fetch(td::TlParser &p);
 };
 
 class dht_valueNotFound final : public dht_ValueResult {
  public:
-  object_storage<dht_nodes> nodes_;
+  object_ptr<dht_nodes> nodes_;
 
   dht_valueNotFound();
 
-  explicit dht_valueNotFound(object_storage<dht_nodes> &&nodes_);
+  explicit dht_valueNotFound(object_ptr<dht_nodes> &&nodes_);
 
   static const std::int32_t ID = -1570634392;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_valueNotFound> fetch(td::TlParser &p) {
-    return create_tl_object<dht_valueNotFound>(p);
-  }
+  static object_ptr<dht_ValueResult> fetch(td::TlParser &p);
 
   explicit dht_valueNotFound(td::TlParser &p);
 
@@ -2776,20 +3234,18 @@ class dht_valueNotFound final : public dht_ValueResult {
 
 class dht_valueFound final : public dht_ValueResult {
  public:
-  object_storage<dht_value> value_;
+  object_ptr<dht_value> value_;
 
   dht_valueFound();
 
-  explicit dht_valueFound(object_storage<dht_value> &&value_);
+  explicit dht_valueFound(object_ptr<dht_value> &&value_);
 
   static const std::int32_t ID = -468912268;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_valueFound> fetch(td::TlParser &p) {
-    return create_tl_object<dht_valueFound>(p);
-  }
+  static object_ptr<dht_ValueResult> fetch(td::TlParser &p);
 
   explicit dht_valueFound(td::TlParser &p);
 
@@ -2802,22 +3258,20 @@ class dht_valueFound final : public dht_ValueResult {
 
 class dht_config_global final : public Object {
  public:
-  object_storage<dht_nodes> static_nodes_;
+  object_ptr<dht_nodes> static_nodes_;
   std::int32_t k_;
   std::int32_t a_;
 
   dht_config_global();
 
-  dht_config_global(object_storage<dht_nodes> &&static_nodes_, std::int32_t k_, std::int32_t a_);
+  dht_config_global(object_ptr<dht_nodes> &&static_nodes_, std::int32_t k_, std::int32_t a_);
 
   static const std::int32_t ID = -2066822649;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_config_global> fetch(td::TlParser &p) {
-    return create_tl_object<dht_config_global>(p);
-  }
+  static object_ptr<dht_config_global> fetch(td::TlParser &p);
 
   explicit dht_config_global(td::TlParser &p);
 
@@ -2831,25 +3285,23 @@ class dht_config_global final : public Object {
 class dht_config_Local: public Object {
  public:
 
-  static object_storage<dht_config_Local> fetch(td::TlParser &p);
+  static object_ptr<dht_config_Local> fetch(td::TlParser &p);
 };
 
 class dht_config_local final : public dht_config_Local {
  public:
-  object_storage<adnl_id_short> id_;
+  object_ptr<adnl_id_short> id_;
 
   dht_config_local();
 
-  explicit dht_config_local(object_storage<adnl_id_short> &&id_);
+  explicit dht_config_local(object_ptr<adnl_id_short> &&id_);
 
   static const std::int32_t ID = 1981827695;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_config_local> fetch(td::TlParser &p) {
-    return create_tl_object<dht_config_local>(p);
-  }
+  static object_ptr<dht_config_Local> fetch(td::TlParser &p);
 
   explicit dht_config_local(td::TlParser &p);
 
@@ -2863,83 +3315,20 @@ class dht_config_local final : public dht_config_Local {
 class dht_config_random_local final : public dht_config_Local {
  public:
   std::int32_t cnt_;
-  object_storage<adnl_addressList> addr_list_;
+  object_ptr<adnl_addressList> addr_list_;
 
   dht_config_random_local();
 
-  dht_config_random_local(std::int32_t cnt_, object_storage<adnl_addressList> &&addr_list_);
+  dht_config_random_local(std::int32_t cnt_, object_ptr<adnl_addressList> &&addr_list_);
 
   static const std::int32_t ID = 1584494022;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dht_config_random_local> fetch(td::TlParser &p) {
-    return create_tl_object<dht_config_random_local>(p);
-  }
+  static object_ptr<dht_config_Local> fetch(td::TlParser &p);
 
   explicit dht_config_random_local(td::TlParser &p);
-
-  void store(td::TlStorerCalcLength &s) const final;
-
-  void store(td::TlStorerUnsafe &s) const final;
-
-  void store(td::TlStorerToString &s, const char *field_name) const final;
-};
-
-class dummydb_block final : public Object {
- public:
-  object_storage<tonNode_blockIdExt> id_;
-  std::int32_t flags_;
-  std::vector<object_storage<tonNode_blockIdExt>> prev_;
-  std::vector<object_storage<tonNode_blockIdExt>> next_;
-  std::int64_t lt_;
-  td::UInt256 state_;
-  td::UInt256 state_file_;
-  td::UInt256 proof_;
-  td::UInt256 proof_link_;
-  td::UInt256 signatures_;
-
-  dummydb_block();
-
-  dummydb_block(object_storage<tonNode_blockIdExt> &&id_, std::int32_t flags_, std::vector<object_storage<tonNode_blockIdExt>> &&prev_, std::vector<object_storage<tonNode_blockIdExt>> &&next_, std::int64_t lt_, td::UInt256 const &state_, td::UInt256 const &state_file_, td::UInt256 const &proof_, td::UInt256 const &proof_link_, td::UInt256 const &signatures_);
-
-  static const std::int32_t ID = -944592423;
-  std::int32_t get_id() const final {
-    return ID;
-  }
-
-  static object_storage<dummydb_block> fetch(td::TlParser &p) {
-    return create_tl_object<dummydb_block>(p);
-  }
-
-  explicit dummydb_block(td::TlParser &p);
-
-  void store(td::TlStorerCalcLength &s) const final;
-
-  void store(td::TlStorerUnsafe &s) const final;
-
-  void store(td::TlStorerToString &s, const char *field_name) const final;
-};
-
-class dummydb_gcValidatorSessionList final : public Object {
- public:
-  std::vector<td::UInt256> list_;
-
-  dummydb_gcValidatorSessionList();
-
-  explicit dummydb_gcValidatorSessionList(std::vector<td::UInt256> &&list_);
-
-  static const std::int32_t ID = -1602508432;
-  std::int32_t get_id() const final {
-    return ID;
-  }
-
-  static object_storage<dummydb_gcValidatorSessionList> fetch(td::TlParser &p) {
-    return create_tl_object<dummydb_gcValidatorSessionList>(p);
-  }
-
-  explicit dummydb_gcValidatorSessionList(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -2961,9 +3350,7 @@ class dummyworkchain0_config_global final : public Object {
     return ID;
   }
 
-  static object_storage<dummyworkchain0_config_global> fetch(td::TlParser &p) {
-    return create_tl_object<dummyworkchain0_config_global>(p);
-  }
+  static object_ptr<dummyworkchain0_config_global> fetch(td::TlParser &p);
 
   explicit dummyworkchain0_config_global(td::TlParser &p);
 
@@ -2976,20 +3363,18 @@ class dummyworkchain0_config_global final : public Object {
 
 class dummyworkchain0_config_local final : public Object {
  public:
-  object_storage<adnl_id_short> id_;
+  object_ptr<adnl_id_short> id_;
 
   dummyworkchain0_config_local();
 
-  explicit dummyworkchain0_config_local(object_storage<adnl_id_short> &&id_);
+  explicit dummyworkchain0_config_local(object_ptr<adnl_id_short> &&id_);
 
   static const std::int32_t ID = -1220354201;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<dummyworkchain0_config_local> fetch(td::TlParser &p) {
-    return create_tl_object<dummyworkchain0_config_local>(p);
-  }
+  static object_ptr<dummyworkchain0_config_local> fetch(td::TlParser &p);
 
   explicit dummyworkchain0_config_local(td::TlParser &p);
 
@@ -3003,7 +3388,7 @@ class dummyworkchain0_config_local final : public Object {
 class fer_Type: public Object {
  public:
 
-  static object_storage<fer_Type> fetch(td::TlParser &p);
+  static object_ptr<fer_Type> fetch(td::TlParser &p);
 };
 
 class fer_raptorQ final : public fer_Type {
@@ -3021,9 +3406,7 @@ class fer_raptorQ final : public fer_Type {
     return ID;
   }
 
-  static object_storage<fer_raptorQ> fetch(td::TlParser &p) {
-    return create_tl_object<fer_raptorQ>(p);
-  }
+  static object_ptr<fer_Type> fetch(td::TlParser &p);
 
   explicit fer_raptorQ(td::TlParser &p);
 
@@ -3049,9 +3432,7 @@ class fer_simple final : public fer_Type {
     return ID;
   }
 
-  static object_storage<fer_simple> fetch(td::TlParser &p) {
-    return create_tl_object<fer_simple>(p);
-  }
+  static object_ptr<fer_Type> fetch(td::TlParser &p);
 
   explicit fer_simple(td::TlParser &p);
 
@@ -3064,21 +3445,19 @@ class fer_simple final : public fer_Type {
 
 class id_config_local final : public Object {
  public:
-  object_storage<adnl_id_Pk> id_;
-  object_storage<adnl_addressList> addr_list_;
+  object_ptr<adnl_id_Pk> id_;
+  object_ptr<adnl_addressList> addr_list_;
 
   id_config_local();
 
-  id_config_local(object_storage<adnl_id_Pk> &&id_, object_storage<adnl_addressList> &&addr_list_);
+  id_config_local(object_ptr<adnl_id_Pk> &&id_, object_ptr<adnl_addressList> &&addr_list_);
 
   static const std::int32_t ID = 993556028;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<id_config_local> fetch(td::TlParser &p) {
-    return create_tl_object<id_config_local>(p);
-  }
+  static object_ptr<id_config_local> fetch(td::TlParser &p);
 
   explicit id_config_local(td::TlParser &p);
 
@@ -3103,9 +3482,7 @@ class liteServer_accountId final : public Object {
     return ID;
   }
 
-  static object_storage<liteServer_accountId> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_accountId>(p);
-  }
+  static object_ptr<liteServer_accountId> fetch(td::TlParser &p);
 
   explicit liteServer_accountId(td::TlParser &p);
 
@@ -3118,24 +3495,22 @@ class liteServer_accountId final : public Object {
 
 class liteServer_accountState final : public Object {
  public:
-  object_storage<tonNode_blockIdExt> id_;
-  object_storage<tonNode_blockIdExt> shardblk_;
+  object_ptr<tonNode_blockIdExt> id_;
+  object_ptr<tonNode_blockIdExt> shardblk_;
   td::BufferSlice shard_proof_;
   td::BufferSlice proof_;
   td::BufferSlice state_;
 
   liteServer_accountState();
 
-  liteServer_accountState(object_storage<tonNode_blockIdExt> &&id_, object_storage<tonNode_blockIdExt> &&shardblk_, td::BufferSlice &&shard_proof_, td::BufferSlice &&proof_, td::BufferSlice &&state_);
+  liteServer_accountState(object_ptr<tonNode_blockIdExt> &&id_, object_ptr<tonNode_blockIdExt> &&shardblk_, td::BufferSlice &&shard_proof_, td::BufferSlice &&proof_, td::BufferSlice &&state_);
 
   static const std::int32_t ID = 1887029073;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<liteServer_accountState> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_accountState>(p);
-  }
+  static object_ptr<liteServer_accountState> fetch(td::TlParser &p);
 
   explicit liteServer_accountState(td::TlParser &p);
 
@@ -3146,23 +3521,47 @@ class liteServer_accountState final : public Object {
   void store(td::TlStorerToString &s, const char *field_name) const final;
 };
 
+class liteServer_allShardsInfo final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  td::BufferSlice proof_;
+  td::BufferSlice data_;
+
+  liteServer_allShardsInfo();
+
+  liteServer_allShardsInfo(object_ptr<tonNode_blockIdExt> &&id_, td::BufferSlice &&proof_, td::BufferSlice &&data_);
+
+  static const std::int32_t ID = 160425773;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<liteServer_allShardsInfo> fetch(td::TlParser &p);
+
+  explicit liteServer_allShardsInfo(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
 class liteServer_blockData final : public Object {
  public:
-  object_storage<tonNode_blockIdExt> id_;
+  object_ptr<tonNode_blockIdExt> id_;
   td::BufferSlice data_;
 
   liteServer_blockData();
 
-  liteServer_blockData(object_storage<tonNode_blockIdExt> &&id_, td::BufferSlice &&data_);
+  liteServer_blockData(object_ptr<tonNode_blockIdExt> &&id_, td::BufferSlice &&data_);
 
   static const std::int32_t ID = -1519063700;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<liteServer_blockData> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_blockData>(p);
-  }
+  static object_ptr<liteServer_blockData> fetch(td::TlParser &p);
 
   explicit liteServer_blockData(td::TlParser &p);
 
@@ -3173,25 +3572,47 @@ class liteServer_blockData final : public Object {
   void store(td::TlStorerToString &s, const char *field_name) const final;
 };
 
+class liteServer_blockHeader final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  std::int32_t mode_;
+  td::BufferSlice header_proof_;
+
+  liteServer_blockHeader();
+
+  liteServer_blockHeader(object_ptr<tonNode_blockIdExt> &&id_, std::int32_t mode_, td::BufferSlice &&header_proof_);
+
+  static const std::int32_t ID = 1965916697;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<liteServer_blockHeader> fetch(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
 class liteServer_blockState final : public Object {
  public:
-  object_storage<tonNode_blockIdExt> id_;
+  object_ptr<tonNode_blockIdExt> id_;
   td::UInt256 root_hash_;
   td::UInt256 file_hash_;
   td::BufferSlice data_;
 
   liteServer_blockState();
 
-  liteServer_blockState(object_storage<tonNode_blockIdExt> &&id_, td::UInt256 const &root_hash_, td::UInt256 const &file_hash_, td::BufferSlice &&data_);
+  liteServer_blockState(object_ptr<tonNode_blockIdExt> &&id_, td::UInt256 const &root_hash_, td::UInt256 const &file_hash_, td::BufferSlice &&data_);
 
   static const std::int32_t ID = -1414669300;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<liteServer_blockState> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_blockState>(p);
-  }
+  static object_ptr<liteServer_blockState> fetch(td::TlParser &p);
 
   explicit liteServer_blockState(td::TlParser &p);
 
@@ -3215,9 +3636,7 @@ class liteServer_currentTime final : public Object {
     return ID;
   }
 
-  static object_storage<liteServer_currentTime> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_currentTime>(p);
-  }
+  static object_ptr<liteServer_currentTime> fetch(td::TlParser &p);
 
   explicit liteServer_currentTime(td::TlParser &p);
 
@@ -3242,9 +3661,7 @@ class liteServer_error final : public Object {
     return ID;
   }
 
-  static object_storage<liteServer_error> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_error>(p);
-  }
+  static object_ptr<liteServer_error> fetch(td::TlParser &p);
 
   explicit liteServer_error(td::TlParser &p);
 
@@ -3257,22 +3674,20 @@ class liteServer_error final : public Object {
 
 class liteServer_masterchainInfo final : public Object {
  public:
-  object_storage<tonNode_blockIdExt> last_;
+  object_ptr<tonNode_blockIdExt> last_;
   td::UInt256 state_root_hash_;
-  object_storage<tonNode_zeroStateIdExt> init_;
+  object_ptr<tonNode_zeroStateIdExt> init_;
 
   liteServer_masterchainInfo();
 
-  liteServer_masterchainInfo(object_storage<tonNode_blockIdExt> &&last_, td::UInt256 const &state_root_hash_, object_storage<tonNode_zeroStateIdExt> &&init_);
+  liteServer_masterchainInfo(object_ptr<tonNode_blockIdExt> &&last_, td::UInt256 const &state_root_hash_, object_ptr<tonNode_zeroStateIdExt> &&init_);
 
   static const std::int32_t ID = -2055001983;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<liteServer_masterchainInfo> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_masterchainInfo>(p);
-  }
+  static object_ptr<liteServer_masterchainInfo> fetch(td::TlParser &p);
 
   explicit liteServer_masterchainInfo(td::TlParser &p);
 
@@ -3296,11 +3711,36 @@ class liteServer_sendMsgStatus final : public Object {
     return ID;
   }
 
-  static object_storage<liteServer_sendMsgStatus> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_sendMsgStatus>(p);
-  }
+  static object_ptr<liteServer_sendMsgStatus> fetch(td::TlParser &p);
 
   explicit liteServer_sendMsgStatus(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class liteServer_shardInfo final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  object_ptr<tonNode_blockIdExt> shardblk_;
+  td::BufferSlice shard_proof_;
+  td::BufferSlice shard_descr_;
+
+  liteServer_shardInfo();
+
+  liteServer_shardInfo(object_ptr<tonNode_blockIdExt> &&id_, object_ptr<tonNode_blockIdExt> &&shardblk_, td::BufferSlice &&shard_proof_, td::BufferSlice &&shard_descr_);
+
+  static const std::int32_t ID = -1612264060;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<liteServer_shardInfo> fetch(td::TlParser &p);
+
+  explicit liteServer_shardInfo(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -3322,9 +3762,7 @@ class liteServer_debug_verbosity final : public Object {
     return ID;
   }
 
-  static object_storage<liteServer_debug_verbosity> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_debug_verbosity>(p);
-  }
+  static object_ptr<liteServer_debug_verbosity> fetch(td::TlParser &p);
 
   explicit liteServer_debug_verbosity(td::TlParser &p);
 
@@ -3337,22 +3775,20 @@ class liteServer_debug_verbosity final : public Object {
 
 class liteclient_config_global final : public Object {
  public:
-  object_storage<adnl_id_Full> id_;
+  object_ptr<adnl_id_Full> id_;
   std::int32_t ip_;
   std::int32_t port_;
 
   liteclient_config_global();
 
-  liteclient_config_global(object_storage<adnl_id_Full> &&id_, std::int32_t ip_, std::int32_t port_);
+  liteclient_config_global(object_ptr<adnl_id_Full> &&id_, std::int32_t ip_, std::int32_t port_);
 
   static const std::int32_t ID = -285892428;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<liteclient_config_global> fetch(td::TlParser &p) {
-    return create_tl_object<liteclient_config_global>(p);
-  }
+  static object_ptr<liteclient_config_global> fetch(td::TlParser &p);
 
   explicit liteclient_config_global(td::TlParser &p);
 
@@ -3365,21 +3801,19 @@ class liteclient_config_global final : public Object {
 
 class liteserver_config_local final : public Object {
  public:
-  object_storage<adnl_id_Pk> id_;
+  object_ptr<adnl_id_Pk> id_;
   std::int32_t port_;
 
   liteserver_config_local();
 
-  liteserver_config_local(object_storage<adnl_id_Pk> &&id_, std::int32_t port_);
+  liteserver_config_local(object_ptr<adnl_id_Pk> &&id_, std::int32_t port_);
 
   static const std::int32_t ID = 1129790198;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<liteserver_config_local> fetch(td::TlParser &p) {
-    return create_tl_object<liteserver_config_local>(p);
-  }
+  static object_ptr<liteserver_config_local> fetch(td::TlParser &p);
 
   explicit liteserver_config_local(td::TlParser &p);
 
@@ -3393,7 +3827,7 @@ class liteserver_config_local final : public Object {
 class overlay_Broadcast: public Object {
  public:
 
-  static object_storage<overlay_Broadcast> fetch(td::TlParser &p);
+  static object_ptr<overlay_Broadcast> fetch(td::TlParser &p);
 };
 
 class overlay_fer_received final : public overlay_Broadcast {
@@ -3409,9 +3843,7 @@ class overlay_fer_received final : public overlay_Broadcast {
     return ID;
   }
 
-  static object_storage<overlay_fer_received> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_fer_received>(p);
-  }
+  static object_ptr<overlay_Broadcast> fetch(td::TlParser &p);
 
   explicit overlay_fer_received(td::TlParser &p);
 
@@ -3435,9 +3867,7 @@ class overlay_fer_completed final : public overlay_Broadcast {
     return ID;
   }
 
-  static object_storage<overlay_fer_completed> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_fer_completed>(p);
-  }
+  static object_ptr<overlay_Broadcast> fetch(td::TlParser &p);
 
   explicit overlay_fer_completed(td::TlParser &p);
 
@@ -3461,9 +3891,7 @@ class overlay_unicast final : public overlay_Broadcast {
     return ID;
   }
 
-  static object_storage<overlay_unicast> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_unicast>(p);
-  }
+  static object_ptr<overlay_Broadcast> fetch(td::TlParser &p);
 
   explicit overlay_unicast(td::TlParser &p);
 
@@ -3476,23 +3904,23 @@ class overlay_unicast final : public overlay_Broadcast {
 
 class overlay_broadcast final : public overlay_Broadcast {
  public:
-  object_storage<adnl_id_Full> src_;
+  object_ptr<adnl_id_Full> src_;
+  object_ptr<overlay_Certificate> certificate_;
+  std::int32_t flags_;
   td::BufferSlice data_;
   std::int32_t date_;
   td::BufferSlice signature_;
 
   overlay_broadcast();
 
-  overlay_broadcast(object_storage<adnl_id_Full> &&src_, td::BufferSlice &&data_, std::int32_t date_, td::BufferSlice &&signature_);
+  overlay_broadcast(object_ptr<adnl_id_Full> &&src_, object_ptr<overlay_Certificate> &&certificate_, std::int32_t flags_, td::BufferSlice &&data_, std::int32_t date_, td::BufferSlice &&signature_);
 
-  static const std::int32_t ID = -2016150757;
+  static const std::int32_t ID = 1952835017;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<overlay_broadcast> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_broadcast>(p);
-  }
+  static object_ptr<overlay_Broadcast> fetch(td::TlParser &p);
 
   explicit overlay_broadcast(td::TlParser &p);
 
@@ -3505,26 +3933,27 @@ class overlay_broadcast final : public overlay_Broadcast {
 
 class overlay_broadcastFer final : public overlay_Broadcast {
  public:
-  object_storage<adnl_id_Full> src_;
-  td::UInt256 hash_;
+  object_ptr<adnl_id_Full> src_;
+  object_ptr<overlay_Certificate> certificate_;
+  td::UInt256 data_hash_;
+  std::int32_t data_size_;
+  std::int32_t flags_;
   td::BufferSlice data_;
   std::int32_t seqno_;
-  object_storage<fer_Type> fer_;
+  object_ptr<fer_Type> fer_;
   std::int32_t date_;
   td::BufferSlice signature_;
 
   overlay_broadcastFer();
 
-  overlay_broadcastFer(object_storage<adnl_id_Full> &&src_, td::UInt256 const &hash_, td::BufferSlice &&data_, std::int32_t seqno_, object_storage<fer_Type> &&fer_, std::int32_t date_, td::BufferSlice &&signature_);
+  overlay_broadcastFer(object_ptr<adnl_id_Full> &&src_, object_ptr<overlay_Certificate> &&certificate_, td::UInt256 const &data_hash_, std::int32_t data_size_, std::int32_t flags_, td::BufferSlice &&data_, std::int32_t seqno_, object_ptr<fer_Type> &&fer_, std::int32_t date_, td::BufferSlice &&signature_);
 
-  static const std::int32_t ID = -712985988;
+  static const std::int32_t ID = 1410220279;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<overlay_broadcastFer> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_broadcastFer>(p);
-  }
+  static object_ptr<overlay_Broadcast> fetch(td::TlParser &p);
 
   explicit overlay_broadcastFer(td::TlParser &p);
 
@@ -3537,22 +3966,23 @@ class overlay_broadcastFer final : public overlay_Broadcast {
 
 class overlay_broadcastFerShort final : public overlay_Broadcast {
  public:
-  td::UInt256 hash_;
+  object_ptr<adnl_id_Full> src_;
+  object_ptr<overlay_Certificate> certificate_;
+  td::UInt256 broadcast_hash_;
+  td::UInt256 part_data_hash_;
   std::int32_t seqno_;
   td::BufferSlice signature_;
 
   overlay_broadcastFerShort();
 
-  overlay_broadcastFerShort(td::UInt256 const &hash_, std::int32_t seqno_, td::BufferSlice &&signature_);
+  overlay_broadcastFerShort(object_ptr<adnl_id_Full> &&src_, object_ptr<overlay_Certificate> &&certificate_, td::UInt256 const &broadcast_hash_, td::UInt256 const &part_data_hash_, std::int32_t seqno_, td::BufferSlice &&signature_);
 
-  static const std::int32_t ID = -2137243558;
+  static const std::int32_t ID = 1539003811;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<overlay_broadcastFerShort> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_broadcastFerShort>(p);
-  }
+  static object_ptr<overlay_Broadcast> fetch(td::TlParser &p);
 
   explicit overlay_broadcastFerShort(td::TlParser &p);
 
@@ -3573,9 +4003,7 @@ class overlay_broadcastNotFound final : public overlay_Broadcast {
     return ID;
   }
 
-  static object_storage<overlay_broadcastNotFound> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_broadcastNotFound>(p);
-  }
+  static object_ptr<overlay_Broadcast> fetch(td::TlParser &p);
 
   explicit overlay_broadcastNotFound(td::TlParser &p);
 
@@ -3599,11 +4027,90 @@ class overlay_broadcastList final : public Object {
     return ID;
   }
 
-  static object_storage<overlay_broadcastList> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_broadcastList>(p);
-  }
+  static object_ptr<overlay_broadcastList> fetch(td::TlParser &p);
 
   explicit overlay_broadcastList(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class overlay_Certificate: public Object {
+ public:
+
+  static object_ptr<overlay_Certificate> fetch(td::TlParser &p);
+};
+
+class overlay_certificate final : public overlay_Certificate {
+ public:
+  object_ptr<adnl_id_Full> issued_by_;
+  std::int32_t expire_at_;
+  std::int32_t max_size_;
+  td::BufferSlice signature_;
+
+  overlay_certificate();
+
+  overlay_certificate(object_ptr<adnl_id_Full> &&issued_by_, std::int32_t expire_at_, std::int32_t max_size_, td::BufferSlice &&signature_);
+
+  static const std::int32_t ID = -1712165242;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<overlay_Certificate> fetch(td::TlParser &p);
+
+  explicit overlay_certificate(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class overlay_emptyCertificate final : public overlay_Certificate {
+ public:
+
+  overlay_emptyCertificate();
+
+  static const std::int32_t ID = 853195983;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<overlay_Certificate> fetch(td::TlParser &p);
+
+  explicit overlay_emptyCertificate(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class overlay_certificateId final : public Object {
+ public:
+  td::UInt256 overlay_id_;
+  td::UInt256 node_;
+  std::int32_t expire_at_;
+  std::int32_t max_size_;
+
+  overlay_certificateId();
+
+  overlay_certificateId(td::UInt256 const &overlay_id_, td::UInt256 const &node_, std::int32_t expire_at_, std::int32_t max_size_);
+
+  static const std::int32_t ID = -1884397383;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<overlay_certificateId> fetch(td::TlParser &p);
+
+  explicit overlay_certificateId(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -3625,9 +4132,7 @@ class overlay_message final : public Object {
     return ID;
   }
 
-  static object_storage<overlay_message> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_message>(p);
-  }
+  static object_ptr<overlay_message> fetch(td::TlParser &p);
 
   explicit overlay_message(td::TlParser &p);
 
@@ -3640,23 +4145,21 @@ class overlay_message final : public Object {
 
 class overlay_node final : public Object {
  public:
-  object_storage<adnl_id_Full> id_;
+  object_ptr<adnl_id_Full> id_;
   td::UInt256 overlay_;
   std::int32_t version_;
   td::BufferSlice signature_;
 
   overlay_node();
 
-  overlay_node(object_storage<adnl_id_Full> &&id_, td::UInt256 const &overlay_, std::int32_t version_, td::BufferSlice &&signature_);
+  overlay_node(object_ptr<adnl_id_Full> &&id_, td::UInt256 const &overlay_, std::int32_t version_, td::BufferSlice &&signature_);
 
   static const std::int32_t ID = -1284920910;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<overlay_node> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_node>(p);
-  }
+  static object_ptr<overlay_node> fetch(td::TlParser &p);
 
   explicit overlay_node(td::TlParser &p);
 
@@ -3669,22 +4172,71 @@ class overlay_node final : public Object {
 
 class overlay_nodes final : public Object {
  public:
-  std::vector<object_storage<overlay_node>> nodes_;
+  std::vector<object_ptr<overlay_node>> nodes_;
 
   overlay_nodes();
 
-  explicit overlay_nodes(std::vector<object_storage<overlay_node>> &&nodes_);
+  explicit overlay_nodes(std::vector<object_ptr<overlay_node>> &&nodes_);
 
   static const std::int32_t ID = -460904178;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<overlay_nodes> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_nodes>(p);
-  }
+  static object_ptr<overlay_nodes> fetch(td::TlParser &p);
 
   explicit overlay_nodes(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class overlay_broadcast_id final : public Object {
+ public:
+  td::UInt256 src_;
+  td::UInt256 data_hash_;
+  std::int32_t flags_;
+
+  overlay_broadcast_id();
+
+  overlay_broadcast_id(td::UInt256 const &src_, td::UInt256 const &data_hash_, std::int32_t flags_);
+
+  static const std::int32_t ID = 1375565978;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<overlay_broadcast_id> fetch(td::TlParser &p);
+
+  explicit overlay_broadcast_id(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class overlay_broadcast_toSign final : public Object {
+ public:
+  td::UInt256 hash_;
+  std::int32_t date_;
+
+  overlay_broadcast_toSign();
+
+  overlay_broadcast_toSign(td::UInt256 const &hash_, std::int32_t date_);
+
+  static const std::int32_t ID = -97038724;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<overlay_broadcast_toSign> fetch(td::TlParser &p);
+
+  explicit overlay_broadcast_toSign(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -3697,23 +4249,48 @@ class overlay_broadcastFer_id final : public Object {
  public:
   td::UInt256 src_;
   td::UInt256 type_;
-  td::UInt256 hash_;
-  std::int32_t date_;
+  td::UInt256 data_hash_;
+  std::int32_t size_;
+  std::int32_t flags_;
 
   overlay_broadcastFer_id();
 
-  overlay_broadcastFer_id(td::UInt256 const &src_, td::UInt256 const &type_, td::UInt256 const &hash_, std::int32_t date_);
+  overlay_broadcastFer_id(td::UInt256 const &src_, td::UInt256 const &type_, td::UInt256 const &data_hash_, std::int32_t size_, std::int32_t flags_);
 
-  static const std::int32_t ID = -937343829;
+  static const std::int32_t ID = -2099523823;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<overlay_broadcastFer_id> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_broadcastFer_id>(p);
-  }
+  static object_ptr<overlay_broadcastFer_id> fetch(td::TlParser &p);
 
   explicit overlay_broadcastFer_id(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class overlay_broadcastFer_partId final : public Object {
+ public:
+  td::UInt256 broadcast_hash_;
+  td::UInt256 data_hash_;
+  std::int32_t seqno_;
+
+  overlay_broadcastFer_partId();
+
+  overlay_broadcastFer_partId(td::UInt256 const &broadcast_hash_, td::UInt256 const &data_hash_, std::int32_t seqno_);
+
+  static const std::int32_t ID = 1727565791;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<overlay_broadcastFer_partId> fetch(td::TlParser &p);
+
+  explicit overlay_broadcastFer_partId(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -3725,26 +4302,24 @@ class overlay_broadcastFer_id final : public Object {
 class overlay_config_Local: public Object {
  public:
 
-  static object_storage<overlay_config_Local> fetch(td::TlParser &p);
+  static object_ptr<overlay_config_Local> fetch(td::TlParser &p);
 };
 
 class overlay_config_local final : public overlay_config_Local {
  public:
   td::BufferSlice name_;
-  object_storage<adnl_id_short> id_;
+  object_ptr<adnl_id_short> id_;
 
   overlay_config_local();
 
-  overlay_config_local(td::BufferSlice &&name_, object_storage<adnl_id_short> &&id_);
+  overlay_config_local(td::BufferSlice &&name_, object_ptr<adnl_id_short> &&id_);
 
   static const std::int32_t ID = 784541096;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<overlay_config_local> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_config_local>(p);
-  }
+  static object_ptr<overlay_config_Local> fetch(td::TlParser &p);
 
   explicit overlay_config_local(td::TlParser &p);
 
@@ -3759,22 +4334,46 @@ class overlay_config_random_local final : public overlay_config_Local {
  public:
   std::int32_t cnt_;
   td::BufferSlice name_;
-  object_storage<adnl_addressList> addr_list_;
+  object_ptr<adnl_addressList> addr_list_;
 
   overlay_config_random_local();
 
-  overlay_config_random_local(std::int32_t cnt_, td::BufferSlice &&name_, object_storage<adnl_addressList> &&addr_list_);
+  overlay_config_random_local(std::int32_t cnt_, td::BufferSlice &&name_, object_ptr<adnl_addressList> &&addr_list_);
 
   static const std::int32_t ID = 688042922;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<overlay_config_random_local> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_config_random_local>(p);
-  }
+  static object_ptr<overlay_config_Local> fetch(td::TlParser &p);
 
   explicit overlay_config_random_local(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class overlay_node_toSign final : public Object {
+ public:
+  td::UInt256 id_;
+  td::UInt256 overlay_;
+  std::int32_t version_;
+
+  overlay_node_toSign();
+
+  overlay_node_toSign(td::UInt256 const &id_, td::UInt256 const &overlay_, std::int32_t version_);
+
+  static const std::int32_t ID = 638687045;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<overlay_node_toSign> fetch(td::TlParser &p);
+
+  explicit overlay_node_toSign(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -3786,7 +4385,7 @@ class overlay_config_random_local final : public overlay_config_Local {
 class rldp_Message: public Object {
  public:
 
-  static object_storage<rldp_Message> fetch(td::TlParser &p);
+  static object_ptr<rldp_Message> fetch(td::TlParser &p);
 };
 
 class rldp_message final : public rldp_Message {
@@ -3803,9 +4402,7 @@ class rldp_message final : public rldp_Message {
     return ID;
   }
 
-  static object_storage<rldp_message> fetch(td::TlParser &p) {
-    return create_tl_object<rldp_message>(p);
-  }
+  static object_ptr<rldp_Message> fetch(td::TlParser &p);
 
   explicit rldp_message(td::TlParser &p);
 
@@ -3830,9 +4427,7 @@ class rldp_query final : public rldp_Message {
     return ID;
   }
 
-  static object_storage<rldp_query> fetch(td::TlParser &p) {
-    return create_tl_object<rldp_query>(p);
-  }
+  static object_ptr<rldp_Message> fetch(td::TlParser &p);
 
   explicit rldp_query(td::TlParser &p);
 
@@ -3857,9 +4452,7 @@ class rldp_answer final : public rldp_Message {
     return ID;
   }
 
-  static object_storage<rldp_answer> fetch(td::TlParser &p) {
-    return create_tl_object<rldp_answer>(p);
-  }
+  static object_ptr<rldp_Message> fetch(td::TlParser &p);
 
   explicit rldp_answer(td::TlParser &p);
 
@@ -3873,13 +4466,13 @@ class rldp_answer final : public rldp_Message {
 class rldp_MessagePart: public Object {
  public:
 
-  static object_storage<rldp_MessagePart> fetch(td::TlParser &p);
+  static object_ptr<rldp_MessagePart> fetch(td::TlParser &p);
 };
 
 class rldp_messagePart final : public rldp_MessagePart {
  public:
   td::UInt256 transfer_id_;
-  object_storage<fer_Type> fer_type_;
+  object_ptr<fer_Type> fer_type_;
   std::int32_t part_;
   std::int64_t total_size_;
   std::int32_t seqno_;
@@ -3887,16 +4480,14 @@ class rldp_messagePart final : public rldp_MessagePart {
 
   rldp_messagePart();
 
-  rldp_messagePart(td::UInt256 const &transfer_id_, object_storage<fer_Type> &&fer_type_, std::int32_t part_, std::int64_t total_size_, std::int32_t seqno_, td::BufferSlice &&data_);
+  rldp_messagePart(td::UInt256 const &transfer_id_, object_ptr<fer_Type> &&fer_type_, std::int32_t part_, std::int64_t total_size_, std::int32_t seqno_, td::BufferSlice &&data_);
 
   static const std::int32_t ID = 163394346;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<rldp_messagePart> fetch(td::TlParser &p) {
-    return create_tl_object<rldp_messagePart>(p);
-  }
+  static object_ptr<rldp_MessagePart> fetch(td::TlParser &p);
 
   explicit rldp_messagePart(td::TlParser &p);
 
@@ -3922,9 +4513,7 @@ class rldp_confirm final : public rldp_MessagePart {
     return ID;
   }
 
-  static object_storage<rldp_confirm> fetch(td::TlParser &p) {
-    return create_tl_object<rldp_confirm>(p);
-  }
+  static object_ptr<rldp_MessagePart> fetch(td::TlParser &p);
 
   explicit rldp_confirm(td::TlParser &p);
 
@@ -3949,9 +4538,7 @@ class rldp_complete final : public rldp_MessagePart {
     return ID;
   }
 
-  static object_storage<rldp_complete> fetch(td::TlParser &p) {
-    return create_tl_object<rldp_complete>(p);
-  }
+  static object_ptr<rldp_MessagePart> fetch(td::TlParser &p);
 
   explicit rldp_complete(td::TlParser &p);
 
@@ -3975,9 +4562,7 @@ class tcp_pong final : public Object {
     return ID;
   }
 
-  static object_storage<tcp_pong> fetch(td::TlParser &p) {
-    return create_tl_object<tcp_pong>(p);
-  }
+  static object_ptr<tcp_pong> fetch(td::TlParser &p);
 
   explicit tcp_pong(td::TlParser &p);
 
@@ -3990,23 +4575,21 @@ class tcp_pong final : public Object {
 
 class test0_proof final : public Object {
  public:
-  object_storage<test0_proofLink> link_;
-  std::int32_t validator_set_ts_;
+  object_ptr<test0_proofLink> link_;
+  std::int32_t catchain_seqno_;
   std::int32_t validator_set_hash_;
-  object_storage<test0_blockSignatures> signatures_;
+  object_ptr<test0_blockSignatures> signatures_;
 
   test0_proof();
 
-  test0_proof(object_storage<test0_proofLink> &&link_, std::int32_t validator_set_ts_, std::int32_t validator_set_hash_, object_storage<test0_blockSignatures> &&signatures_);
+  test0_proof(object_ptr<test0_proofLink> &&link_, std::int32_t catchain_seqno_, std::int32_t validator_set_hash_, object_ptr<test0_blockSignatures> &&signatures_);
 
-  static const std::int32_t ID = 288856343;
+  static const std::int32_t ID = 240739136;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_proof> fetch(td::TlParser &p) {
-    return create_tl_object<test0_proof>(p);
-  }
+  static object_ptr<test0_proof> fetch(td::TlParser &p);
 
   explicit test0_proof(td::TlParser &p);
 
@@ -4019,23 +4602,21 @@ class test0_proof final : public Object {
 
 class test0_proofLink final : public Object {
  public:
-  object_storage<tonNode_blockIdExt> id_;
-  std::vector<object_storage<tonNode_blockIdExt>> prev_;
+  object_ptr<tonNode_blockIdExt> id_;
+  std::vector<object_ptr<tonNode_blockIdExt>> prev_;
   td::UInt256 state_;
   bool split_;
 
   test0_proofLink();
 
-  test0_proofLink(object_storage<tonNode_blockIdExt> &&id_, std::vector<object_storage<tonNode_blockIdExt>> &&prev_, td::UInt256 const &state_, bool split_);
+  test0_proofLink(object_ptr<tonNode_blockIdExt> &&id_, std::vector<object_ptr<tonNode_blockIdExt>> &&prev_, td::UInt256 const &state_, bool split_);
 
   static const std::int32_t ID = 198411810;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_proofLink> fetch(td::TlParser &p) {
-    return create_tl_object<test0_proofLink>(p);
-  }
+  static object_ptr<test0_proofLink> fetch(td::TlParser &p);
 
   explicit test0_proofLink(td::TlParser &p);
 
@@ -4051,27 +4632,25 @@ class test0_shardchain_block final : public Object {
   std::int32_t workchain_;
   std::int64_t shard_;
   std::int32_t seqno_;
-  std::vector<object_storage<tonNode_blockIdExt>> prev_;
+  std::vector<object_ptr<tonNode_blockIdExt>> prev_;
   bool split_;
   std::int32_t ts_;
   td::UInt256 state_;
-  std::int32_t validator_set_ts_;
+  std::int32_t catchain_seqno_;
   std::int32_t validator_set_hash_;
   td::BufferSlice pad_;
-  object_storage<test0_MasterchainBlockExtra> extra_;
+  object_ptr<test0_MasterchainBlockExtra> extra_;
 
   test0_shardchain_block();
 
-  test0_shardchain_block(std::int32_t workchain_, std::int64_t shard_, std::int32_t seqno_, std::vector<object_storage<tonNode_blockIdExt>> &&prev_, bool split_, std::int32_t ts_, td::UInt256 const &state_, std::int32_t validator_set_ts_, std::int32_t validator_set_hash_, td::BufferSlice &&pad_, object_storage<test0_MasterchainBlockExtra> &&extra_);
+  test0_shardchain_block(std::int32_t workchain_, std::int64_t shard_, std::int32_t seqno_, std::vector<object_ptr<tonNode_blockIdExt>> &&prev_, bool split_, std::int32_t ts_, td::UInt256 const &state_, std::int32_t catchain_seqno_, std::int32_t validator_set_hash_, td::BufferSlice &&pad_, object_ptr<test0_MasterchainBlockExtra> &&extra_);
 
-  static const std::int32_t ID = -1740890249;
+  static const std::int32_t ID = 168970719;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_shardchain_block> fetch(td::TlParser &p) {
-    return create_tl_object<test0_shardchain_block>(p);
-  }
+  static object_ptr<test0_shardchain_block> fetch(td::TlParser &p);
 
   explicit test0_shardchain_block(td::TlParser &p);
 
@@ -4089,20 +4668,18 @@ class test0_shardchain_state final : public Object {
   std::int32_t seqno_;
   std::int32_t ts_;
   bool split_;
-  object_storage<test0_MasterchainStateExtra> extra_;
+  object_ptr<test0_MasterchainStateExtra> extra_;
 
   test0_shardchain_state();
 
-  test0_shardchain_state(std::int32_t workchain_, std::int64_t shard_, std::int32_t seqno_, std::int32_t ts_, bool split_, object_storage<test0_MasterchainStateExtra> &&extra_);
+  test0_shardchain_state(std::int32_t workchain_, std::int64_t shard_, std::int32_t seqno_, std::int32_t ts_, bool split_, object_ptr<test0_MasterchainStateExtra> &&extra_);
 
   static const std::int32_t ID = -1819502437;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_shardchain_state> fetch(td::TlParser &p) {
-    return create_tl_object<test0_shardchain_state>(p);
-  }
+  static object_ptr<test0_shardchain_state> fetch(td::TlParser &p);
 
   explicit test0_shardchain_state(td::TlParser &p);
 
@@ -4128,9 +4705,7 @@ class test_validatorSession_block final : public Object {
     return ID;
   }
 
-  static object_storage<test_validatorSession_block> fetch(td::TlParser &p) {
-    return create_tl_object<test_validatorSession_block>(p);
-  }
+  static object_ptr<test_validatorSession_block> fetch(td::TlParser &p);
 
   explicit test_validatorSession_block(td::TlParser &p);
 
@@ -4143,20 +4718,18 @@ class test_validatorSession_block final : public Object {
 
 class test0_blockSignatures final : public Object {
  public:
-  std::vector<object_storage<tonNode_blockSignature>> signatures_;
+  std::vector<object_ptr<tonNode_blockSignature>> signatures_;
 
   test0_blockSignatures();
 
-  explicit test0_blockSignatures(std::vector<object_storage<tonNode_blockSignature>> &&signatures_);
+  explicit test0_blockSignatures(std::vector<object_ptr<tonNode_blockSignature>> &&signatures_);
 
   static const std::int32_t ID = -1512447916;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_blockSignatures> fetch(td::TlParser &p) {
-    return create_tl_object<test0_blockSignatures>(p);
-  }
+  static object_ptr<test0_blockSignatures> fetch(td::TlParser &p);
 
   explicit test0_blockSignatures(td::TlParser &p);
 
@@ -4182,9 +4755,7 @@ class test0_extMessage final : public Object {
     return ID;
   }
 
-  static object_storage<test0_extMessage> fetch(td::TlParser &p) {
-    return create_tl_object<test0_extMessage>(p);
-  }
+  static object_ptr<test0_extMessage> fetch(td::TlParser &p);
 
   explicit test0_extMessage(td::TlParser &p);
 
@@ -4198,7 +4769,7 @@ class test0_extMessage final : public Object {
 class test0_MasterchainBlockExtra: public Object {
  public:
 
-  static object_storage<test0_MasterchainBlockExtra> fetch(td::TlParser &p);
+  static object_ptr<test0_MasterchainBlockExtra> fetch(td::TlParser &p);
 };
 
 class test0_masterchainBlockExtra_empty final : public test0_MasterchainBlockExtra {
@@ -4211,9 +4782,7 @@ class test0_masterchainBlockExtra_empty final : public test0_MasterchainBlockExt
     return ID;
   }
 
-  static object_storage<test0_masterchainBlockExtra_empty> fetch(td::TlParser &p) {
-    return create_tl_object<test0_masterchainBlockExtra_empty>(p);
-  }
+  static object_ptr<test0_MasterchainBlockExtra> fetch(td::TlParser &p);
 
   explicit test0_masterchainBlockExtra_empty(td::TlParser &p);
 
@@ -4228,20 +4797,18 @@ class test0_masterchainBlockExtra_extra final : public test0_MasterchainBlockExt
  public:
   std::int32_t randseed_;
   bool rotate_;
-  std::vector<object_storage<test0_masterchain_shardInfo>> shards_;
+  std::vector<object_ptr<test0_masterchain_shardInfo>> shards_;
 
   test0_masterchainBlockExtra_extra();
 
-  test0_masterchainBlockExtra_extra(std::int32_t randseed_, bool rotate_, std::vector<object_storage<test0_masterchain_shardInfo>> &&shards_);
+  test0_masterchainBlockExtra_extra(std::int32_t randseed_, bool rotate_, std::vector<object_ptr<test0_masterchain_shardInfo>> &&shards_);
 
   static const std::int32_t ID = -2070859848;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_masterchainBlockExtra_extra> fetch(td::TlParser &p) {
-    return create_tl_object<test0_masterchainBlockExtra_extra>(p);
-  }
+  static object_ptr<test0_MasterchainBlockExtra> fetch(td::TlParser &p);
 
   explicit test0_masterchainBlockExtra_extra(td::TlParser &p);
 
@@ -4255,7 +4822,7 @@ class test0_masterchainBlockExtra_extra final : public test0_MasterchainBlockExt
 class test0_MasterchainStateExtra: public Object {
  public:
 
-  static object_storage<test0_MasterchainStateExtra> fetch(td::TlParser &p);
+  static object_ptr<test0_MasterchainStateExtra> fetch(td::TlParser &p);
 };
 
 class test0_masterchainStateExtra_empty final : public test0_MasterchainStateExtra {
@@ -4268,9 +4835,7 @@ class test0_masterchainStateExtra_empty final : public test0_MasterchainStateExt
     return ID;
   }
 
-  static object_storage<test0_masterchainStateExtra_empty> fetch(td::TlParser &p) {
-    return create_tl_object<test0_masterchainStateExtra_empty>(p);
-  }
+  static object_ptr<test0_MasterchainStateExtra> fetch(td::TlParser &p);
 
   explicit test0_masterchainStateExtra_empty(td::TlParser &p);
 
@@ -4287,22 +4852,20 @@ class test0_masterchainStateExtra_extra final : public test0_MasterchainStateExt
   std::int32_t validator_randseed_;
   std::int32_t next_randseed_;
   std::int32_t next_rotate_at_;
-  std::vector<object_storage<tonNode_blockIdExt>> prev_blocks_;
-  std::vector<object_storage<test0_masterchain_shardInfo>> shards_;
-  std::vector<object_storage<adnl_id_Full>> pool_;
+  std::vector<object_ptr<tonNode_blockIdExt>> prev_blocks_;
+  std::vector<object_ptr<test0_masterchain_shardInfo>> shards_;
+  std::vector<object_ptr<adnl_id_Full>> pool_;
 
   test0_masterchainStateExtra_extra();
 
-  test0_masterchainStateExtra_extra(std::int32_t validator_ts_, std::int32_t validator_randseed_, std::int32_t next_randseed_, std::int32_t next_rotate_at_, std::vector<object_storage<tonNode_blockIdExt>> &&prev_blocks_, std::vector<object_storage<test0_masterchain_shardInfo>> &&shards_, std::vector<object_storage<adnl_id_Full>> &&pool_);
+  test0_masterchainStateExtra_extra(std::int32_t validator_ts_, std::int32_t validator_randseed_, std::int32_t next_randseed_, std::int32_t next_rotate_at_, std::vector<object_ptr<tonNode_blockIdExt>> &&prev_blocks_, std::vector<object_ptr<test0_masterchain_shardInfo>> &&shards_, std::vector<object_ptr<adnl_id_Full>> &&pool_);
 
   static const std::int32_t ID = 2099087416;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_masterchainStateExtra_extra> fetch(td::TlParser &p) {
-    return create_tl_object<test0_masterchainStateExtra_extra>(p);
-  }
+  static object_ptr<test0_MasterchainStateExtra> fetch(td::TlParser &p);
 
   explicit test0_masterchainStateExtra_extra(td::TlParser &p);
 
@@ -4315,26 +4878,24 @@ class test0_masterchainStateExtra_extra final : public test0_MasterchainStateExt
 
 class test0_topShardBlockDescription final : public Object {
  public:
-  object_storage<tonNode_blockIdExt> block_id_;
+  object_ptr<tonNode_blockIdExt> block_id_;
   bool after_split_;
   bool after_merge_;
   bool before_split_;
-  std::int32_t validator_set_ts_;
+  std::int32_t catchain_seqno_;
   std::int32_t validator_set_hash_;
   td::BufferSlice signatures_;
 
   test0_topShardBlockDescription();
 
-  test0_topShardBlockDescription(object_storage<tonNode_blockIdExt> &&block_id_, bool after_split_, bool after_merge_, bool before_split_, std::int32_t validator_set_ts_, std::int32_t validator_set_hash_, td::BufferSlice &&signatures_);
+  test0_topShardBlockDescription(object_ptr<tonNode_blockIdExt> &&block_id_, bool after_split_, bool after_merge_, bool before_split_, std::int32_t catchain_seqno_, std::int32_t validator_set_hash_, td::BufferSlice &&signatures_);
 
-  static const std::int32_t ID = 939132390;
+  static const std::int32_t ID = 723951200;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_topShardBlockDescription> fetch(td::TlParser &p) {
-    return create_tl_object<test0_topShardBlockDescription>(p);
-  }
+  static object_ptr<test0_topShardBlockDescription> fetch(td::TlParser &p);
 
   explicit test0_topShardBlockDescription(td::TlParser &p);
 
@@ -4361,9 +4922,7 @@ class test0_validatorSessionId final : public Object {
     return ID;
   }
 
-  static object_storage<test0_validatorSessionId> fetch(td::TlParser &p) {
-    return create_tl_object<test0_validatorSessionId>(p);
-  }
+  static object_ptr<test0_validatorSessionId> fetch(td::TlParser &p);
 
   explicit test0_validatorSessionId(td::TlParser &p);
 
@@ -4377,20 +4936,18 @@ class test0_validatorSessionId final : public Object {
 class test0_validatorSet final : public Object {
  public:
   std::int32_t ts_;
-  std::vector<object_storage<test0_validatorSetItem>> validators_;
+  std::vector<object_ptr<test0_validatorSetItem>> validators_;
 
   test0_validatorSet();
 
-  test0_validatorSet(std::int32_t ts_, std::vector<object_storage<test0_validatorSetItem>> &&validators_);
+  test0_validatorSet(std::int32_t ts_, std::vector<object_ptr<test0_validatorSetItem>> &&validators_);
 
   static const std::int32_t ID = -1877581587;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_validatorSet> fetch(td::TlParser &p) {
-    return create_tl_object<test0_validatorSet>(p);
-  }
+  static object_ptr<test0_validatorSet> fetch(td::TlParser &p);
 
   explicit test0_validatorSet(td::TlParser &p);
 
@@ -4415,9 +4972,7 @@ class test0_validatorSetItem final : public Object {
     return ID;
   }
 
-  static object_storage<test0_validatorSetItem> fetch(td::TlParser &p) {
-    return create_tl_object<test0_validatorSetItem>(p);
-  }
+  static object_ptr<test0_validatorSetItem> fetch(td::TlParser &p);
 
   explicit test0_validatorSetItem(td::TlParser &p);
 
@@ -4430,7 +4985,7 @@ class test0_validatorSetItem final : public Object {
 
 class test0_masterchain_shardInfo final : public Object {
  public:
-  object_storage<tonNode_blockIdExt> last_block_;
+  object_ptr<tonNode_blockIdExt> last_block_;
   bool before_merge_;
   bool before_split_;
   bool after_merge_;
@@ -4438,16 +4993,14 @@ class test0_masterchain_shardInfo final : public Object {
 
   test0_masterchain_shardInfo();
 
-  test0_masterchain_shardInfo(object_storage<tonNode_blockIdExt> &&last_block_, bool before_merge_, bool before_split_, bool after_merge_, bool after_split_);
+  test0_masterchain_shardInfo(object_ptr<tonNode_blockIdExt> &&last_block_, bool before_merge_, bool before_split_, bool after_merge_, bool after_split_);
 
   static const std::int32_t ID = 262681349;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<test0_masterchain_shardInfo> fetch(td::TlParser &p) {
-    return create_tl_object<test0_masterchain_shardInfo>(p);
-  }
+  static object_ptr<test0_masterchain_shardInfo> fetch(td::TlParser &p);
 
   explicit test0_masterchain_shardInfo(td::TlParser &p);
 
@@ -4472,9 +5025,7 @@ class ton_blockId final : public Object {
     return ID;
   }
 
-  static object_storage<ton_blockId> fetch(td::TlParser &p) {
-    return create_tl_object<ton_blockId>(p);
-  }
+  static object_ptr<ton_blockId> fetch(td::TlParser &p);
 
   explicit ton_blockId(td::TlParser &p);
 
@@ -4488,7 +5039,7 @@ class ton_blockId final : public Object {
 class tonNode_BlockDescription: public Object {
  public:
 
-  static object_storage<tonNode_BlockDescription> fetch(td::TlParser &p);
+  static object_ptr<tonNode_BlockDescription> fetch(td::TlParser &p);
 };
 
 class tonNode_blockDescriptionEmpty final : public tonNode_BlockDescription {
@@ -4501,9 +5052,7 @@ class tonNode_blockDescriptionEmpty final : public tonNode_BlockDescription {
     return ID;
   }
 
-  static object_storage<tonNode_blockDescriptionEmpty> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_blockDescriptionEmpty>(p);
-  }
+  static object_ptr<tonNode_BlockDescription> fetch(td::TlParser &p);
 
   explicit tonNode_blockDescriptionEmpty(td::TlParser &p);
 
@@ -4516,20 +5065,18 @@ class tonNode_blockDescriptionEmpty final : public tonNode_BlockDescription {
 
 class tonNode_blockDescription final : public tonNode_BlockDescription {
  public:
-  object_storage<tonNode_blockIdExt> id_;
+  object_ptr<tonNode_blockIdExt> id_;
 
   tonNode_blockDescription();
 
-  explicit tonNode_blockDescription(object_storage<tonNode_blockIdExt> &&id_);
+  explicit tonNode_blockDescription(object_ptr<tonNode_blockIdExt> &&id_);
 
   static const std::int32_t ID = 1185009800;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<tonNode_blockDescription> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_blockDescription>(p);
-  }
+  static object_ptr<tonNode_BlockDescription> fetch(td::TlParser &p);
 
   explicit tonNode_blockDescription(td::TlParser &p);
 
@@ -4557,9 +5104,7 @@ class tonNode_blockIdExt final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_blockIdExt> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_blockIdExt>(p);
-  }
+  static object_ptr<tonNode_blockIdExt> fetch(td::TlParser &p);
 
   explicit tonNode_blockIdExt(td::TlParser &p);
 
@@ -4584,9 +5129,7 @@ class tonNode_blockSignature final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_blockSignature> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_blockSignature>(p);
-  }
+  static object_ptr<tonNode_blockSignature> fetch(td::TlParser &p);
 
   explicit tonNode_blockSignature(td::TlParser &p);
 
@@ -4600,31 +5143,29 @@ class tonNode_blockSignature final : public Object {
 class tonNode_Broadcast: public Object {
  public:
 
-  static object_storage<tonNode_Broadcast> fetch(td::TlParser &p);
+  static object_ptr<tonNode_Broadcast> fetch(td::TlParser &p);
 };
 
 class tonNode_blockBroadcast final : public tonNode_Broadcast {
  public:
-  object_storage<tonNode_blockIdExt> id_;
-  std::int32_t validator_set_ts_;
+  object_ptr<tonNode_blockIdExt> id_;
+  std::int32_t catchain_seqno_;
   std::int32_t validator_set_hash_;
-  std::vector<object_storage<tonNode_blockSignature>> signatures_;
-  object_storage<tonNode_blockIdExt> masterchain_block_id_;
+  std::vector<object_ptr<tonNode_blockSignature>> signatures_;
+  object_ptr<tonNode_blockIdExt> masterchain_block_id_;
   td::BufferSlice proof_;
   td::BufferSlice data_;
 
   tonNode_blockBroadcast();
 
-  tonNode_blockBroadcast(object_storage<tonNode_blockIdExt> &&id_, std::int32_t validator_set_ts_, std::int32_t validator_set_hash_, std::vector<object_storage<tonNode_blockSignature>> &&signatures_, object_storage<tonNode_blockIdExt> &&masterchain_block_id_, td::BufferSlice &&proof_, td::BufferSlice &&data_);
+  tonNode_blockBroadcast(object_ptr<tonNode_blockIdExt> &&id_, std::int32_t catchain_seqno_, std::int32_t validator_set_hash_, std::vector<object_ptr<tonNode_blockSignature>> &&signatures_, object_ptr<tonNode_blockIdExt> &&masterchain_block_id_, td::BufferSlice &&proof_, td::BufferSlice &&data_);
 
-  static const std::int32_t ID = 179736316;
+  static const std::int32_t ID = 193939613;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<tonNode_blockBroadcast> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_blockBroadcast>(p);
-  }
+  static object_ptr<tonNode_Broadcast> fetch(td::TlParser &p);
 
   explicit tonNode_blockBroadcast(td::TlParser &p);
 
@@ -4637,20 +5178,18 @@ class tonNode_blockBroadcast final : public tonNode_Broadcast {
 
 class tonNode_ihrMessageBroadcast final : public tonNode_Broadcast {
  public:
-  object_storage<tonNode_ihrMessage> message_;
+  object_ptr<tonNode_ihrMessage> message_;
 
   tonNode_ihrMessageBroadcast();
 
-  explicit tonNode_ihrMessageBroadcast(object_storage<tonNode_ihrMessage> &&message_);
+  explicit tonNode_ihrMessageBroadcast(object_ptr<tonNode_ihrMessage> &&message_);
 
   static const std::int32_t ID = 1381868723;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<tonNode_ihrMessageBroadcast> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_ihrMessageBroadcast>(p);
-  }
+  static object_ptr<tonNode_Broadcast> fetch(td::TlParser &p);
 
   explicit tonNode_ihrMessageBroadcast(td::TlParser &p);
 
@@ -4663,20 +5202,18 @@ class tonNode_ihrMessageBroadcast final : public tonNode_Broadcast {
 
 class tonNode_externalMessageBroadcast final : public tonNode_Broadcast {
  public:
-  object_storage<tonNode_externalMessage> message_;
+  object_ptr<tonNode_externalMessage> message_;
 
   tonNode_externalMessageBroadcast();
 
-  explicit tonNode_externalMessageBroadcast(object_storage<tonNode_externalMessage> &&message_);
+  explicit tonNode_externalMessageBroadcast(object_ptr<tonNode_externalMessage> &&message_);
 
   static const std::int32_t ID = 1025185895;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<tonNode_externalMessageBroadcast> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_externalMessageBroadcast>(p);
-  }
+  static object_ptr<tonNode_Broadcast> fetch(td::TlParser &p);
 
   explicit tonNode_externalMessageBroadcast(td::TlParser &p);
 
@@ -4689,20 +5226,18 @@ class tonNode_externalMessageBroadcast final : public tonNode_Broadcast {
 
 class tonNode_newShardBlockBroadcast final : public tonNode_Broadcast {
  public:
-  object_storage<tonNode_newShardBlock> block_;
+  object_ptr<tonNode_newShardBlock> block_;
 
   tonNode_newShardBlockBroadcast();
 
-  explicit tonNode_newShardBlockBroadcast(object_storage<tonNode_newShardBlock> &&block_);
+  explicit tonNode_newShardBlockBroadcast(object_ptr<tonNode_newShardBlock> &&block_);
 
   static const std::int32_t ID = 183696060;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<tonNode_newShardBlockBroadcast> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_newShardBlockBroadcast>(p);
-  }
+  static object_ptr<tonNode_Broadcast> fetch(td::TlParser &p);
 
   explicit tonNode_newShardBlockBroadcast(td::TlParser &p);
 
@@ -4726,9 +5261,7 @@ class tonNode_data final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_data> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_data>(p);
-  }
+  static object_ptr<tonNode_data> fetch(td::TlParser &p);
 
   explicit tonNode_data(td::TlParser &p);
 
@@ -4752,9 +5285,7 @@ class tonNode_externalMessage final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_externalMessage> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_externalMessage>(p);
-  }
+  static object_ptr<tonNode_externalMessage> fetch(td::TlParser &p);
 
   explicit tonNode_externalMessage(td::TlParser &p);
 
@@ -4778,9 +5309,7 @@ class tonNode_ihrMessage final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_ihrMessage> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_ihrMessage>(p);
-  }
+  static object_ptr<tonNode_ihrMessage> fetch(td::TlParser &p);
 
   explicit tonNode_ihrMessage(td::TlParser &p);
 
@@ -4806,9 +5335,7 @@ class tonNode_newShardBlock final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_newShardBlock> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_newShardBlock>(p);
-  }
+  static object_ptr<tonNode_newShardBlock> fetch(td::TlParser &p);
 
   explicit tonNode_newShardBlock(td::TlParser &p);
 
@@ -4822,7 +5349,7 @@ class tonNode_newShardBlock final : public Object {
 class tonNode_Prepared: public Object {
  public:
 
-  static object_storage<tonNode_Prepared> fetch(td::TlParser &p);
+  static object_ptr<tonNode_Prepared> fetch(td::TlParser &p);
 };
 
 class tonNode_prepared final : public tonNode_Prepared {
@@ -4835,9 +5362,7 @@ class tonNode_prepared final : public tonNode_Prepared {
     return ID;
   }
 
-  static object_storage<tonNode_prepared> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_prepared>(p);
-  }
+  static object_ptr<tonNode_Prepared> fetch(td::TlParser &p);
 
   explicit tonNode_prepared(td::TlParser &p);
 
@@ -4858,9 +5383,7 @@ class tonNode_notFound final : public tonNode_Prepared {
     return ID;
   }
 
-  static object_storage<tonNode_notFound> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_notFound>(p);
-  }
+  static object_ptr<tonNode_Prepared> fetch(td::TlParser &p);
 
   explicit tonNode_notFound(td::TlParser &p);
 
@@ -4874,7 +5397,7 @@ class tonNode_notFound final : public tonNode_Prepared {
 class tonNode_PreparedProof: public Object {
  public:
 
-  static object_storage<tonNode_PreparedProof> fetch(td::TlParser &p);
+  static object_ptr<tonNode_PreparedProof> fetch(td::TlParser &p);
 };
 
 class tonNode_preparedProofEmpty final : public tonNode_PreparedProof {
@@ -4887,9 +5410,7 @@ class tonNode_preparedProofEmpty final : public tonNode_PreparedProof {
     return ID;
   }
 
-  static object_storage<tonNode_preparedProofEmpty> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_preparedProofEmpty>(p);
-  }
+  static object_ptr<tonNode_PreparedProof> fetch(td::TlParser &p);
 
   explicit tonNode_preparedProofEmpty(td::TlParser &p);
 
@@ -4902,20 +5423,18 @@ class tonNode_preparedProofEmpty final : public tonNode_PreparedProof {
 
 class tonNode_preparedProof final : public tonNode_PreparedProof {
  public:
-  object_storage<tonNode_blockIdExt> masterchain_block_;
+  object_ptr<tonNode_blockIdExt> masterchain_block_;
 
   tonNode_preparedProof();
 
-  explicit tonNode_preparedProof(object_storage<tonNode_blockIdExt> &&masterchain_block_);
+  explicit tonNode_preparedProof(object_ptr<tonNode_blockIdExt> &&masterchain_block_);
 
   static const std::int32_t ID = 1235611381;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<tonNode_preparedProof> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_preparedProof>(p);
-  }
+  static object_ptr<tonNode_PreparedProof> fetch(td::TlParser &p);
 
   explicit tonNode_preparedProof(td::TlParser &p);
 
@@ -4936,9 +5455,7 @@ class tonNode_preparedProofLink final : public tonNode_PreparedProof {
     return ID;
   }
 
-  static object_storage<tonNode_preparedProofLink> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_preparedProofLink>(p);
-  }
+  static object_ptr<tonNode_PreparedProof> fetch(td::TlParser &p);
 
   explicit tonNode_preparedProofLink(td::TlParser &p);
 
@@ -4952,7 +5469,7 @@ class tonNode_preparedProofLink final : public tonNode_PreparedProof {
 class tonNode_PreparedState: public Object {
  public:
 
-  static object_storage<tonNode_PreparedState> fetch(td::TlParser &p);
+  static object_ptr<tonNode_PreparedState> fetch(td::TlParser &p);
 };
 
 class tonNode_preparedState final : public tonNode_PreparedState {
@@ -4965,9 +5482,7 @@ class tonNode_preparedState final : public tonNode_PreparedState {
     return ID;
   }
 
-  static object_storage<tonNode_preparedState> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_preparedState>(p);
-  }
+  static object_ptr<tonNode_PreparedState> fetch(td::TlParser &p);
 
   explicit tonNode_preparedState(td::TlParser &p);
 
@@ -4988,9 +5503,7 @@ class tonNode_notFoundState final : public tonNode_PreparedState {
     return ID;
   }
 
-  static object_storage<tonNode_notFoundState> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_notFoundState>(p);
-  }
+  static object_ptr<tonNode_PreparedState> fetch(td::TlParser &p);
 
   explicit tonNode_notFoundState(td::TlParser &p);
 
@@ -5017,9 +5530,7 @@ class tonNode_sessionId final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_sessionId> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_sessionId>(p);
-  }
+  static object_ptr<tonNode_sessionId> fetch(td::TlParser &p);
 
   explicit tonNode_sessionId(td::TlParser &p);
 
@@ -5044,9 +5555,7 @@ class tonNode_shardPublicOverlayId final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_shardPublicOverlayId> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_shardPublicOverlayId>(p);
-  }
+  static object_ptr<tonNode_shardPublicOverlayId> fetch(td::TlParser &p);
 
   explicit tonNode_shardPublicOverlayId(td::TlParser &p);
 
@@ -5072,9 +5581,7 @@ class tonNode_zeroStateIdExt final : public Object {
     return ID;
   }
 
-  static object_storage<tonNode_zeroStateIdExt> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_zeroStateIdExt>(p);
-  }
+  static object_ptr<tonNode_zeroStateIdExt> fetch(td::TlParser &p);
 
   explicit tonNode_zeroStateIdExt(td::TlParser &p);
 
@@ -5099,9 +5606,7 @@ class validator_config_global final : public Object {
     return ID;
   }
 
-  static object_storage<validator_config_global> fetch(td::TlParser &p) {
-    return create_tl_object<validator_config_global>(p);
-  }
+  static object_ptr<validator_config_global> fetch(td::TlParser &p);
 
   explicit validator_config_global(td::TlParser &p);
 
@@ -5114,20 +5619,18 @@ class validator_config_global final : public Object {
 
 class validator_config_local final : public Object {
  public:
-  object_storage<adnl_id_short> id_;
+  object_ptr<adnl_id_short> id_;
 
   validator_config_local();
 
-  explicit validator_config_local(object_storage<adnl_id_short> &&id_);
+  explicit validator_config_local(object_ptr<adnl_id_short> &&id_);
 
   static const std::int32_t ID = 1716256616;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<validator_config_local> fetch(td::TlParser &p) {
-    return create_tl_object<validator_config_local>(p);
-  }
+  static object_ptr<validator_config_local> fetch(td::TlParser &p);
 
   explicit validator_config_local(td::TlParser &p);
 
@@ -5141,21 +5644,19 @@ class validator_config_local final : public Object {
 class validatorSession_blockUpdate final : public Object {
  public:
   std::int64_t ts_;
-  std::vector<object_storage<validatorSession_round_Message>> actions_;
+  std::vector<object_ptr<validatorSession_round_Message>> actions_;
   std::int32_t state_;
 
   validatorSession_blockUpdate();
 
-  validatorSession_blockUpdate(std::int64_t ts_, std::vector<object_storage<validatorSession_round_Message>> &&actions_, std::int32_t state_);
+  validatorSession_blockUpdate(std::int64_t ts_, std::vector<object_ptr<validatorSession_round_Message>> &&actions_, std::int32_t state_);
 
   static const std::int32_t ID = -1836855753;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  static object_storage<validatorSession_blockUpdate> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_blockUpdate>(p);
-  }
+  static object_ptr<validatorSession_blockUpdate> fetch(td::TlParser &p);
 
   explicit validatorSession_blockUpdate(td::TlParser &p);
 
@@ -5183,9 +5684,7 @@ class validatorSession_candidate final : public Object {
     return ID;
   }
 
-  static object_storage<validatorSession_candidate> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_candidate>(p);
-  }
+  static object_ptr<validatorSession_candidate> fetch(td::TlParser &p);
 
   explicit validatorSession_candidate(td::TlParser &p);
 
@@ -5212,9 +5711,7 @@ class validatorSession_candidateId final : public Object {
     return ID;
   }
 
-  static object_storage<validatorSession_candidateId> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_candidateId>(p);
-  }
+  static object_ptr<validatorSession_candidateId> fetch(td::TlParser &p);
 
   explicit validatorSession_candidateId(td::TlParser &p);
 
@@ -5241,9 +5738,7 @@ class validatorSession_id final : public Object {
     return ID;
   }
 
-  static object_storage<validatorSession_id> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_id>(p);
-  }
+  static object_ptr<validatorSession_id> fetch(td::TlParser &p);
 
   explicit validatorSession_id(td::TlParser &p);
 
@@ -5257,7 +5752,7 @@ class validatorSession_id final : public Object {
 class validatorSession_Message: public Object {
  public:
 
-  static object_storage<validatorSession_Message> fetch(td::TlParser &p);
+  static object_ptr<validatorSession_Message> fetch(td::TlParser &p);
 };
 
 class validatorSession_message_startSession final : public validatorSession_Message {
@@ -5270,9 +5765,7 @@ class validatorSession_message_startSession final : public validatorSession_Mess
     return ID;
   }
 
-  static object_storage<validatorSession_message_startSession> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_message_startSession>(p);
-  }
+  static object_ptr<validatorSession_Message> fetch(td::TlParser &p);
 
   explicit validatorSession_message_startSession(td::TlParser &p);
 
@@ -5293,9 +5786,7 @@ class validatorSession_message_finishSession final : public validatorSession_Mes
     return ID;
   }
 
-  static object_storage<validatorSession_message_finishSession> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_message_finishSession>(p);
-  }
+  static object_ptr<validatorSession_Message> fetch(td::TlParser &p);
 
   explicit validatorSession_message_finishSession(td::TlParser &p);
 
@@ -5319,9 +5810,7 @@ class validatorSession_pong final : public Object {
     return ID;
   }
 
-  static object_storage<validatorSession_pong> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_pong>(p);
-  }
+  static object_ptr<validatorSession_pong> fetch(td::TlParser &p);
 
   explicit validatorSession_pong(td::TlParser &p);
 
@@ -5348,9 +5837,7 @@ class validatorSession_round_id final : public Object {
     return ID;
   }
 
-  static object_storage<validatorSession_round_id> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_round_id>(p);
-  }
+  static object_ptr<validatorSession_round_id> fetch(td::TlParser &p);
 
   explicit validatorSession_round_id(td::TlParser &p);
 
@@ -5364,7 +5851,7 @@ class validatorSession_round_id final : public Object {
 class validatorSession_round_Message: public Object {
  public:
 
-  static object_storage<validatorSession_round_Message> fetch(td::TlParser &p);
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
 };
 
 class validatorSession_message_submittedBlock final : public validatorSession_round_Message {
@@ -5383,9 +5870,7 @@ class validatorSession_message_submittedBlock final : public validatorSession_ro
     return ID;
   }
 
-  static object_storage<validatorSession_message_submittedBlock> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_message_submittedBlock>(p);
-  }
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
 
   explicit validatorSession_message_submittedBlock(td::TlParser &p);
 
@@ -5410,11 +5895,35 @@ class validatorSession_message_approvedBlock final : public validatorSession_rou
     return ID;
   }
 
-  static object_storage<validatorSession_message_approvedBlock> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_message_approvedBlock>(p);
-  }
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
 
   explicit validatorSession_message_approvedBlock(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class validatorSession_message_rejectedBlock final : public validatorSession_round_Message {
+ public:
+  std::int32_t round_;
+  td::UInt256 candidate_;
+  td::BufferSlice reason_;
+
+  validatorSession_message_rejectedBlock();
+
+  validatorSession_message_rejectedBlock(std::int32_t round_, td::UInt256 const &candidate_, td::BufferSlice &&reason_);
+
+  static const std::int32_t ID = -1786229141;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
+
+  explicit validatorSession_message_rejectedBlock(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -5438,9 +5947,7 @@ class validatorSession_message_commit final : public validatorSession_round_Mess
     return ID;
   }
 
-  static object_storage<validatorSession_message_commit> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_message_commit>(p);
-  }
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
 
   explicit validatorSession_message_commit(td::TlParser &p);
 
@@ -5466,9 +5973,7 @@ class validatorSession_message_vote final : public validatorSession_round_Messag
     return ID;
   }
 
-  static object_storage<validatorSession_message_vote> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_message_vote>(p);
-  }
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
 
   explicit validatorSession_message_vote(td::TlParser &p);
 
@@ -5494,9 +5999,7 @@ class validatorSession_message_precommit final : public validatorSession_round_M
     return ID;
   }
 
-  static object_storage<validatorSession_message_precommit> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_message_precommit>(p);
-  }
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
 
   explicit validatorSession_message_precommit(td::TlParser &p);
 
@@ -5521,9 +6024,7 @@ class validatorSession_message_empty final : public validatorSession_round_Messa
     return ID;
   }
 
-  static object_storage<validatorSession_message_empty> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_message_empty>(p);
-  }
+  static object_ptr<validatorSession_round_Message> fetch(td::TlParser &p);
 
   explicit validatorSession_message_empty(td::TlParser &p);
 
@@ -5548,9 +6049,7 @@ class validatorSession_candidate_id final : public Object {
     return ID;
   }
 
-  static object_storage<validatorSession_candidate_id> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_candidate_id>(p);
-  }
+  static object_ptr<validatorSession_candidate_id> fetch(td::TlParser &p);
 
   explicit validatorSession_candidate_id(td::TlParser &p);
 
@@ -5574,11 +6073,9 @@ class catchain_getBlock final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<catchain_BlockResult>;
+  using ReturnType = object_ptr<catchain_BlockResult>;
 
-  static object_storage<catchain_getBlock> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_getBlock>(p);
-  }
+  static object_ptr<catchain_getBlock> fetch(td::TlParser &p);
 
   explicit catchain_getBlock(td::TlParser &p);
 
@@ -5606,11 +6103,9 @@ class catchain_getBlockHistory final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<catchain_sent>;
+  using ReturnType = object_ptr<catchain_sent>;
 
-  static object_storage<catchain_getBlockHistory> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_getBlockHistory>(p);
-  }
+  static object_ptr<catchain_getBlockHistory> fetch(td::TlParser &p);
 
   explicit catchain_getBlockHistory(td::TlParser &p);
 
@@ -5636,11 +6131,9 @@ class catchain_getBlocks final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<catchain_sent>;
+  using ReturnType = object_ptr<catchain_sent>;
 
-  static object_storage<catchain_getBlocks> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_getBlocks>(p);
-  }
+  static object_ptr<catchain_getBlocks> fetch(td::TlParser &p);
 
   explicit catchain_getBlocks(td::TlParser &p);
 
@@ -5666,11 +6159,9 @@ class catchain_getDifference final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<catchain_Difference>;
+  using ReturnType = object_ptr<catchain_Difference>;
 
-  static object_storage<catchain_getDifference> fetch(td::TlParser &p) {
-    return create_tl_object<catchain_getDifference>(p);
-  }
+  static object_ptr<catchain_getDifference> fetch(td::TlParser &p);
 
   explicit catchain_getDifference(td::TlParser &p);
 
@@ -5697,11 +6188,9 @@ class dht_findNode final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<dht_nodes>;
+  using ReturnType = object_ptr<dht_nodes>;
 
-  static object_storage<dht_findNode> fetch(td::TlParser &p) {
-    return create_tl_object<dht_findNode>(p);
-  }
+  static object_ptr<dht_findNode> fetch(td::TlParser &p);
 
   explicit dht_findNode(td::TlParser &p);
 
@@ -5728,11 +6217,9 @@ class dht_findValue final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<dht_ValueResult>;
+  using ReturnType = object_ptr<dht_ValueResult>;
 
-  static object_storage<dht_findValue> fetch(td::TlParser &p) {
-    return create_tl_object<dht_findValue>(p);
-  }
+  static object_ptr<dht_findValue> fetch(td::TlParser &p);
 
   explicit dht_findValue(td::TlParser &p);
 
@@ -5755,11 +6242,9 @@ class dht_getSignedAddressList final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<adnl_node>;
+  using ReturnType = object_ptr<adnl_node>;
 
-  static object_storage<dht_getSignedAddressList> fetch(td::TlParser &p) {
-    return create_tl_object<dht_getSignedAddressList>(p);
-  }
+  static object_ptr<dht_getSignedAddressList> fetch(td::TlParser &p);
 
   explicit dht_getSignedAddressList(td::TlParser &p);
 
@@ -5785,11 +6270,9 @@ class dht_ping final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<dht_pong>;
+  using ReturnType = object_ptr<dht_pong>;
 
-  static object_storage<dht_ping> fetch(td::TlParser &p) {
-    return create_tl_object<dht_ping>(p);
-  }
+  static object_ptr<dht_ping> fetch(td::TlParser &p);
 
   explicit dht_ping(td::TlParser &p);
 
@@ -5804,11 +6287,11 @@ class dht_ping final : public Function {
 
 class dht_query final : public Function {
  public:
-  object_storage<dht_node> node_;
+  object_ptr<dht_node> node_;
 
   dht_query();
 
-  explicit dht_query(object_storage<dht_node> &&node_);
+  explicit dht_query(object_ptr<dht_node> &&node_);
 
   static const std::int32_t ID = 2102593385;
   std::int32_t get_id() const final {
@@ -5817,9 +6300,7 @@ class dht_query final : public Function {
 
   using ReturnType = bool;
 
-  static object_storage<dht_query> fetch(td::TlParser &p) {
-    return create_tl_object<dht_query>(p);
-  }
+  static object_ptr<dht_query> fetch(td::TlParser &p);
 
   explicit dht_query(td::TlParser &p);
 
@@ -5834,22 +6315,20 @@ class dht_query final : public Function {
 
 class dht_store final : public Function {
  public:
-  object_storage<dht_value> value_;
+  object_ptr<dht_value> value_;
 
   dht_store();
 
-  explicit dht_store(object_storage<dht_value> &&value_);
+  explicit dht_store(object_ptr<dht_value> &&value_);
 
   static const std::int32_t ID = 882065938;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<dht_stored>;
+  using ReturnType = object_ptr<dht_stored>;
 
-  static object_storage<dht_store> fetch(td::TlParser &p) {
-    return create_tl_object<dht_store>(p);
-  }
+  static object_ptr<dht_store> fetch(td::TlParser &p);
 
   explicit dht_store(td::TlParser &p);
 
@@ -5872,11 +6351,9 @@ class getTestObject final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<TestObject>;
+  using ReturnType = object_ptr<TestObject>;
 
-  static object_storage<getTestObject> fetch(td::TlParser &p) {
-    return create_tl_object<getTestObject>(p);
-  }
+  static object_ptr<getTestObject> fetch(td::TlParser &p);
 
   explicit getTestObject(td::TlParser &p);
 
@@ -5891,22 +6368,20 @@ class getTestObject final : public Function {
 
 class liteServer_debug_setVerbosity final : public Function {
  public:
-  object_storage<liteServer_debug_verbosity> verbosity_;
+  object_ptr<liteServer_debug_verbosity> verbosity_;
 
   liteServer_debug_setVerbosity();
 
-  explicit liteServer_debug_setVerbosity(object_storage<liteServer_debug_verbosity> &&verbosity_);
+  explicit liteServer_debug_setVerbosity(object_ptr<liteServer_debug_verbosity> &&verbosity_);
 
   static const std::int32_t ID = 462775286;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<liteServer_debug_verbosity>;
+  using ReturnType = object_ptr<liteServer_debug_verbosity>;
 
-  static object_storage<liteServer_debug_setVerbosity> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_debug_setVerbosity>(p);
-  }
+  static object_ptr<liteServer_debug_setVerbosity> fetch(td::TlParser &p);
 
   explicit liteServer_debug_setVerbosity(td::TlParser &p);
 
@@ -5921,23 +6396,21 @@ class liteServer_debug_setVerbosity final : public Function {
 
 class liteServer_getAccountState final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> id_;
-  object_storage<liteServer_accountId> account_;
+  object_ptr<tonNode_blockIdExt> id_;
+  object_ptr<liteServer_accountId> account_;
 
   liteServer_getAccountState();
 
-  liteServer_getAccountState(object_storage<tonNode_blockIdExt> &&id_, object_storage<liteServer_accountId> &&account_);
+  liteServer_getAccountState(object_ptr<tonNode_blockIdExt> &&id_, object_ptr<liteServer_accountId> &&account_);
 
   static const std::int32_t ID = 1804144165;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<liteServer_accountState>;
+  using ReturnType = object_ptr<liteServer_accountState>;
 
-  static object_storage<liteServer_getAccountState> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_getAccountState>(p);
-  }
+  static object_ptr<liteServer_getAccountState> fetch(td::TlParser &p);
 
   explicit liteServer_getAccountState(td::TlParser &p);
 
@@ -5950,26 +6423,80 @@ class liteServer_getAccountState final : public Function {
   static ReturnType fetch_result(td::TlParser &p);
 };
 
+class liteServer_getAllShardsInfo final : public Function {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+
+  liteServer_getAllShardsInfo();
+
+  explicit liteServer_getAllShardsInfo(object_ptr<tonNode_blockIdExt> &&id_);
+
+  static const std::int32_t ID = 1960050027;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  using ReturnType = object_ptr<liteServer_allShardsInfo>;
+
+  static object_ptr<liteServer_getAllShardsInfo> fetch(td::TlParser &p);
+
+  explicit liteServer_getAllShardsInfo(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+
+  static ReturnType fetch_result(td::TlParser &p);
+};
+
 class liteServer_getBlock final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> id_;
+  object_ptr<tonNode_blockIdExt> id_;
 
   liteServer_getBlock();
 
-  explicit liteServer_getBlock(object_storage<tonNode_blockIdExt> &&id_);
+  explicit liteServer_getBlock(object_ptr<tonNode_blockIdExt> &&id_);
 
   static const std::int32_t ID = 1668796173;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<liteServer_blockData>;
+  using ReturnType = object_ptr<liteServer_blockData>;
 
-  static object_storage<liteServer_getBlock> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_getBlock>(p);
-  }
+  static object_ptr<liteServer_getBlock> fetch(td::TlParser &p);
 
   explicit liteServer_getBlock(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+
+  static ReturnType fetch_result(td::TlParser &p);
+};
+
+class liteServer_getBlockHeader final : public Function {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  std::int32_t mode_;
+  mutable std::int32_t var0;
+
+  liteServer_getBlockHeader();
+
+  liteServer_getBlockHeader(object_ptr<tonNode_blockIdExt> &&id_, std::int32_t mode_);
+
+  static const std::int32_t ID = 569116318;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  using ReturnType = object_ptr<liteServer_blockHeader>;
+
+  static object_ptr<liteServer_getBlockHeader> fetch(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -5990,11 +6517,9 @@ class liteServer_getMasterchainInfo final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<liteServer_masterchainInfo>;
+  using ReturnType = object_ptr<liteServer_masterchainInfo>;
 
-  static object_storage<liteServer_getMasterchainInfo> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_getMasterchainInfo>(p);
-  }
+  static object_ptr<liteServer_getMasterchainInfo> fetch(td::TlParser &p);
 
   explicit liteServer_getMasterchainInfo(td::TlParser &p);
 
@@ -6007,24 +6532,53 @@ class liteServer_getMasterchainInfo final : public Function {
   static ReturnType fetch_result(td::TlParser &p);
 };
 
+class liteServer_getShardInfo final : public Function {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  std::int32_t workchain_;
+  std::int64_t shard_;
+  bool exact_;
+
+  liteServer_getShardInfo();
+
+  liteServer_getShardInfo(object_ptr<tonNode_blockIdExt> &&id_, std::int32_t workchain_, std::int64_t shard_, bool exact_);
+
+  static const std::int32_t ID = 1185084453;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  using ReturnType = object_ptr<liteServer_shardInfo>;
+
+  static object_ptr<liteServer_getShardInfo> fetch(td::TlParser &p);
+
+  explicit liteServer_getShardInfo(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+
+  static ReturnType fetch_result(td::TlParser &p);
+};
+
 class liteServer_getState final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> id_;
+  object_ptr<tonNode_blockIdExt> id_;
 
   liteServer_getState();
 
-  explicit liteServer_getState(object_storage<tonNode_blockIdExt> &&id_);
+  explicit liteServer_getState(object_ptr<tonNode_blockIdExt> &&id_);
 
   static const std::int32_t ID = -1167184202;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<liteServer_blockState>;
+  using ReturnType = object_ptr<liteServer_blockState>;
 
-  static object_storage<liteServer_getState> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_getState>(p);
-  }
+  static object_ptr<liteServer_getState> fetch(td::TlParser &p);
 
   explicit liteServer_getState(td::TlParser &p);
 
@@ -6047,11 +6601,9 @@ class liteServer_getTime final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<liteServer_currentTime>;
+  using ReturnType = object_ptr<liteServer_currentTime>;
 
-  static object_storage<liteServer_getTime> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_getTime>(p);
-  }
+  static object_ptr<liteServer_getTime> fetch(td::TlParser &p);
 
   explicit liteServer_getTime(td::TlParser &p);
 
@@ -6077,11 +6629,9 @@ class liteServer_query final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<Object>;
+  using ReturnType = object_ptr<Object>;
 
-  static object_storage<liteServer_query> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_query>(p);
-  }
+  static object_ptr<liteServer_query> fetch(td::TlParser &p);
 
   explicit liteServer_query(td::TlParser &p);
 
@@ -6107,11 +6657,9 @@ class liteServer_sendMessage final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<liteServer_sendMsgStatus>;
+  using ReturnType = object_ptr<liteServer_sendMsgStatus>;
 
-  static object_storage<liteServer_sendMessage> fetch(td::TlParser &p) {
-    return create_tl_object<liteServer_sendMessage>(p);
-  }
+  static object_ptr<liteServer_sendMessage> fetch(td::TlParser &p);
 
   explicit liteServer_sendMessage(td::TlParser &p);
 
@@ -6137,11 +6685,9 @@ class overlay_getBroadcast final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<overlay_Broadcast>;
+  using ReturnType = object_ptr<overlay_Broadcast>;
 
-  static object_storage<overlay_getBroadcast> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_getBroadcast>(p);
-  }
+  static object_ptr<overlay_getBroadcast> fetch(td::TlParser &p);
 
   explicit overlay_getBroadcast(td::TlParser &p);
 
@@ -6156,22 +6702,20 @@ class overlay_getBroadcast final : public Function {
 
 class overlay_getBroadcastList final : public Function {
  public:
-  object_storage<overlay_broadcastList> list_;
+  object_ptr<overlay_broadcastList> list_;
 
   overlay_getBroadcastList();
 
-  explicit overlay_getBroadcastList(object_storage<overlay_broadcastList> &&list_);
+  explicit overlay_getBroadcastList(object_ptr<overlay_broadcastList> &&list_);
 
   static const std::int32_t ID = 1109141562;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<overlay_broadcastList>;
+  using ReturnType = object_ptr<overlay_broadcastList>;
 
-  static object_storage<overlay_getBroadcastList> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_getBroadcastList>(p);
-  }
+  static object_ptr<overlay_getBroadcastList> fetch(td::TlParser &p);
 
   explicit overlay_getBroadcastList(td::TlParser &p);
 
@@ -6186,22 +6730,20 @@ class overlay_getBroadcastList final : public Function {
 
 class overlay_getRandomPeers final : public Function {
  public:
-  object_storage<overlay_nodes> peers_;
+  object_ptr<overlay_nodes> peers_;
 
   overlay_getRandomPeers();
 
-  explicit overlay_getRandomPeers(object_storage<overlay_nodes> &&peers_);
+  explicit overlay_getRandomPeers(object_ptr<overlay_nodes> &&peers_);
 
   static const std::int32_t ID = 1223582891;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<overlay_nodes>;
+  using ReturnType = object_ptr<overlay_nodes>;
 
-  static object_storage<overlay_getRandomPeers> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_getRandomPeers>(p);
-  }
+  static object_ptr<overlay_getRandomPeers> fetch(td::TlParser &p);
 
   explicit overlay_getRandomPeers(td::TlParser &p);
 
@@ -6229,9 +6771,7 @@ class overlay_query final : public Function {
 
   using ReturnType = bool;
 
-  static object_storage<overlay_query> fetch(td::TlParser &p) {
-    return create_tl_object<overlay_query>(p);
-  }
+  static object_ptr<overlay_query> fetch(td::TlParser &p);
 
   explicit overlay_query(td::TlParser &p);
 
@@ -6257,11 +6797,9 @@ class tcp_ping final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<tcp_pong>;
+  using ReturnType = object_ptr<tcp_pong>;
 
-  static object_storage<tcp_ping> fetch(td::TlParser &p) {
-    return create_tl_object<tcp_ping>(p);
-  }
+  static object_ptr<tcp_ping> fetch(td::TlParser &p);
 
   explicit tcp_ping(td::TlParser &p);
 
@@ -6276,22 +6814,20 @@ class tcp_ping final : public Function {
 
 class tonNode_downloadBlock final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> block_;
+  object_ptr<tonNode_blockIdExt> block_;
 
   tonNode_downloadBlock();
 
-  explicit tonNode_downloadBlock(object_storage<tonNode_blockIdExt> &&block_);
+  explicit tonNode_downloadBlock(object_ptr<tonNode_blockIdExt> &&block_);
 
   static const std::int32_t ID = -495814205;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<tonNode_data>;
+  using ReturnType = object_ptr<tonNode_data>;
 
-  static object_storage<tonNode_downloadBlock> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_downloadBlock>(p);
-  }
+  static object_ptr<tonNode_downloadBlock> fetch(td::TlParser &p);
 
   explicit tonNode_downloadBlock(td::TlParser &p);
 
@@ -6306,22 +6842,20 @@ class tonNode_downloadBlock final : public Function {
 
 class tonNode_downloadBlockProof final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> block_;
+  object_ptr<tonNode_blockIdExt> block_;
 
   tonNode_downloadBlockProof();
 
-  explicit tonNode_downloadBlockProof(object_storage<tonNode_blockIdExt> &&block_);
+  explicit tonNode_downloadBlockProof(object_ptr<tonNode_blockIdExt> &&block_);
 
   static const std::int32_t ID = 1272334218;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<tonNode_data>;
+  using ReturnType = object_ptr<tonNode_data>;
 
-  static object_storage<tonNode_downloadBlockProof> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_downloadBlockProof>(p);
-  }
+  static object_ptr<tonNode_downloadBlockProof> fetch(td::TlParser &p);
 
   explicit tonNode_downloadBlockProof(td::TlParser &p);
 
@@ -6336,22 +6870,20 @@ class tonNode_downloadBlockProof final : public Function {
 
 class tonNode_downloadBlockProofLink final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> block_;
+  object_ptr<tonNode_blockIdExt> block_;
 
   tonNode_downloadBlockProofLink();
 
-  explicit tonNode_downloadBlockProofLink(object_storage<tonNode_blockIdExt> &&block_);
+  explicit tonNode_downloadBlockProofLink(object_ptr<tonNode_blockIdExt> &&block_);
 
   static const std::int32_t ID = 632488134;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<tonNode_data>;
+  using ReturnType = object_ptr<tonNode_data>;
 
-  static object_storage<tonNode_downloadBlockProofLink> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_downloadBlockProofLink>(p);
-  }
+  static object_ptr<tonNode_downloadBlockProofLink> fetch(td::TlParser &p);
 
   explicit tonNode_downloadBlockProofLink(td::TlParser &p);
 
@@ -6366,22 +6898,20 @@ class tonNode_downloadBlockProofLink final : public Function {
 
 class tonNode_downloadState final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> block_;
+  object_ptr<tonNode_blockIdExt> block_;
 
   tonNode_downloadState();
 
-  explicit tonNode_downloadState(object_storage<tonNode_blockIdExt> &&block_);
+  explicit tonNode_downloadState(object_ptr<tonNode_blockIdExt> &&block_);
 
   static const std::int32_t ID = -738248612;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<tonNode_data>;
+  using ReturnType = object_ptr<tonNode_data>;
 
-  static object_storage<tonNode_downloadState> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_downloadState>(p);
-  }
+  static object_ptr<tonNode_downloadState> fetch(td::TlParser &p);
 
   explicit tonNode_downloadState(td::TlParser &p);
 
@@ -6396,22 +6926,20 @@ class tonNode_downloadState final : public Function {
 
 class tonNode_getNextBlockDescription final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> prev_block_;
+  object_ptr<tonNode_blockIdExt> prev_block_;
 
   tonNode_getNextBlockDescription();
 
-  explicit tonNode_getNextBlockDescription(object_storage<tonNode_blockIdExt> &&prev_block_);
+  explicit tonNode_getNextBlockDescription(object_ptr<tonNode_blockIdExt> &&prev_block_);
 
   static const std::int32_t ID = 341160179;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<tonNode_BlockDescription>;
+  using ReturnType = object_ptr<tonNode_BlockDescription>;
 
-  static object_storage<tonNode_getNextBlockDescription> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_getNextBlockDescription>(p);
-  }
+  static object_ptr<tonNode_getNextBlockDescription> fetch(td::TlParser &p);
 
   explicit tonNode_getNextBlockDescription(td::TlParser &p);
 
@@ -6426,22 +6954,20 @@ class tonNode_getNextBlockDescription final : public Function {
 
 class tonNode_prepareBlock final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> block_;
+  object_ptr<tonNode_blockIdExt> block_;
 
   tonNode_prepareBlock();
 
-  explicit tonNode_prepareBlock(object_storage<tonNode_blockIdExt> &&block_);
+  explicit tonNode_prepareBlock(object_ptr<tonNode_blockIdExt> &&block_);
 
   static const std::int32_t ID = 1973649230;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<tonNode_Prepared>;
+  using ReturnType = object_ptr<tonNode_Prepared>;
 
-  static object_storage<tonNode_prepareBlock> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_prepareBlock>(p);
-  }
+  static object_ptr<tonNode_prepareBlock> fetch(td::TlParser &p);
 
   explicit tonNode_prepareBlock(td::TlParser &p);
 
@@ -6456,23 +6982,21 @@ class tonNode_prepareBlock final : public Function {
 
 class tonNode_prepareBlockProof final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> block_;
+  object_ptr<tonNode_blockIdExt> block_;
   bool allow_partial_;
 
   tonNode_prepareBlockProof();
 
-  tonNode_prepareBlockProof(object_storage<tonNode_blockIdExt> &&block_, bool allow_partial_);
+  tonNode_prepareBlockProof(object_ptr<tonNode_blockIdExt> &&block_, bool allow_partial_);
 
   static const std::int32_t ID = -2024000760;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<tonNode_PreparedProof>;
+  using ReturnType = object_ptr<tonNode_PreparedProof>;
 
-  static object_storage<tonNode_prepareBlockProof> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_prepareBlockProof>(p);
-  }
+  static object_ptr<tonNode_prepareBlockProof> fetch(td::TlParser &p);
 
   explicit tonNode_prepareBlockProof(td::TlParser &p);
 
@@ -6487,22 +7011,20 @@ class tonNode_prepareBlockProof final : public Function {
 
 class tonNode_prepareState final : public Function {
  public:
-  object_storage<tonNode_blockIdExt> block_;
+  object_ptr<tonNode_blockIdExt> block_;
 
   tonNode_prepareState();
 
-  explicit tonNode_prepareState(object_storage<tonNode_blockIdExt> &&block_);
+  explicit tonNode_prepareState(object_ptr<tonNode_blockIdExt> &&block_);
 
   static const std::int32_t ID = -381168335;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<tonNode_PreparedState>;
+  using ReturnType = object_ptr<tonNode_PreparedState>;
 
-  static object_storage<tonNode_prepareState> fetch(td::TlParser &p) {
-    return create_tl_object<tonNode_prepareState>(p);
-  }
+  static object_ptr<tonNode_prepareState> fetch(td::TlParser &p);
 
   explicit tonNode_prepareState(td::TlParser &p);
 
@@ -6518,22 +7040,20 @@ class tonNode_prepareState final : public Function {
 class validatorSession_downloadCandidate final : public Function {
  public:
   std::int32_t round_;
-  object_storage<validatorSession_candidateId> id_;
+  object_ptr<validatorSession_candidateId> id_;
 
   validatorSession_downloadCandidate();
 
-  validatorSession_downloadCandidate(std::int32_t round_, object_storage<validatorSession_candidateId> &&id_);
+  validatorSession_downloadCandidate(std::int32_t round_, object_ptr<validatorSession_candidateId> &&id_);
 
   static const std::int32_t ID = -520274443;
   std::int32_t get_id() const final {
     return ID;
   }
 
-  using ReturnType = object_storage<validatorSession_candidate>;
+  using ReturnType = object_ptr<validatorSession_candidate>;
 
-  static object_storage<validatorSession_downloadCandidate> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_downloadCandidate>(p);
-  }
+  static object_ptr<validatorSession_downloadCandidate> fetch(td::TlParser &p);
 
   explicit validatorSession_downloadCandidate(td::TlParser &p);
 
@@ -6559,11 +7079,9 @@ class validatorSession_ping final : public Function {
     return ID;
   }
 
-  using ReturnType = object_storage<validatorSession_pong>;
+  using ReturnType = object_ptr<validatorSession_pong>;
 
-  static object_storage<validatorSession_ping> fetch(td::TlParser &p) {
-    return create_tl_object<validatorSession_ping>(p);
-  }
+  static object_ptr<validatorSession_ping> fetch(td::TlParser &p);
 
   explicit validatorSession_ping(td::TlParser &p);
 

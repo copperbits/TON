@@ -1,9 +1,9 @@
 #include "openssl/rand.hpp"
 
+#include "td/utils/common.h"
+
 #include <openssl/rand.h>
 #include <openssl/opensslv.h>
-
-#include "td/utils/common.h"
 
 namespace prng {
 int os_get_random_bytes(void *buf, int n);

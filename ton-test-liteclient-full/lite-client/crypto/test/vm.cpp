@@ -2,7 +2,6 @@
 #include "vm/cp0.h"
 #include "vm/dict.h"
 #include "fift/utils.h"
-#include "vm/cellops.h"
 #include "common/bigint.hpp"
 
 #include "td/utils/tests.h"

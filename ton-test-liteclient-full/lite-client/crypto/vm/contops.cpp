@@ -4,8 +4,8 @@
 #include "vm/opctable.h"
 #include "vm/stack.hpp"
 #include "vm/continuation.h"
-#include "vm/excno.hpp"
 #include "vm/cellops.h"
+#include "vm/excno.hpp"
 
 namespace vm {
 

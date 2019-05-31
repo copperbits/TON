@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
 
+set (BUILD_CREATE_STATE 0)
+
 if (NOT OPENSSL_FOUND)
   find_package(OpenSSL REQUIRED)
 endif()
@@ -244,4 +246,14 @@ if (NOT CMAKE_CROSSCOMPILING)
     DEPENDS tlbc block/block.tlb
   )
   add_dependencies(ton_block tlb_generate_block)
+endif()
+
+if (BUILD_CREATE_STATE) 
+  add_executable(create-state block/create-state.cpp)
+  target_include_directories(create-state PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
+  target_link_libraries(create-state PUBLIC ton_crypto fift-lib ton_block adnl ton_validator validator_disk ton_validator)
+  if (WINGETOPT_FOUND)
+    target_link_libraries_system(create-state wingetopt)
+  endif()
 endif()
