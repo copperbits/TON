@@ -16,9 +16,9 @@ This is open development community and **enthusiasts research place**. We will p
 
 ## TON source code
 
-Code was downloaded from https://test.ton.org/download.html 
+Code was downloaded from https://test.ton.org/download.html
 
-Last codebase update was performed on May 30, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`14c91834381fe023cf909fb906377c04129d3fb4fb7f93ba58d53139e48dffed`.
+Last codebase update was performed on May 31, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`c01128d483c6c8c1add32019bdafb3d6b002ba60694c0ab8481597827014cc4c`.
 
 ---
 ## Table of contents:

@@ -18,12 +18,15 @@
 #include "vm/dict.h"
 #include "vm/boc.h"
 
+#include "vm/box.hpp"
+
 #include "block/block.h"
 
 #include "td/utils/filesystem.h"
 #include "td/utils/optional.h"
 #include "td/utils/PathView.h"
 #include "td/utils/port/thread.h"
+#include "td/utils/port/Stat.h"
 #include "td/utils/Timer.h"
 #include "td/utils/tl_helpers.h"
 
@@ -494,7 +497,6 @@ void interpret_str_remove_trailing_int(vm::Stack& stack, int arg) {
   s.resize(s.find_last_not_of(x) + 1);  // if not found, this expression will be 0
   stack.push_string(std::move(s));
 }
-  
 
 void interpret_bytes_len(vm::Stack& stack) {
   stack.push_smallint((long long)stack.pop_bytes().size());
@@ -838,6 +840,33 @@ void interpret_fetch_ref(vm::Stack& stack, int mode) {
   }
 }
 
+// Box create/fetch/store operations
+
+void interpret_hole(vm::Stack& stack) {
+  stack.push_box(Ref<vm::Box>{true});
+}
+
+void interpret_box(vm::Stack& stack) {
+  stack.push_box(Ref<vm::Box>{true, stack.pop()});
+}
+
+void interpret_box_fetch(vm::Stack& stack) {
+  stack.push(stack.pop_box()->get());
+}
+
+void interpret_box_store(vm::Stack& stack) {
+  auto box = stack.pop_box();
+  box->set(stack.pop());
+}
+
+void interpret_push_null(vm::Stack& stack) {
+  stack.push({});
+}
+
+void interpret_is_null(vm::Stack& stack) {
+  stack.push_bool(stack.pop().empty());
+}
+
 // BoC (de)serialization
 
 void interpret_boc_serialize(vm::Stack& stack) {
@@ -884,9 +913,14 @@ void interpret_read_file(IntCtx& ctx) {
 }
 
 void interpret_read_file_part(IntCtx& ctx) {
+  auto size = ctx.stack.pop_long_range(std::numeric_limits<long long>::max());
+  auto offset = ctx.stack.pop_long_range(std::numeric_limits<long long>::max());
   std::string filename = ctx.stack.pop_string();
-  throw IntError{"read file part is not implemented yet"};
-  // TODO: auto r_data = td::read_file_str(filename, size, offset);
+  auto r_data = td::read_file_str(filename, size, offset);
+  if (r_data.is_error()) {
+    throw IntError{PSTRING() << "error reading file `" << filename << "`: " << r_data.error()};
+  }
+  ctx.stack.push_bytes(r_data.move_as_ok());
 }
 
 void interpret_write_file(IntCtx& ctx) {
@@ -896,6 +930,12 @@ void interpret_write_file(IntCtx& ctx) {
   if (status.is_error()) {
     throw IntError{PSTRING() << "error writing file `" << filename << "`: " << status.error()};
   }
+}
+
+void interpret_file_exists(IntCtx& ctx) {
+  std::string filename = ctx.stack.pop_string();
+  auto res = td::stat(filename);
+  ctx.stack.push_bool(res.is_ok());
 }
 
 // custom and crypto
@@ -1985,6 +2025,7 @@ void init_words_common(Dictionary& d) {
   d.def_ctx_word("file>B ", interpret_read_file);
   d.def_ctx_word("filepart>B ", interpret_read_file_part);
   d.def_ctx_word("B>file ", interpret_write_file);
+  d.def_ctx_word("file-exists? ", interpret_file_exists);
   // custom & crypto
   d.def_stack_word("now ", interpret_now);
   d.def_stack_word("newkeypair ", interpret_new_keypair);
@@ -2013,6 +2054,13 @@ void init_words_common(Dictionary& d) {
   d.def_active_word("B{", interpret_bytes_hex_literal);
   d.def_active_word("x{", interpret_bitstring_hex_literal);
   d.def_active_word("b{", interpret_bitstring_binary_literal);
+  // boxes/holes/variables
+  d.def_stack_word("hole ", interpret_hole);
+  d.def_stack_word("box ", interpret_box);
+  d.def_stack_word("@ ", interpret_box_fetch);
+  d.def_stack_word("! ", interpret_box_store);
+  d.def_stack_word("null ", interpret_push_null);
+  d.def_stack_word("null? ", interpret_is_null);
   // execution control
   d.def_ctx_word("execute ", interpret_execute);
   d.def_ctx_word("times ", interpret_execute_times);

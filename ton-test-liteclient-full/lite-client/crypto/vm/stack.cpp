@@ -1,5 +1,6 @@
 #include "vm/stack.hpp"
 #include "vm/continuation.h"
+#include "vm/box.hpp"
 
 namespace td {
 template class td::Cnt<std::string>;
@@ -55,6 +56,11 @@ std::string StackEntry::to_string() const {
       return "\"" + as_string() + "\"";
     case t_bytes:
       return str_to_hex(as_bytes(), "BYTES:");
+    case t_box: {
+      std::ostringstream s;
+      s << "Box{" << (const void*)&*ref << "}";
+      return s.str();
+    }
     case t_object: {
       std::ostringstream s;
       s << "Object{" << (const void*)&*ref << "}";
@@ -71,12 +77,23 @@ StackEntry::StackEntry(Ref<Stack> stack_ref) : ref(std::move(stack_ref)), tp(t_s
 StackEntry::StackEntry(Ref<Continuation> cont_ref) : ref(std::move(cont_ref)), tp(t_vmcont) {
 }
 
-Ref<Continuation> StackEntry::as_cont() const& {
-  return tp == t_vmcont ? static_cast<Ref<Continuation>>(ref) : Ref<Continuation>{};
+Ref<Continuation> StackEntry::as_cont() const & {
+  return as<Continuation, t_vmcont>();
 }
 
 Ref<Continuation> StackEntry::as_cont() && {
-  return tp == t_vmcont ? static_cast<Ref<Continuation>>(std::move(ref)) : Ref<Continuation>{};
+  return move_as<Continuation, t_vmcont>();
+}
+
+StackEntry::StackEntry(Ref<Box> box_ref) : ref(std::move(box_ref)), tp(t_box) {
+}
+
+Ref<Box> StackEntry::as_box() const & {
+  return as<Box, t_box>();
+}
+
+Ref<Box> StackEntry::as_box() && {
+  return move_as<Box, t_box>();
 }
 
 Stack::Stack(const Stack& old_stack, unsigned copy_elem, unsigned skip_top) {
@@ -210,6 +227,15 @@ Ref<Continuation> Stack::pop_cont() {
   return res;
 }
 
+Ref<Box> Stack::pop_box() {
+  check_underflow(1);
+  auto res = pop().as_box();
+  if (res.is_null()) {
+    throw VmError{Excno::type_chk, "not a box"};
+  }
+  return res;
+}
+
 void Stack::push_int(td::RefInt256 val) {
   if (!(*val)->signed_fits_bits(257)) {
     throw VmError{Excno::int_ov};
@@ -255,6 +281,10 @@ void Stack::push_bool(bool val) {
 
 void Stack::push_cont(Ref<Continuation> cont) {
   push(std::move(cont));
+}
+
+void Stack::push_box(Ref<Box> box) {
+  push(std::move(box));
 }
 
 Ref<Stack> Stack::split_top(unsigned top_cnt, unsigned drop_cnt) {

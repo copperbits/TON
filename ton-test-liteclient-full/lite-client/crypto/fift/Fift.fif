@@ -10,6 +10,7 @@
 { swap ({) over 2+ -roll swap (compile) (}) } : does
 { 1 'nop does create } : constant
 { 2 'nop does create } : 2constant
+{ hole constant } : variable
 10 constant ten
 { bl word 1 { find 0= abort"word not found" } } :: (')
 { bl word find not abort"-?" 0 swap } :: [compile]
@@ -41,3 +42,8 @@
 { find 0<> dup ' nip if } : (def?)
 { bl word 1 ' (def?) } :: def?
 { bl word 1 { (def?) not } } :: undef?
+{ tuck @ + swap ! } : +!
+{ tuck @ swap - swap ! } : -!
+{ 1 swap +! } : 1+!
+{ -1 swap +! } : 1-!
+{ null swap ! } : null!
