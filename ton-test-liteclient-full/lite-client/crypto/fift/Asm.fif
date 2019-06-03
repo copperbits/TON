@@ -137,6 +137,7 @@ x{53} @Defop(s,s) PUSH2
 { <b x{55} s, rot 1- 4 u, swap 1- 4 u, @addopb } : BLKSWAP
 { dup { 1 swap BLKSWAP } { drop } cond } : ROLL
 { dup { 1 BLKSWAP } { drop } cond } dup : -ROLL : ROLLREV
+x{5513} dup @Defop 2ROT @Defop ROT2
 
 // exotic stack primitives
 x{58} @Defop ROT
@@ -150,8 +151,8 @@ x{5D} dup @Defop 2OVER @Defop OVER2
 { over 0= abort"first argument must be non-zero"
   <b x{5F} s, rot 4 u, swap 4 u, @addopb } : BLKPUSH
 x{60} dup @Defop PICK @Defop PUSHX
-x{61} @Defop ROLL
-x{62} dup @Defop -ROLL @Defop ROLLREV
+x{61} @Defop ROLLX
+x{62} dup @Defop -ROLLX @Defop ROLLREVX
 x{63} @Defop BLKSWX
 x{64} @Defop REVX
 x{65} @Defop DROPX
@@ -161,6 +162,49 @@ x{68} @Defop DEPTH
 x{69} @Defop CHKDEPTH
 x{6A} @Defop ONLYTOPX
 x{6B} @Defop ONLYX
+
+// null primitives
+x{6D} dup @Defop NULL @Defop PUSHNULL
+x{6E} @Defop ISNULL
+// tuple primitives
+x{6F0} @Defop(4u) TUPLE
+x{6F00} @Defop NIL
+x{6F01} @Defop SINGLE
+x{6F02} dup @Defop PAIR @Defop CONS 
+x{6F03} @Defop TRIPLE
+x{6F1} @Defop(4u) INDEX
+x{6F10} dup @Defop FIRST @Defop CAR
+x{6F11} dup @Defop SECOND @Defop CDR
+x{6F12} @Defop THIRD
+x{6F2} @Defop(4u) UNTUPLE
+x{6F21} @Defop UNSINGLE
+x{6F22} dup @Defop UNPAIR @Defop UNCONS
+x{6F23} @Defop UNTRIPLE
+x{6F3} @Defop(4u) UNPACKFIRST
+x{6F30} @Defop CHKTUPLE
+x{6F4} @Defop(4u) EXPLODE
+x{6F5} @Defop(4u) SETINDEX
+x{6F50} @Defop SETFIRST
+x{6F51} @Defop SETSECOND
+x{6F52} @Defop SETTHIRD
+x{6F80} @Defop TUPLEVAR
+x{6F81} @Defop INDEXVAR
+x{6F82} @Defop UNTUPLEVAR
+x{6F83} @Defop UNPACKFIRSTVAR
+x{6F84} @Defop EXPLODEVAR
+x{6F85} @Defop SETINDEXVAR
+x{6F88} @Defop TLEN
+x{6F89} @Defop QTLEN
+x{6F8A} @Defop ISTUPLE
+x{6F8B} @Defop LAST
+x{6F8C} dup @Defop TPUSH @Defop COMMA
+x{6F8D} @Defop TPOP
+{ <b x{6FB} s, rot 2 u, swap 2 u, @addopb } : INDEX2
+x{6FB4} @Defop CADR
+x{6FB5} @Defop CDDR
+{ <b x{6FE_} s, 3 roll 2 u, rot 2 u, swap 2 u, @addopb } : INDEX3
+x{6FD4} @Defop CADDR
+x{6FD5} @Defop CDDDR
 
 // integer constants
 x{70} dup @Defop ZERO @Defop FALSE
@@ -498,9 +542,12 @@ x{D743} @Defop SCHKBITREFS
 x{D745} @Defop SCHKBITSQ
 x{D746} @Defop SCHKREFSQ
 x{D747} @Defop SCHKBITREFSQ
+x{D748} @Defop PLDREFVAR
 x{D749} @Defop SBITS
 x{D74A} @Defop SREFS
 x{D74B} @Defop SBITREFS
+{ <b x{D74E_} s, swap 2 u, @addopb } : PLDREFIDX
+x{D74C} @Defop PLDREF
 x{D750} @Defop LDILE4
 x{D751} @Defop LDULE4
 x{D752} @Defop LDILE8
@@ -677,7 +724,7 @@ x{EDF9} @Defop BOOLEVAL
   } cond
 @addopb } dup : CALL : CALLDICT
 { <b x{F16_} s, swap 14 u, @addopb } dup : JMP : JMPDICT
-{ <b x{F1A_} s, swap 14 u, @addopb } : PREPARE
+{ <b x{F1A_} s, swap 14 u, @addopb } dup : PREPARE : PREPAREDICT
 //
 // throwing and handling exceptions
 { dup 6 ufits

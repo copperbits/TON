@@ -943,6 +943,7 @@ void TestNode::got_account_state_web(ton::BlockIdExt blk, ton::BlockIdExt shard_
     std::ostringstream outp;
     block::gen::t_Account.print_ref(outp, root);
     vm::load_cell_slice(root).print_rec(outp);
+
     response -> write("{'result':'"+outp.str()+"'}");
   }
 }

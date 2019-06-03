@@ -127,6 +127,12 @@ class db_filedb_Key;
 
 class db_filedb_value;
 
+class db_lt_Key;
+
+class db_lt_desc_value;
+
+class db_lt_el_value;
+
 class db_root_config;
 
 class db_root_dbDescription;
@@ -194,6 +200,8 @@ class liteServer_masterchainInfo;
 class liteServer_sendMsgStatus;
 
 class liteServer_shardInfo;
+
+class liteServer_transactionInfo;
 
 class liteServer_debug_verbosity;
 
@@ -2635,6 +2643,115 @@ class db_filedb_value final : public Object {
   void store(td::TlStorerToString &s, const char *field_name) const final;
 };
 
+class db_lt_Key: public Object {
+ public:
+
+  static object_ptr<db_lt_Key> fetch(td::TlParser &p);
+};
+
+class db_lt_el_key final : public db_lt_Key {
+ public:
+  std::int32_t workchain_;
+  std::int64_t shard_;
+  std::int32_t idx_;
+
+  db_lt_el_key();
+
+  db_lt_el_key(std::int32_t workchain_, std::int64_t shard_, std::int32_t idx_);
+
+  static const std::int32_t ID = -1523442974;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_lt_Key> fetch(td::TlParser &p);
+
+  explicit db_lt_el_key(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_lt_desc_key final : public db_lt_Key {
+ public:
+  std::int32_t workchain_;
+  std::int64_t shard_;
+
+  db_lt_desc_key();
+
+  db_lt_desc_key(std::int32_t workchain_, std::int64_t shard_);
+
+  static const std::int32_t ID = -236722287;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_lt_Key> fetch(td::TlParser &p);
+
+  explicit db_lt_desc_key(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_lt_desc_value final : public Object {
+ public:
+  std::int32_t first_idx_;
+  std::int32_t last_idx_;
+  std::int32_t last_seqno_;
+  std::int64_t last_lt_;
+
+  db_lt_desc_value();
+
+  db_lt_desc_value(std::int32_t first_idx_, std::int32_t last_idx_, std::int32_t last_seqno_, std::int64_t last_lt_);
+
+  static const std::int32_t ID = -77252099;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_lt_desc_value> fetch(td::TlParser &p);
+
+  explicit db_lt_desc_value(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class db_lt_el_value final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  std::int64_t lt_;
+
+  db_lt_el_value();
+
+  db_lt_el_value(object_ptr<tonNode_blockIdExt> &&id_, std::int64_t lt_);
+
+  static const std::int32_t ID = -1641761175;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<db_lt_el_value> fetch(td::TlParser &p);
+
+  explicit db_lt_el_value(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
 class db_root_config final : public Object {
  public:
   std::int32_t celldb_version_;
@@ -3741,6 +3858,32 @@ class liteServer_shardInfo final : public Object {
   static object_ptr<liteServer_shardInfo> fetch(td::TlParser &p);
 
   explicit liteServer_shardInfo(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+};
+
+class liteServer_transactionInfo final : public Object {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  td::BufferSlice proof_;
+  td::BufferSlice transaction_;
+
+  liteServer_transactionInfo();
+
+  liteServer_transactionInfo(object_ptr<tonNode_blockIdExt> &&id_, td::BufferSlice &&proof_, td::BufferSlice &&transaction_);
+
+  static const std::int32_t ID = 249490759;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  static object_ptr<liteServer_transactionInfo> fetch(td::TlParser &p);
+
+  explicit liteServer_transactionInfo(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 
@@ -6522,6 +6665,36 @@ class liteServer_getMasterchainInfo final : public Function {
   static object_ptr<liteServer_getMasterchainInfo> fetch(td::TlParser &p);
 
   explicit liteServer_getMasterchainInfo(td::TlParser &p);
+
+  void store(td::TlStorerCalcLength &s) const final;
+
+  void store(td::TlStorerUnsafe &s) const final;
+
+  void store(td::TlStorerToString &s, const char *field_name) const final;
+
+  static ReturnType fetch_result(td::TlParser &p);
+};
+
+class liteServer_getOneTransaction final : public Function {
+ public:
+  object_ptr<tonNode_blockIdExt> id_;
+  object_ptr<liteServer_accountId> account_;
+  std::int64_t lt_;
+
+  liteServer_getOneTransaction();
+
+  liteServer_getOneTransaction(object_ptr<tonNode_blockIdExt> &&id_, object_ptr<liteServer_accountId> &&account_, std::int64_t lt_);
+
+  static const std::int32_t ID = -737205014;
+  std::int32_t get_id() const final {
+    return ID;
+  }
+
+  using ReturnType = object_ptr<liteServer_transactionInfo>;
+
+  static object_ptr<liteServer_getOneTransaction> fetch(td::TlParser &p);
+
+  explicit liteServer_getOneTransaction(td::TlParser &p);
 
   void store(td::TlStorerCalcLength &s) const final;
 

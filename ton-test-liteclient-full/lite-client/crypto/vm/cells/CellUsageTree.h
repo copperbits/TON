@@ -45,7 +45,7 @@ class CellUsageTree : public std::enable_shared_from_this<CellUsageTree> {
     bool is_loaded{false};
     bool has_mark{false};
     NodeId parent{0};
-    std::array<td::uint32, CellTraits::max_refs> children{0};
+    std::array<td::uint32, CellTraits::max_refs> children{};
   };
   bool use_mark_{false};
   std::vector<Node> nodes_{2};
