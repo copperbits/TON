@@ -43,6 +43,11 @@ void WordList::close() {
   list.shrink_to_fit();
 }
 
+WordList& WordList::append(const std::vector<Ref<WordDef>>& other) {
+  list.insert(list.end(), other.begin(), other.end());
+  return *this;
+}
+
 //
 // WordRef
 //
@@ -53,7 +58,7 @@ WordRef::WordRef(StackWordFunc func) : def(Ref<StackWord>{true, std::move(func)}
 }
 WordRef::WordRef(CtxWordFunc func, bool _act) : def(Ref<CtxWord>{true, std::move(func)}), active(_act) {
 }
-Ref<WordDef> WordRef::get_def() const& {
+Ref<WordDef> WordRef::get_def() const & {
   return def;
 }
 Ref<WordDef> WordRef::get_def() && {

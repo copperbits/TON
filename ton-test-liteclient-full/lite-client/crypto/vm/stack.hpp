@@ -29,15 +29,33 @@ using td::RefAny;
 const char* get_exception_msg(Excno exc_no);
 std::string str_to_hex(std::string data, std::string prefix = "");
 
+class StackEntry;
 class Stack;
 class Continuation;
+class Box;
+
+using Tuple = td::Cnt<std::vector<StackEntry>>;
 
 extern struct from_object_t {
 } from_object;
 
 class StackEntry {
  public:
-  enum Type { t_null, t_int, t_cell, t_builder, t_slice, t_vmcont, t_stack, t_string, t_bytes, t_bitstring, t_object };
+  enum Type {
+    t_null,
+    t_int,
+    t_cell,
+    t_builder,
+    t_slice,
+    t_vmcont,
+    t_stack,
+    t_string,
+    t_bytes,
+    t_bitstring,
+    t_box,
+    t_tuple,
+    t_object
+  };
 
  private:
   RefAny ref;
@@ -62,6 +80,8 @@ class StackEntry {
   }
   StackEntry(Ref<Stack> stack_ref);
   StackEntry(Ref<Continuation> cont_ref);
+  StackEntry(Ref<Box> box_ref);
+  StackEntry(Ref<Tuple> tuple_ref);
   StackEntry(const StackEntry& se) noexcept : ref(se.ref), tp(se.tp) {
   }
   StackEntry(StackEntry&& se) noexcept : ref(std::move(se.ref)), tp(se.tp) {
@@ -86,6 +106,12 @@ class StackEntry {
     tp = t_null;
     return *this;
   }
+  bool empty() const {
+    return tp == t_null;
+  }
+  bool is_tuple() const {
+    return tp == t_tuple;
+  }
   void swap(StackEntry& se) {
     ref.swap(se.ref);
     std::swap(tp, se.tp);
@@ -93,53 +119,78 @@ class StackEntry {
   Type type() const {
     return tp;
   }
+
+ private:
+  template <typename T, Type tag>
+  Ref<T> as() const & {
+    return tp == tag ? static_cast<Ref<T>>(ref) : td::Ref<T>{};
+  }
+  template <typename T, Type tag>
+  Ref<T> as() && {
+    return tp == tag ? static_cast<Ref<T>>(std::move(ref)) : td::Ref<T>{};
+  }
+  template <typename T, Type tag>
+  Ref<T> move_as() & {
+    return tp == tag ? static_cast<Ref<T>>(std::move(ref)) : td::Ref<T>{};
+  }
+
+ public:
   td::RefInt256 as_int() const & {
-    return tp == t_int ? static_cast<td::RefInt256>(ref) : td::RefInt256{false};
+    return tp == t_int ? static_cast<td::RefInt256>(ref) : td::RefInt256{};
   }
   td::RefInt256 as_int() && {
     return tp == t_int ? static_cast<td::RefInt256>(std::move(ref)) : td::RefInt256{};
   }
   Ref<Cell> as_cell() const & {
-    return tp == t_cell ? static_cast<Ref<Cell>>(ref) : Ref<Cell>{};
+    return as<Cell, t_cell>();
   }
   Ref<Cell> as_cell() && {
-    return tp == t_cell ? static_cast<Ref<Cell>>(std::move(ref)) : Ref<Cell>{};
+    return move_as<Cell, t_cell>();
   }
   Ref<CellBuilder> as_builder() const & {
-    return tp == t_builder ? static_cast<Ref<CellBuilder>>(ref) : Ref<CellBuilder>{};
+    return as<CellBuilder, t_builder>();
   }
   Ref<CellBuilder> as_builder() && {
-    return tp == t_builder ? static_cast<Ref<CellBuilder>>(std::move(ref)) : Ref<CellBuilder>{};
+    return move_as<CellBuilder, t_builder>();
   }
   Ref<CellSlice> as_slice() const & {
-    return tp == t_slice ? static_cast<Ref<CellSlice>>(ref) : Ref<CellSlice>{};
+    return as<CellSlice, t_slice>();
   }
   Ref<CellSlice> as_slice() && {
-    return tp == t_slice ? static_cast<Ref<CellSlice>>(std::move(ref)) : Ref<CellSlice>{};
+    return move_as<CellSlice, t_slice>();
   }
   Ref<Continuation> as_cont() const &;
   Ref<Continuation> as_cont() &&;
   Ref<Cnt<std::string>> as_string_ref() const {
-    return tp == t_string ? static_cast<Ref<Cnt<std::string>>>(ref) : Ref<Cnt<std::string>>{};
+    return as<Cnt<std::string>, t_string>();
   }
   Ref<Cnt<std::string>> as_bytes_ref() const {
-    return tp == t_bytes ? static_cast<Ref<Cnt<std::string>>>(ref) : Ref<Cnt<std::string>>{};
+    return as<Cnt<std::string>, t_bytes>();
   }
   std::string as_string() const {
-    assert(!as_string_ref().is_null());
+    //assert(!as_string_ref().is_null());
     return tp == t_string ? **as_string_ref() : "";
   }
   std::string as_bytes() const {
     return tp == t_bytes ? **as_bytes_ref() : "";
   }
+  Ref<Box> as_box() const &;
+  Ref<Box> as_box() &&;
+  Ref<Tuple> as_tuple() const &;
+  Ref<Tuple> as_tuple() &&;
+  Ref<Tuple> as_tuple_range(unsigned max_len = 255, unsigned min_len = 0) const &;
+  Ref<Tuple> as_tuple_range(unsigned max_len = 255, unsigned min_len = 0) &&;
   template <class T>
   Ref<T> as_object() const & {
-    return tp == t_object ? static_cast<Ref<T>>(ref) : Ref<T>{};
+    return as<T, t_object>();
   }
   template <class T>
   Ref<T> as_object() && {
-    return tp == t_object ? static_cast<Ref<T>>(std::move(ref)) : Ref<T>{};
+    return move_as<T, t_object>();
   }
+  void dump(std::ostream& os) const;
+  void print_list(std::ostream& os) const;
+  void print_list_tail(std::ostream& os) const;
   std::string to_string() const;
 };
 
@@ -194,6 +245,10 @@ class Stack : public td::CntObject {
     StackEntry res = std::move(stack.back());
     stack.pop_back();
     return res;
+  }
+  StackEntry pop_chk() {
+    check_underflow(1);
+    return pop();
   }
   void pop_many(int count) {
     stack.resize(stack.size() - count);
@@ -318,6 +373,9 @@ class Stack : public td::CntObject {
   Ref<CellBuilder> pop_builder();
   Ref<CellSlice> pop_cellslice();
   Ref<Continuation> pop_cont();
+  Ref<Box> pop_box();
+  Ref<Tuple> pop_tuple();
+  Ref<Tuple> pop_tuple_range(unsigned max_len = 255, unsigned min_len = 0);
   std::string pop_string();
   std::string pop_bytes();
   void push_int(td::RefInt256 val);
@@ -330,7 +388,14 @@ class Stack : public td::CntObject {
   void push_builder(Ref<CellBuilder> cb);
   void push_cellslice(Ref<CellSlice> cs);
   void push_cont(Ref<Continuation> cont);
+  void push_box(Ref<Box> box);
+  void push_tuple(Ref<Tuple> tuple);
   void dump(std::ostream& os, bool cr = true) const;
 };
 
 }  // namespace vm
+
+namespace td {
+extern template class td::Cnt<std::vector<vm::StackEntry>>;
+extern template class td::Ref<td::Cnt<std::vector<vm::StackEntry>>>;
+}  // namespace td

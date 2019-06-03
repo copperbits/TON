@@ -58,6 +58,7 @@ set(TDUTILS_SOURCE
   td/utils/port/signals.cpp
   td/utils/port/sleep.cpp
   td/utils/port/SocketFd.cpp
+  td/utils/port/stacktrace.cpp
   td/utils/port/Stat.cpp
   td/utils/port/StdStreams.cpp
   td/utils/port/thread_local.cpp
@@ -127,6 +128,7 @@ set(TDUTILS_SOURCE
   td/utils/port/signals.h
   td/utils/port/sleep.h
   td/utils/port/SocketFd.h
+  td/utils/port/stacktrace.h
   td/utils/port/Stat.h
   td/utils/port/StdStreams.h
   td/utils/port/thread.h

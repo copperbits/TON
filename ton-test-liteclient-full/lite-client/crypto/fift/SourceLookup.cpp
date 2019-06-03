@@ -16,8 +16,22 @@ td::Result<FileLoader::File> OsFileLoader::read_file(td::CSlice filename) {
   res.path = std::move(path);
   return std::move(res);
 }
+
 td::Status OsFileLoader::write_file(td::CSlice filename, td::Slice data) {
   return td::write_file(filename, data);
+}
+
+td::Result<FileLoader::File> OsFileLoader::read_file_part(td::CSlice filename, td::int64 size, td::int64 offset) {
+  File res;
+  TRY_RESULT(data, td::read_file_str(filename, size, offset));
+  res.data = std::move(data);
+  TRY_RESULT(path, td::realpath(filename));
+  res.path = std::move(path);
+  return std::move(res);
+}
+
+bool OsFileLoader::is_file_exists(td::CSlice filename) {
+  return td::stat(filename).is_ok();
 }
 
 void SourceLookup::add_include_path(td::string path) {
