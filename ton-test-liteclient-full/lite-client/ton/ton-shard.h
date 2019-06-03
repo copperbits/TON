@@ -16,8 +16,16 @@ inline AccountIdPrefix extract_top64(const Bits256& addr) {
   return addr.cbits().get_uint(64);
 }
 
-inline td::uint64 extract_top64(td::ConstBitPtr addr) {
+inline AccountIdPrefix extract_top64(td::ConstBitPtr addr) {
   return addr.get_uint(64);
+}
+
+inline AccountIdPrefixFull extract_addr_prefix(WorkchainId workchain, const StdSmcAddress& addr) {
+  return AccountIdPrefixFull{workchain, extract_top64(addr)};
+}
+
+inline AccountIdPrefixFull extract_addr_prefix(WorkchainId workchain, td::ConstBitPtr addr) {
+  return AccountIdPrefixFull{workchain, extract_top64(addr)};
 }
 
 inline td::uint32 shard_prefix_length(ShardId shard) {

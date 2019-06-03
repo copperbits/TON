@@ -17,6 +17,8 @@ class MerkleProof {
   // cell must have zero level and must be a MerkleProof
   static Ref<Cell> virtualize(Ref<Cell> cell, int virtualization);
 
+  static Ref<Cell> combine(Ref<Cell> a, Ref<Cell> b);
+
   // works with upwrapped proofs
   // works fine with cell of non-zero level, but this is not supported (yet?) in MerkeProof special cell
   static Ref<Cell> generate_raw(Ref<Cell> cell, IsPrunnedFunction is_prunned);

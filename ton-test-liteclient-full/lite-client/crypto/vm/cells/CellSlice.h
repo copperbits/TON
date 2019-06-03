@@ -51,6 +51,8 @@ class CellSlice : public td::CntObject {
   bool load(NoVmOrd, Ref<Cell> cell_ref);
   bool load(NoVmSpec, Ref<Cell> cell_ref);
   bool load(Ref<DataCell> dc_ref);
+  bool load(Ref<Cell> cell, bool* is_special);
+  bool load_ord(Ref<Cell> cell);
   unsigned size() const {
     return bits_en - bits_st;
   }
@@ -297,5 +299,11 @@ Ref<CellSlice>& operator>>(Ref<CellSlice>& cs_ref, const T& val) {
   cs_ref->chk(res);
   return cs_ref;
 }
+
+// If can_be_special is not null, then it is allowed to load special cell
+// Flag whether loaded cell is actually special will be stored into can_be_special
+CellSlice load_cell_slice(const Ref<Cell>& cell, bool* can_be_special = nullptr);
+Ref<CellSlice> load_cell_slice_ref(const Ref<Cell>& cell, bool* can_be_special = nullptr);
+void print_load_cell(std::ostream& os, Ref<Cell> cell, int indent = 0, bool can_be_special = true);
 
 }  // namespace vm

@@ -6,6 +6,7 @@
 #include "validator/interfaces/config.h"
 #include "validator/interfaces/validator-full-id.h"
 #include "common/bitstring.h"
+#include "block.h"
 #include <vector>
 #include <map>
 #include <set>
@@ -112,7 +113,7 @@ class ValidatorSetPRNG {
 };
 
 struct McShardHash : public ton::validator::McShardHash {
-  ton::BlockIdExt blk;
+  ton::BlockIdExt blk_;
   ton::LogicalTime start_lt_, end_lt_;
   ton::UnixTime gen_utime_{0};
   ton::UnixTime fsm_utime_{0};
@@ -126,7 +127,7 @@ struct McShardHash : public ton::validator::McShardHash {
               const ton::BlockHash& root_hash, const ton::FileHash& file_hash, ton::BlockSeqno min_ref_mc_seqno = -1u,
               ton::CatchainSeqno cc_seqno = -1u, ton::ShardId val_shard = 0, bool nx_cc_updated = false,
               bool before_split = false, bool before_merge = false, bool want_split = false, bool want_merge = false)
-      : blk(id, root_hash, file_hash)
+      : blk_(id, root_hash, file_hash)
       , start_lt_(start_lt)
       , end_lt_(end_lt)
       , gen_utime_(gen_utime)
@@ -140,45 +141,45 @@ struct McShardHash : public ton::validator::McShardHash {
       , next_validator_shard_(val_shard ? val_shard : id.shard) {
   }
   McShardHash(const ton::BlockIdExt& blk, ton::LogicalTime start_lt, ton::LogicalTime end_lt)
-      : blk(blk), start_lt_(start_lt), end_lt_(end_lt) {
+      : blk_(blk), start_lt_(start_lt), end_lt_(end_lt) {
   }
   McShardHash(const McShardHash&) = default;
   bool is_valid() const {
-    return blk.is_valid();
+    return blk_.is_valid();
   }
-  ton::BlockIdExt top_block_id() const override {
-    return blk;
+  ton::BlockIdExt top_block_id() const override final {
+    return blk_;
   }
   //  ZeroStateIdExt zero_state() const override;
-  ton::LogicalTime start_lt() const override {
+  ton::LogicalTime start_lt() const override final {
     return start_lt_;
   }
-  ton::LogicalTime end_lt() const override {
+  ton::LogicalTime end_lt() const override final {
     return end_lt_;
   }
-  ton::UnixTime fsm_utime() const override {
+  ton::UnixTime fsm_utime() const override final {
     return fsm_utime_;
   }
   ton::UnixTime created_at() const {
     return gen_utime_;
   }
-  FsmState fsm_state() const override {
+  FsmState fsm_state() const override final {
     return fsm;
   }
-  ton::ShardIdFull shard() const override {
-    return ton::ShardIdFull(blk);
+  ton::ShardIdFull shard() const override final {
+    return ton::ShardIdFull(blk_);
   }
   ton::WorkchainId workchain() const {
-    return blk.id.workchain;
+    return blk_.id.workchain;
   }
-  bool before_split() const override {
+  bool before_split() const override final {
     return before_split_;
   }
-  bool before_merge() const override {
+  bool before_merge() const override final {
     return before_merge_;
   }
   ton::BlockSeqno seqno() const {
-    return blk.id.seqno;
+    return blk_.id.seqno;
   }
   bool pack(vm::CellBuilder& cb) const;
   static Ref<McShardHash> unpack(vm::CellSlice& cs, ton::ShardIdFull id);
@@ -192,12 +193,16 @@ struct McShardDescr final : public McShardHash {
   Ref<vm::Cell> block_root;
   Ref<vm::Cell> state_root;
   Ref<vm::Cell> outmsg_root;
+  std::shared_ptr<block::MsgProcessedUptoCollection> processed_upto;
   McShardDescr(const ton::BlockId& id, ton::LogicalTime start_lt, ton::LogicalTime end_lt, ton::UnixTime gen_utime,
                const ton::BlockHash& root_hash, const ton::FileHash& file_hash, ton::BlockSeqno min_ref_mc_seqno = -1u,
                ton::CatchainSeqno cc_seqno = -1u, ton::ShardId val_shard = ton::shardIdAll, bool nx_cc_updated = false,
                bool before_split = false, bool before_merge = false, bool want_split = false, bool want_merge = false)
       : McShardHash(id, start_lt, end_lt, gen_utime, root_hash, file_hash, min_ref_mc_seqno, cc_seqno, val_shard,
                     nx_cc_updated, before_split, before_merge, want_split, want_merge) {
+  }
+  McShardDescr(const ton::BlockIdExt& blk, ton::LogicalTime start_lt, ton::LogicalTime end_lt)
+      : McShardHash(blk, start_lt, end_lt) {
   }
   McShardDescr(const McShardHash& shard_hash) : McShardHash(shard_hash) {
   }
@@ -277,9 +282,15 @@ class ShardConfig {
   Ref<McShardHash> get_shard_hash(ton::ShardIdFull id, bool exact = true) const;
   bool contains(ton::BlockIdExt blkid) const;
   bool get_shard_hash_raw(vm::CellSlice& cs, ton::ShardIdFull id, ton::ShardIdFull& true_id, bool exact = true) const;
+  ton::LogicalTime get_shard_end_lt(ton::AccountIdPrefixFull acc) const;
+  ton::LogicalTime get_shard_end_lt_ext(ton::AccountIdPrefixFull acc, ton::ShardIdFull& actual_shard) const;
+  static bool get_shard_hash_raw_from(vm::Dictionary& shard_hashes_dict, vm::CellSlice& cs, ton::ShardIdFull id,
+                                      ton::ShardIdFull& true_id, bool exact = true, Ref<vm::Cell>* leaf = nullptr);
   std::vector<ton::BlockId> get_shard_hash_ids(bool skip_mc = false) const;
   std::vector<ton::BlockId> get_shard_hash_ids(const std::function<bool(ton::ShardIdFull, bool)>& filter) const;
+  std::vector<ton::BlockId> get_intersecting_shard_hash_ids(ton::ShardIdFull myself) const;
   std::vector<ton::BlockId> get_neighbor_shard_hash_ids(ton::ShardIdFull myself) const;
+  std::vector<ton::BlockId> get_proper_neighbor_shard_hash_ids(ton::ShardIdFull myself) const;
   bool process_shard_hashes(std::function<int(McShardHash&)> func);
   // may become non-static const in the future
   static bool is_neighbor(ton::ShardIdFull x, ton::ShardIdFull y);
@@ -290,6 +301,9 @@ class ShardConfig {
     mc_shard_hash_ = std::move(mc_shard_hash);
   }
   ton::CatchainSeqno get_shard_cc_seqno(ton::ShardIdFull shard) const;
+  block::compute_shard_end_lt_func_t get_compute_shard_end_lt_func() const {
+    return std::bind(&ShardConfig::get_shard_end_lt, *this, std::placeholders::_1);
+  }
   bool new_workchain(ton::WorkchainId workchain, const ton::RootHash& zerostate_root_hash,
                      const ton::FileHash& zerostate_file_hash);
   td::Result<bool> update_shard_block_info(Ref<McShardHash> new_info, const std::vector<ton::BlockIdExt>& old_blkids);
@@ -327,7 +341,7 @@ class Config : public ShardConfig {
     needWorkchainInfo = 256
   };
   int mode{0};
-  ton::BlockId block_id;
+  ton::BlockIdExt block_id;
   int vert_seqno{-1};
   int global_id_{0};
   ton::UnixTime utime{0};
@@ -343,8 +357,6 @@ class Config : public ShardConfig {
   Ref<vm::Cell> state_extra_root;
   Ref<vm::CellSlice> accounts_root;
   Ref<vm::Cell> shard_hashes;
-  ton::RootHash block_hash;
-  ton::FileHash block_file_hash;
   td::BitArray<256> config_addr;
   Ref<vm::Cell> config_root;
   ton::ZeroStateIdExt zerostate_id_;
@@ -380,6 +392,7 @@ class Config : public ShardConfig {
   td::Result<std::vector<StoragePrices>> get_storage_prices() const;
   static CatchainValidatorsConfig unpack_catchain_validators_config(Ref<vm::Cell> cell);
   CatchainValidatorsConfig get_catchain_validators_config() const;
+  static std::unique_ptr<vm::Dictionary> extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root);
   bool set_block_id_ext(const ton::BlockIdExt& block_id_ext);
   ton::ZeroStateIdExt get_zerostate_id() const {
     return zerostate_id_;
@@ -396,7 +409,7 @@ class Config : public ShardConfig {
     return global_id_;
   }
   bool get_old_mc_block_id(ton::BlockSeqno seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt = nullptr) const;
-  bool check_old_mc_block_id(const ton::BlockIdExt& blkid) const;
+  bool check_old_mc_block_id(const ton::BlockIdExt& blkid, bool strict = false) const;
   ton::CatchainSeqno get_shard_cc_seqno(ton::ShardIdFull shard) const;
   std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> compute_validator_set(
       ton::ShardIdFull shard, const block::ValidatorSet& vset, ton::UnixTime time,

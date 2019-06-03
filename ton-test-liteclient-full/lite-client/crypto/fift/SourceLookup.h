@@ -13,12 +13,16 @@ class FileLoader {
   };
   virtual td::Result<File> read_file(td::CSlice filename) = 0;
   virtual td::Status write_file(td::CSlice filename, td::Slice data) = 0;
+  virtual td::Result<File> read_file_part(td::CSlice filename, td::int64 size, td::int64 offset) = 0;
+  virtual bool is_file_exists(td::CSlice filename) = 0;
 };
 
 class OsFileLoader : public FileLoader {
  public:
   td::Result<File> read_file(td::CSlice filename) override;
   td::Status write_file(td::CSlice filename, td::Slice data) override;
+  td::Result<File> read_file_part(td::CSlice filename, td::int64 size, td::int64 offset) override;
+  bool is_file_exists(td::CSlice filename) override;
 };
 
 class SourceLookup {
@@ -34,6 +38,12 @@ class SourceLookup {
   }
   td::Status write_file(td::CSlice path, td::Slice data) {
     return file_loader_->write_file(path, data);
+  }
+  td::Result<FileLoader::File> read_file_part(td::CSlice filename, td::int64 size, td::int64 offset) {
+    return file_loader_->read_file_part(filename, size, offset);
+  }
+  bool is_file_exists(td::CSlice filename) {
+    return file_loader_->is_file_exists(filename);
   }
 
  protected:

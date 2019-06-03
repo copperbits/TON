@@ -1,28 +1,46 @@
+#!/usr/bin/fift -s
+"TonUtil.fif" include
+
+{ ."usage: " @' $0 type ." <dest-addr> <seqno> <amount> [<savefile>]" cr
+  ."Creates a request to TestGiver and saves it into <savefile>.boc" cr
+  ."('testgiver-query.boc' by default)" cr 1 halt
+} : usage
+def? $# { @' $# 3 - 1 ufits ' usage ifnot } if
+
 // "testgiver.addr" file>B 256 B>u@ 
 0x8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d
-dup constant wallet_addr ."Test giver address = " x. cr
+constant giver_addr
+Masterchain constant giver_wc
+ ."Test giver address = " giver_wc ._ .":" giver_addr x. cr
 
+// "new-wallet.addr" file>B 256 B>u@
 0x60c04141c6a7b96d68615e7a91d265ad0f3a9a922e9ae9c901d4fa83f5d3c0d0
-constant dest_addr
+constant dest_addr 
+Basechain constant dest_wc
+false constant bounce
 
--1 constant wc
 0 constant seqno
+GR$6.666 constant amount
 
-1000000000 constant Gram
-{ Gram swap */ } : Gram*/
+def? $3 { 
+  @' $1 parse-smc-addr =: bounce =: dest_addr =: dest_wc
+  @' $2 parse-int =: seqno
+  @' $3 $>GR =: amount
+} if
+def? $4 { @' $4 } { "testgiver-query" } cond constant savefile
 
-6.666 Gram*/ constant amount
+."Requesting " amount .GR ."to account "
+dest_wc dest_addr bounce 5 + smca>$ type ." = " dest_wc ._ .":"
+dest_addr x. ."seqno=0x" seqno x. ."bounce=" bounce . cr
 
-// b x --> b'  ( serializes a Gram amount )
-{ -1 { 1+ 2dup 8 * ufits } until
-  rot over 4 u, -rot 8 * u, } : Gram, 
-  
 // create a message (NB: 01b00.., b = bounce)
-<b b{010000100} s, wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "GIFT" $, b>
+<b b{01} s, bounce 1 i, b{000100} s, dest_wc 8 i, dest_addr 256 u, 
+   amount Gram, 0 9 64 32 + + 1+ 1+ u, "GIFT" $, b>
 <b seqno 32 u, 1 8 u, swap ref, b>
 dup ."enveloping message: " <s csr. cr
-<b b{1000100} s, wc 8 i, wallet_addr 256 u, 0 Gram, b{00} s,
+<b b{1000100} s, giver_wc 8 i, giver_addr 256 u, 0 Gram, b{00} s,
    swap <s s, b>
 dup ."resulting external message: " <s csr. cr
 2 boc+>B dup Bx. cr
-"wallet-query.boc" B>file
+savefile +".boc" tuck B>file
+."(Saved to file " type .")" cr

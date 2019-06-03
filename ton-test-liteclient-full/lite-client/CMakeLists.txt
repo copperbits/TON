@@ -12,12 +12,6 @@ add_subdirectory(third-party/crc32c EXCLUDE_FROM_ALL)
 set(CRC32C_FOUND 1)
 set(HAVE_SSE42)
 
-set(WITH_TESTS OFF CACHE BOOL "build with tests")
-set(WITH_TOOLS OFF CACHE BOOL "build with tools")
-set(FAIL_ON_WARNINGS OFF CACHE BOOL "fail on warnings")
-add_subdirectory(third-party/rocksdb EXCLUDE_FROM_ALL)
-set(HAVE_SSE42)
-
 option(USE_LIBRAPTORQ "use libraptorq for tests" OFF)
 if (USE_LIBRAPTORQ)
   set(USE_LZ4 OFF CACHE BOOL "use lz4")
@@ -77,6 +71,11 @@ endif()
 set(CMAKE_THREAD_PREFER_PTHREAD ON)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
+
+set(Boost_USE_STATIC_LIBS OFF)
+set(Boost_USE_MULTITHREADED ON)
+set(Boost_USE_STATIC_RUNTIME OFF)
+find_package(Boost 1.69)
 
 if (NOT MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=core2")
@@ -169,3 +168,6 @@ add_subdirectory(crypto)
 add_executable (test-lite-client test/test-lite-client.cpp)
 target_link_libraries(test-lite-client tdutils tdactor adnllite tl_api 
   ton_crypto ton_block terminal )
+
+add_executable (test-lite-client-with-webserver test/test-lite-client-with-webserver.cpp)
+target_link_libraries(test-lite-client-with-webserver tdutils tdactor adnllite tl_api ton_crypto ton_block terminal)

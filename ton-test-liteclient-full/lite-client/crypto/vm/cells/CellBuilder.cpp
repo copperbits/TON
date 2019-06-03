@@ -59,7 +59,7 @@ Ref<DataCell> CellBuilder::finalize(bool special) {
 }
 
 Ref<Cell> CellBuilder::create_pruned_branch(Ref<Cell> cell, td::uint32 new_level, td::uint32 virt_level) {
-  if (cell->is_loaded() && cell->get_level() <= virt_level) {
+  if (cell->is_loaded() && cell->get_level() <= virt_level && cell->get_virtualization() == 0) {
     CellSlice cs(NoVm{}, cell);
     if (cs.size_refs() == 0) {
       return cell;
@@ -275,7 +275,8 @@ bool CellBuilder::store_long_rchk_bool(long long val, unsigned val_bits) {
   if (val_bits > 64 || !can_extend_by(val_bits)) {
     return false;
   }
-  if (val_bits < 64 && (val < static_cast<long long>(std::numeric_limits<td::uint64>::max() << (val_bits - 1)) || val >= (1LL << (val_bits - 1)))) {
+  if (val_bits < 64 && (val < static_cast<long long>(std::numeric_limits<td::uint64>::max() << (val_bits - 1)) ||
+                        val >= (1LL << (val_bits - 1)))) {
     return false;
   }
   store_long(val, val_bits);

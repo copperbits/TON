@@ -1,6 +1,7 @@
 #include "cp0.h"
 #include "opctable.h"
 #include "stackops.h"
+#include "tupleops.h"
 #include "arithops.h"
 #include "cellops.h"
 #include "contops.h"
@@ -14,6 +15,7 @@ const OpcodeTable* init_op_cp0() {
   static const OpcodeTable* static_op_cp0 = [] {
     auto op_cp0 = new OpcodeTable("TEST CODEPAGE", Codepage::test_cp);
     register_stack_ops(*op_cp0);         // stackops.cpp
+    register_tuple_ops(*op_cp0);         // tupleops.cpp
     register_arith_ops(*op_cp0);         // arithops.cpp
     register_cell_ops(*op_cp0);          // cellops.cpp
     register_continuation_ops(*op_cp0);  // contops.cpp

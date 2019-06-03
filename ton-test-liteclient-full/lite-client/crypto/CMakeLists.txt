@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
 
+set (BUILD_CREATE_STATE 0)
+
 if (NOT OPENSSL_FOUND)
   find_package(OpenSSL REQUIRED)
 endif()
@@ -24,6 +26,7 @@ set (TON_CRYPTO_SOURCE
   vm/opctable.cpp
   vm/cp0.cpp
   vm/stackops.cpp
+  vm/tupleops.cpp
   vm/arithops.cpp
   vm/cellops.cpp
   vm/contops.cpp
@@ -70,6 +73,7 @@ set (TON_CRYPTO_SOURCE
   vm/opctable.h
   vm/stack.hpp
   vm/stackops.h
+  vm/tupleops.h
   vm/tonops.h
   vm/vmstate.h
 
@@ -231,9 +235,8 @@ endif()
 set_source_files_properties(${TLB_BLOCK_AUTO} PROPERTIES GENERATED TRUE)
 add_library(ton_block ${BLOCK_SOURCE})
 target_include_directories(ton_block PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/block> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>/../tl/generate> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../tl>)
-target_link_libraries(ton_block PUBLIC ton_crypto tdutils tdactor)
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/block> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
+target_link_libraries(ton_block PUBLIC ton_crypto tdutils tdactor tl_api)
 
 if (NOT CMAKE_CROSSCOMPILING)
   set(GenerateTlbCmd tlbc)
@@ -244,4 +247,14 @@ if (NOT CMAKE_CROSSCOMPILING)
     DEPENDS tlbc block/block.tlb
   )
   add_dependencies(ton_block tlb_generate_block)
+endif()
+
+if (BUILD_CREATE_STATE) 
+  add_executable(create-state block/create-state.cpp)
+  target_include_directories(create-state PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
+  target_link_libraries(create-state PUBLIC ton_crypto fift-lib ton_block adnl ton_validator validator_disk ton_validator)
+  if (WINGETOPT_FOUND)
+    target_link_libraries_system(create-state wingetopt)
+  endif()
 endif()

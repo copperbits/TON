@@ -34,7 +34,7 @@ bool pack_std_smc_addr_to(char result[48], bool base64_url, ton::WorkchainId wc,
     return false;
   }
   unsigned char buffer[36];
-  buffer[0] = (unsigned char)(0x11 + bounceable * 0x40 + testnet * 0x80);
+  buffer[0] = (unsigned char)(0x51 - bounceable * 0x40 + testnet * 0x80);
   buffer[1] = (unsigned char)wc;
   memcpy(buffer + 2, addr.data(), 32);
   unsigned crc = td::crc16(td::Slice{buffer, 34});
@@ -69,7 +69,7 @@ bool unpack_std_smc_addr(const char packed[48], ton::WorkchainId& wc, ton::StdSm
     return false;
   }
   testnet = (buffer[0] & 0x80);
-  bounceable = (buffer[0] & 0x40);
+  bounceable = !(buffer[0] & 0x40);
   wc = (char)buffer[1];
   memcpy(addr.data(), buffer + 2, 32);
   return true;
@@ -121,6 +121,74 @@ bool StdAddress::rdeserialize(const char from[48]) {
 bool StdAddress::operator==(const StdAddress& other) const {
   return workchain == other.workchain && addr == other.addr && bounceable == other.bounceable &&
          testnet == other.testnet;
+}
+
+int parse_hex_digit(int c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  c |= 0x20;
+  if (c >= 'a' && c <= 'z') {
+    return c - 'a' + 10;
+  }
+  return -1;
+}
+
+bool StdAddress::parse_addr(std::string acc_string) {
+  if (rdeserialize(acc_string)) {
+    return true;
+  }
+  testnet = false;
+  bounceable = true;
+  auto pos = acc_string.find(':');
+  if (pos != std::string::npos) {
+    if (pos > 10) {
+      return invalidate();
+    }
+    std::string tmp{acc_string, 0, pos};
+    char* end = 0;
+    auto wc = strtoll(tmp.c_str(), &end, 10);
+    workchain = static_cast<ton::WorkchainId>(wc);
+    if (end != tmp.c_str() + pos || workchain != wc || workchain == ton::workchainInvalid) {
+      return invalidate();
+    }
+    ++pos;
+  } else {
+    pos = 0;
+  }
+  // LOG(DEBUG) << "parsing " << acc_string << " address";
+  if (acc_string.size() != pos + 64) {
+    return invalidate();
+  }
+  for (unsigned i = 0; i < 64; i++) {
+    int x = parse_hex_digit(acc_string[pos + i]), m = 15;
+    if (x < 0) {
+      return invalidate();
+    }
+    if (!(i & 1)) {
+      x <<= 4;
+      m <<= 4;
+    }
+    addr.data()[i >> 1] = (unsigned char)((addr.data()[i >> 1] & ~m) | x);
+  }
+  return true;
+}
+
+bool parse_std_account_addr(std::string acc_string, ton::WorkchainId& wc, ton::StdSmcAddress& addr, bool* bounceable,
+                            bool* testnet_only) {
+  StdAddress a;
+  if (!a.parse_addr(std::move(acc_string))) {
+    return false;
+  }
+  wc = a.workchain;
+  addr = a.addr;
+  if (testnet_only) {
+    *testnet_only = a.testnet;
+  }
+  if (bounceable) {
+    *bounceable = a.bounceable;
+  }
+  return true;
 }
 
 void ShardId::init() {
@@ -226,7 +294,6 @@ MsgProcessedUptoCollection::MsgProcessedUptoCollection(ton::ShardIdFull _owner, 
     MsgProcessedUpto& z = list.back();
     z.shard = key.get_uint(64);
     z.mc_seqno = (unsigned)((key + 64).get_uint(32));
-    z.our_end_lt = 0;
     z.last_inmsg_lt = value.write().fetch_ulong(64);
     return value.write().fetch_bits_to(z.last_inmsg_hash) && z.shard && ton::shard_contains(owner.shard, z.shard);
   });
@@ -247,8 +314,7 @@ bool MsgProcessedUpto::contains(const MsgProcessedUpto& other) const & {
 bool MsgProcessedUpto::contains(ton::ShardId other_shard, ton::LogicalTime other_lt, td::ConstBitPtr other_hash,
                                 ton::BlockSeqno other_mc_seqno) const & {
   return ton::shard_is_ancestor(shard, other_shard) && mc_seqno >= other_mc_seqno &&
-         (last_inmsg_lt > other_lt ||
-          (last_inmsg_lt == other_lt && td::bitstring::bits_memcmp(last_inmsg_hash.bits(), other_hash, 256) > 0));
+         (last_inmsg_lt > other_lt || (last_inmsg_lt == other_lt && !(last_inmsg_hash < other_hash)));
 }
 
 bool MsgProcessedUptoCollection::insert(ton::LogicalTime last_proc_lt, td::ConstBitPtr last_proc_hash,
@@ -265,22 +331,36 @@ bool MsgProcessedUptoCollection::insert(ton::LogicalTime last_proc_lt, td::Const
   return true;
 }
 
+ton::BlockSeqno MsgProcessedUptoCollection::min_mc_seqno() const {
+  ton::BlockSeqno min_mc_seqno = ~0U;
+  for (const auto& z : list) {
+    min_mc_seqno = std::min(min_mc_seqno, z.mc_seqno);
+  }
+  return min_mc_seqno;
+}
+
 bool MsgProcessedUptoCollection::compactify() {
   std::sort(list.begin(), list.end());
-  std::size_t i, j, k = 0, n = list.size();
+  std::size_t i, j, k = 0, m = 0, n = list.size();
+  std::vector<bool> mark(n, false);
+  assert(mark.size() == n);
   for (i = 0; i < n; i++) {
-    bool f = true;
     for (j = 0; j < n; j++) {
-      if (j != i && list[j].contains(list[i])) {
-        f = false;
+      if (j != i && !mark[j] && list[j].contains(list[i])) {
+        mark[i] = true;
+        ++m;
         break;
       }
     }
-    if (f) {
-      list[k++] = list[i];
-    }
   }
-  list.resize(k);
+  if (m) {
+    for (i = 0; i < n; i++) {
+      if (!mark[i]) {
+        list[k++] = list[i];
+      }
+    }
+    list.resize(k);
+  }
   return true;
 }
 
@@ -302,9 +382,63 @@ bool MsgProcessedUptoCollection::pack(vm::CellBuilder& cb) {
   return std::move(dict).append_dict_to_bool(cb);
 }
 
-bool MsgProcessedUpto::already_processed(ton::ShardId msg_next_addr, ton::LogicalTime msg_lt,
-                                         td::ConstBitPtr msg_hash) const {
-  return false;  // TODO: implement this properly
+bool MsgProcessedUpto::already_processed(const EnqueuedMsgDescr& msg) const {
+  // LOG(DEBUG) << "compare msg (" << msg.lt_ << "," << msg.hash_.to_hex() << ") against record's (" << last_inmsg_lt
+  //            << "," << last_inmsg_hash.to_hex() << ")";
+  if (msg.lt_ > last_inmsg_lt) {
+    return false;
+  }
+  if (!ton::shard_contains(shard, msg.next_prefix_.account_id_prefix)) {
+    return false;
+  }
+  if (msg.lt_ == last_inmsg_lt && last_inmsg_hash < msg.hash_) {
+    return false;
+  }
+  auto shard_end_lt = compute_shard_end_lt(msg.cur_prefix_);
+  // LOG(DEBUG) << "enqueued_lt = " << msg.enqueued_lt_ << " , shard_end_lt = " << shard_end_lt;
+  return msg.enqueued_lt_ < shard_end_lt;
+}
+
+bool MsgProcessedUptoCollection::already_processed(const EnqueuedMsgDescr& msg) const {
+  // LOG(DEBUG) << "checking message with cur_addr=" << msg.cur_prefix_.to_str()
+  //            << " next_addr=" << msg.next_prefix_.to_str() << " against ProcessedUpto of neighbor " << owner.to_str();
+  if (!ton::shard_contains(owner, msg.next_prefix_)) {
+    return false;
+  }
+  for (const auto& rec : list) {
+    if (rec.already_processed(msg)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// unpacks some fields from EnqueuedMsg
+bool EnqueuedMsgDescr::unpack(vm::CellSlice& cs) {
+  block::gen::EnqueuedMsg::Record enq;
+  block::tlb::MsgEnvelope::Record_std env;
+  block::gen::CommonMsgInfo::Record_int_msg_info info;
+  if (!(tlb::unpack(cs, enq) && tlb::unpack_cell(enq.out_msg, env) && tlb::unpack_cell_inexact(env.msg, info))) {
+    return invalidate();
+  }
+  src_prefix_ = block::tlb::t_MsgAddressInt.get_prefix(std::move(info.src));
+  dest_prefix_ = block::tlb::t_MsgAddressInt.get_prefix(std::move(info.dest));
+  if (!(src_prefix_.is_valid() && dest_prefix_.is_valid())) {
+    return invalidate();
+  }
+  cur_prefix_ = interpolate_addr(src_prefix_, dest_prefix_, env.cur_addr);
+  next_prefix_ = interpolate_addr(src_prefix_, dest_prefix_, env.next_addr);
+  lt_ = info.created_lt;
+  enqueued_lt_ = enq.enqueued_lt;
+  hash_ = env.msg->get_hash().bits();
+  msg_ = std::move(env.msg);
+  msg_env_ = std::move(enq.out_msg);
+  return true;
+}
+
+bool EnqueuedMsgDescr::check_key(td::ConstBitPtr key) const {
+  return key.get_int(32) == next_prefix_.workchain && (key + 32).get_uint(64) == next_prefix_.account_id_prefix &&
+         hash_ == key + 96;
 }
 
 namespace tlb {
@@ -348,17 +482,17 @@ bool MsgAddressInt::validate_skip(vm::CellSlice& cs) const {
   return false;
 }
 
-ton::ShardIdFull MsgAddressInt::get_shard(vm::CellSlice&& cs) const {
+ton::AccountIdPrefixFull MsgAddressInt::get_prefix(vm::CellSlice&& cs) const {
   if (!cs.have(3 + 8 + 64)) {
     return {};
   }
   ton::WorkchainId workchain;
-  unsigned long long shard;
+  unsigned long long prefix;
   int t = (int)cs.prefetch_ulong(2 + 1 + 5);
   switch (t >> 5) {
     case 4: {  // addr_std$10, anycast=nothing$0
-      if (cs.advance(3) && cs.fetch_int_to(8, workchain) && cs.fetch_uint_to(64, shard)) {
-        return {workchain, shard};
+      if (cs.advance(3) && cs.fetch_int_to(8, workchain) && cs.fetch_uint_to(64, prefix)) {
+        return {workchain, prefix};
       }
       break;
     }
@@ -367,9 +501,9 @@ ton::ShardIdFull MsgAddressInt::get_shard(vm::CellSlice&& cs) const {
       unsigned long long rewrite;
       if (cs.advance(8) && cs.fetch_uint_to(t, rewrite)  // rewrite_pfx:(bits depth)
           && cs.fetch_int_to(8, workchain)               // workchain_id:int8
-          && cs.fetch_uint_to(64, shard)) {              // address:bits256
+          && cs.fetch_uint_to(64, prefix)) {             // address:bits256
         rewrite <<= 64 - t;
-        return {workchain, (shard & (std::numeric_limits<td::uint64>::max() >> t)) | rewrite};
+        return {workchain, (prefix & (std::numeric_limits<td::uint64>::max() >> t)) | rewrite};
       }
       break;
     }
@@ -378,8 +512,8 @@ ton::ShardIdFull MsgAddressInt::get_shard(vm::CellSlice&& cs) const {
       if (cs.advance(3) && cs.fetch_uint_to(9, len)  // addr_len:(## 9)
           && len >= 64                               // { len >= 64 }
           && cs.fetch_int_to(32, workchain)          // workchain_id:int32
-          && cs.fetch_uint_to(64, shard)) {          // address:(bits addr_len)
-        return {workchain, shard};
+          && cs.fetch_uint_to(64, prefix)) {         // address:(bits addr_len)
+        return {workchain, prefix};
       }
       break;
     }
@@ -391,9 +525,9 @@ ton::ShardIdFull MsgAddressInt::get_shard(vm::CellSlice&& cs) const {
           && cs.fetch_uint_to(9, len)                    // addr_len:(## 9)
           && len >= 64                                   // { len >= 64 }
           && cs.fetch_int_to(32, workchain)              // workchain_id:int32
-          && cs.fetch_uint_to(64, shard)) {              // address:bits256
+          && cs.fetch_uint_to(64, prefix)) {             // address:bits256
         rewrite <<= 64 - t;
-        return {workchain, (shard & (std::numeric_limits<td::uint64>::max() >> t)) | rewrite};
+        return {workchain, (prefix & (std::numeric_limits<td::uint64>::max() >> t)) | rewrite};
       }
       break;
     }
@@ -401,17 +535,17 @@ ton::ShardIdFull MsgAddressInt::get_shard(vm::CellSlice&& cs) const {
   return {};
 }
 
-ton::ShardIdFull MsgAddressInt::get_shard(const vm::CellSlice& cs) const {
+ton::AccountIdPrefixFull MsgAddressInt::get_prefix(const vm::CellSlice& cs) const {
   vm::CellSlice cs2{cs};
-  return get_shard(std::move(cs2));
+  return get_prefix(std::move(cs2));
 }
 
-ton::ShardIdFull MsgAddressInt::get_shard(Ref<vm::CellSlice> cs_ref) const {
+ton::AccountIdPrefixFull MsgAddressInt::get_prefix(Ref<vm::CellSlice> cs_ref) const {
   if (cs_ref->is_unique()) {
-    return get_shard(std::move(cs_ref.unique_write()));
+    return get_prefix(std::move(cs_ref.unique_write()));
   } else {
     vm::CellSlice cs{*cs_ref};
-    return get_shard(std::move(cs));
+    return get_prefix(std::move(cs));
   }
 }
 
@@ -2349,35 +2483,35 @@ bool sub_extra_currency(Ref<vm::Cell> extra1, Ref<vm::Cell> extra2, Ref<vm::Cell
 }
 
 // combine d bits from dest, remaining 64 - d bits from src
-ton::ShardIdFull interpolate_addr(ton::ShardIdFull src, ton::ShardIdFull dest, int d) {
+ton::AccountIdPrefixFull interpolate_addr(ton::AccountIdPrefixFull src, ton::AccountIdPrefixFull dest, int d) {
   if (d <= 0) {
     return src;
   } else if (d >= 96) {
     return dest;
   } else if (d >= 32) {
     unsigned long long mask = (std::numeric_limits<td::uint64>::max() >> (d - 32));
-    return ton::ShardIdFull{dest.workchain, (dest.shard & ~mask) | (src.shard & mask)};
+    return ton::AccountIdPrefixFull{dest.workchain, (dest.account_id_prefix & ~mask) | (src.account_id_prefix & mask)};
   } else {
     int mask = (-1 >> d);
-    return ton::ShardIdFull{(dest.workchain & ~mask) | (src.workchain & mask), src.shard};
+    return ton::AccountIdPrefixFull{(dest.workchain & ~mask) | (src.workchain & mask), src.account_id_prefix};
   }
 }
 
 // result: (transit_addr_dest_bits, nh_addr_dest_bits)
-std::pair<int, int> perform_hypercube_routing(ton::ShardIdFull src, ton::ShardIdFull dest, ton::ShardIdFull cur,
-                                              int used_dest_bits) {
-  ton::ShardIdFull transit = interpolate_addr(src, dest, used_dest_bits);
+std::pair<int, int> perform_hypercube_routing(ton::AccountIdPrefixFull src, ton::AccountIdPrefixFull dest,
+                                              ton::ShardIdFull cur, int used_dest_bits) {
+  ton::AccountIdPrefixFull transit = interpolate_addr(src, dest, used_dest_bits);
   if (!ton::shard_contains(cur, transit)) {
     return {-1, -1};
   }
   if (transit.workchain != dest.workchain) {
     return {used_dest_bits, 32};
   }
-  if (transit.shard == dest.shard || ton::shard_contains(cur, dest)) {
+  if (transit.account_id_prefix == dest.account_id_prefix || ton::shard_contains(cur, dest)) {
     return {96, 96};
   }
   unsigned long long x = cur.shard & (cur.shard - 1), y = cur.shard | (cur.shard - 1);
-  unsigned long long t = transit.shard, q = dest.shard ^ t;
+  unsigned long long t = transit.account_id_prefix, q = dest.account_id_prefix ^ t;
   int i = (td::count_leading_zeroes64(q) & -4);  // top i bits match, next 4 bits differ
   unsigned long long m = (std::numeric_limits<td::uint64>::max() >> i), h;
   do {
