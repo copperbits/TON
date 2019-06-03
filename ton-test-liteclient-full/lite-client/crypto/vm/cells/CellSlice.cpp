@@ -1,5 +1,5 @@
 #include "vm/cells/CellSlice.h"
-
+#include "vm/excno.hpp"
 #include "td/utils/bits.h"
 
 namespace vm {
@@ -28,7 +28,9 @@ namespace {
 Cell::LoadedCell load_cell_nothrow(const Ref<Cell>& ref) {
   auto res = ref->load_cell();
   if (res.is_ok()) {
-    return res.move_as_ok();
+    auto ld = res.move_as_ok();
+    CHECK(ld.virt.get_virtualization() == 0 || ld.data_cell->special_type() != Cell::SpecialType::PrunnedBranch);
+    return ld;
   }
   return {};
 }
@@ -37,6 +39,7 @@ Cell::LoadedCell load_cell_nothrow(const Ref<Cell>& ref, int mode) {
   auto res = ref->load_cell();
   if (res.is_ok()) {
     auto ld = res.move_as_ok();
+    CHECK(ld.virt.get_virtualization() == 0 || ld.data_cell->special_type() != Cell::SpecialType::PrunnedBranch);
     if ((mode >> (ld.data_cell->is_special() ? 1 : 0)) & 1) {
       return ld;
     }
@@ -965,5 +968,72 @@ std::ostream& operator<<(std::ostream& os, Ref<CellSlice> cs_ref) {
   }
   return os;
 }
+
+// BEGIN (SLICE LOAD FUNCTIONS)
+// (if these functions become more complicated, move them into a separate file)
+
+// If can_be_special is not null, then it is allowed to load special cell
+// Flag whether loaded cell is actually special will be stored into can_be_special
+VirtualCell::LoadedCell load_cell_slice_impl(const Ref<Cell>& cell, bool* can_be_special) {
+  auto* vm_state_interface = VmStateInterface::get();
+  if (vm_state_interface) {
+    vm_state_interface->register_cell_load();
+  }
+  auto r_loaded_cell = cell->load_cell();
+  if (r_loaded_cell.is_error()) {
+    throw VmError{Excno::cell_und, "failed to load cell"};
+  }
+  auto loaded_cell = r_loaded_cell.move_as_ok();
+  if (can_be_special) {
+    *can_be_special = loaded_cell.data_cell->is_special();
+  } else if (loaded_cell.data_cell->is_special()) {
+    if (loaded_cell.data_cell->special_type() == DataCell::SpecialType::Library) {
+      if (vm_state_interface) {
+        CellSlice cs(std::move(loaded_cell));
+        DCHECK(cs.size() == Cell::hash_bits);
+        auto library_cell = vm_state_interface->load_library(cs.data_bits());
+        if (library_cell.not_null()) {
+          //TODO: fix infinity loop
+          return load_cell_slice_impl(library_cell, nullptr);
+        }
+        throw VmError{Excno::cell_und, "failed to load library cell"};
+      }
+      throw VmError{Excno::cell_und, "failed to load library cell (no vm_state_interface available)"};
+    } else if (loaded_cell.data_cell->special_type() == DataCell::SpecialType::PrunnedBranch) {
+      auto virtualization = loaded_cell.virt.get_virtualization();
+      if (virtualization == 0) {  // no virtualization
+        throw VmError{Excno::cell_und, "trying to load prunned cell"};
+      } else {
+        throw VmVirtError{virtualization};
+      }
+    }
+    throw VmError{Excno::cell_und, "unexpected special cell"};
+  }
+  return loaded_cell;
+}
+
+CellSlice load_cell_slice(const Ref<Cell>& cell, bool* can_be_special) {
+  return CellSlice{load_cell_slice_impl(cell, can_be_special)};
+}
+
+Ref<CellSlice> load_cell_slice_ref(const Ref<Cell>& cell, bool* can_be_special) {
+  return Ref<CellSlice>{true, CellSlice(load_cell_slice_impl(cell, can_be_special))};
+}
+
+void print_load_cell(std::ostream& os, Ref<Cell> cell, int indent, bool can_be_special) {
+  bool special = false;
+  auto cs = load_cell_slice(cell, can_be_special ? &special : nullptr);
+  cs.print_rec(os, indent);
+}
+
+bool CellSlice::load(Ref<Cell> cell, bool* is_special) {
+  return load(load_cell_slice_impl(std::move(cell), is_special));
+}
+
+bool CellSlice::load_ord(Ref<Cell> cell) {
+  return load(load_cell_slice_impl(std::move(cell), nullptr));
+}
+
+// END (SLICE LOAD FUNCTIONS)
 
 }  // namespace vm

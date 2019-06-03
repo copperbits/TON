@@ -33,6 +33,7 @@ struct BlockHandleImpl {
   virtual bool need_flush() const = 0;
   virtual bool is_zero() const = 0;
   virtual bool is_archived() const = 0;
+  virtual bool is_applied() const = 0;
   virtual std::vector<BlockIdExt> prev() const = 0;
   virtual BlockIdExt one_prev(bool left) const = 0;
   virtual std::vector<BlockIdExt> next() const = 0;
@@ -59,7 +60,8 @@ struct BlockHandleImpl {
   virtual void set_state_root_hash(RootHash hash) = 0;
   virtual void set_state_file() = 0;
   virtual void set_state_boc() = 0;
-  virtual void archive() = 0;
+  virtual void set_archived() = 0;
+  virtual void set_applied() = 0;
 
   virtual td::BufferSlice serialize() const = 0;
 

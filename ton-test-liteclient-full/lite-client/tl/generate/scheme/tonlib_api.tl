@@ -55,6 +55,7 @@ testWallet.getAccountState account_address:accountAddress = testWallet.AccountSt
 testWallet.sendGrams private_key:PrivateKey destination:accountAddress seqno:int32 amount:int64 = Ok;
 
 testGiver.getAccountState = testGiver.AccountState;
+testGiver.getAccountAddress = AccountAddress;
 testGiver.sendGrams destination:accountAddress seqno:int32 amount:int64 = Ok;
 
 //generic.getAccountAddress initital_account_state:generic.InitialAccountState = AccountAddress;

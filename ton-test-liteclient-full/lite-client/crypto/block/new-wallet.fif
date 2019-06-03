@@ -1,6 +1,18 @@
+#!/usr/bin/fift -s
+"TonUtil.fif" include
 "Asm.fif" include
 
--1 constant wc  // create a wallet in workchain -1 (masterchain)
+{ ."usage: " @' $0 type ." <workchain-id> [<filename-base>]" cr
+  ."Creates a new wallet in specified workchain, with private key saved to or loaded from <filename-base>.pk" cr
+  ."('new-wallet.pk' by default)" cr 1 halt
+} : usage
+def? $# { @' $# 1- 1 ufits ' usage ifnot } if
+
+Basechain constant wc  // create a wallet in workchain 0 (basechain)
+def? $1 { @' $1 parse-workchain-id =: wc } if   // set workchain id from command line argument
+def? $2 { @' $2 } { "new-wallet" } cond constant file-base
+
+."Creating new wallet in workchain " wc . cr
 
 // Create new simple wallet
 <{  SETCP0 DUP IFNOTRET INC 32 THROWIF  // return if recv_internal, fail unless recv_external
@@ -23,22 +35,23 @@
 }>c
 // code
 <b 0 32 u, 
-   newkeypair swap dup constant wallet_pk 
-   "new-wallet.pk" B>file
+   file-base +".pk" load-generate-keypair
+   constant wallet_pk
    B, 
 b> // data
 // no libraries
 <b b{00110} s, rot ref, swap ref, b>  // create StateInit
 dup ."StateInit: " <s csr. cr
 dup hash dup constant wallet_addr
-."new wallet address = " wc . .": " dup x. cr
-wc over 7 smca>$ type cr
-256 u>B "new-wallet.addr" B>file
+."new wallet address = " wc ._ .":" dup x. cr
+dup 256 u>B file-base +".addr" B>file
+wc swap 2dup 7 smca>$ ."Non-bounceable address (for init): " type cr
+6 smca>$ ."Bounceable address (for later access): " type cr
 <b 0 32 u, b>
 dup ."signing message: " <s csr. cr
 dup hash wallet_pk ed25519_sign_uint rot
 <b b{1000100} s, wc 8 i, wallet_addr 256 u, b{000010} s, swap <s s, b{0} s, swap B, swap <s s, b>
 dup ."External message for initialization is " <s csr. cr
 2 boc+>B dup Bx. cr
-"new-wallet-query.boc" tuck B>file
+file-base +"-query.boc" tuck B>file
 ."(Saved to file " type .")" cr

@@ -1,5 +1,9 @@
 #pragma once
 
+#if !TDDB_USE_ROCKSDB
+#error "RocksDb is not supported"
+#endif
+
 #include "td/db/KeyValue.h"
 #include "td/utils/Status.h"
 
