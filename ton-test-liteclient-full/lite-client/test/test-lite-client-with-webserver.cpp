@@ -14,8 +14,10 @@
 #include "block/block-db.h"
 #include "block/block.h"
 #include "block/block-auto.h"
+#include "block/mc-config.h"
 #include "vm/boc.h"
 #include "vm/cellops.h"
+#include "vm/cells/MerkleProof.h"
 #include "web_server/server_http.hpp"
 
 #if TD_DARWIN || TD_LINUX
@@ -27,6 +29,7 @@
 #include <sstream>
 
 using HttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
+using td::Ref;
 
 int verbosity;
 
@@ -71,6 +74,7 @@ class TestNode : public td::actor::Actor {
 
   bool ready_ = false;
   bool inited_ = false;
+  bool update_on_demand_enabled_ = true;
   std::string db_root_;
 
   int server_time_ = 0;
@@ -94,7 +98,7 @@ class TestNode : public td::actor::Actor {
   void got_server_mc_block_id_silent(ton::BlockIdExt blkid, ton::ZeroStateIdExt zstateid);
   bool request_block(ton::BlockIdExt blkid);
   bool request_state(ton::BlockIdExt blkid);
-  void got_block(ton::BlockIdExt blkid, td::BufferSlice data);
+  void got_mc_block(ton::BlockIdExt blkid, td::BufferSlice data);
   void got_state(ton::BlockIdExt blkid, ton::RootHash root_hash, ton::FileHash file_hash, td::BufferSlice data);
   td::Status send_set_verbosity(std::string verbosity);
   td::Status send_ext_msg_from_filename(std::string filename);
@@ -106,6 +110,15 @@ class TestNode : public td::actor::Actor {
   void got_account_state_web(ton::BlockIdExt blk, ton::BlockIdExt shard_blk, td::BufferSlice shard_proof,
                              td::BufferSlice proof, td::BufferSlice state, ton::WorkchainId workchain,
                              ton::StdSmcAddress addr, std::shared_ptr<HttpServer::Response> response);
+  bool get_all_shards(bool use_last = true, ton::BlockIdExt blkid = {});
+  void got_all_shards(ton::BlockIdExt blk, td::BufferSlice proof, td::BufferSlice data);
+  bool get_block(ton::BlockIdExt blk, bool dump = false);
+  void got_block(ton::BlockIdExt blkid, td::BufferSlice data, bool dump);
+  void got_block_web(ton::BlockIdExt blkid, td::BufferSlice data, bool dump, std::shared_ptr<HttpServer::Response> response);
+  bool get_block_header(ton::BlockIdExt blk, int mode);
+  void got_block_header(ton::BlockIdExt blkid, td::BufferSlice data, int mode);
+  bool show_block_header(ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode);
+  bool give_block_header_description(std::ostringstream& out, ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode);
 
   bool do_parse_line();
   bool show_help(std::string command);
@@ -118,6 +131,10 @@ class TestNode : public td::actor::Actor {
   bool set_error(std::string err_msg);
   void show_context() const;
   bool parse_account_addr(ton::WorkchainId& wc, ton::StdSmcAddress& addr);
+  static int parse_hex_digit(int c);
+  static bool parse_hash(const char* str, ton::Bits256& hash);
+  bool parse_block_id_ext(ton::BlockIdExt& blkid, bool allow_incomplete = false);
+  bool parse_block_id_ext(std::string blk_id_string, ton::BlockIdExt& blkid, bool allow_incomplete = false) const;
   static bool parse_account_addr(std::string acc_string, ton::WorkchainId& wc, ton::StdSmcAddress& addr);
 
  public:
@@ -146,6 +163,9 @@ class TestNode : public td::actor::Actor {
   void set_liteserver_idx(td::int32 idx) {
     liteserver_idx_ = idx;
   }
+  void set_update_on_demand(bool value) {
+    update_on_demand_enabled_ = value;
+  }
 
   void start_up() override {
   }
@@ -161,6 +181,7 @@ class TestNode : public td::actor::Actor {
   // web server methods
   void get_server_time_web(std::shared_ptr<HttpServer::Response> response);
   void get_account_state_web(std::string address, std::shared_ptr<HttpServer::Response> response);
+  void get_block_web(std::string blkid_str, std::shared_ptr<HttpServer::Response> response, bool dump = true);
 
   TestNode() {
   }
@@ -187,7 +208,7 @@ class TestNode : public td::actor::Actor {
 
     CHECK(gc.liteclients_.size() > 0);
     auto idx = liteserver_idx_ >= 0 ? liteserver_idx_
-                                     : td::Random::fast(0, static_cast<td::uint32>(gc.liteclients_.size() - 1));
+                                    : td::Random::fast(0, static_cast<td::uint32>(gc.liteclients_.size() - 1));
     CHECK(idx >= 0 && static_cast<td::uint32>(idx) <= gc.liteclients_.size());
     auto& cli = gc.liteclients_[idx];
     td::IPAddress addr;
@@ -269,7 +290,7 @@ bool TestNode::envelope_send_web(td::BufferSlice query,
 
 bool TestNode::get_server_time() {
   auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_getTime>(), true);
-  return envelope_send_query(std::move(b), [&, Self = actor_id(this)](td::Result<td::BufferSlice> res) -> void {
+  return envelope_send_query(std::move(b), [&, Self = actor_id(this) ](td::Result<td::BufferSlice> res)->void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot get server time";
       return;
@@ -292,17 +313,17 @@ void TestNode::get_server_time_web(std::shared_ptr<HttpServer::Response> respons
   envelope_send_web(std::move(b), [&, Self = actor_id(this), response](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                        "cannot get server time");
+                        "{'error':'cannot get server time'}");
       return;
     } else {
       auto F = ton::fetch_tl_object<ton::ton_api::liteServer_currentTime>(res.move_as_ok(), true);
       if (F.is_error()) {
         response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                          "cannot parse answer to liteServer.getTime");
+                          "{'error':'cannot parse answer to liteServer.getTime'}");
       } else {
         server_time_ = F.move_as_ok()->now_;
         server_time_got_at_ = static_cast<td::uint32>(td::Clocks::system());
-        response -> write(std::to_string(server_time_));
+        response -> write("{'result':'"+std::to_string(server_time_)+"'}");
       }
     }
   }, response);
@@ -310,7 +331,7 @@ void TestNode::get_server_time_web(std::shared_ptr<HttpServer::Response> respons
 
 bool TestNode::get_server_mc_block_id() {
   auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_getMasterchainInfo>(), true);
-  return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> res) -> void {
+  return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> res)->void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot get masterchain info from server";
       return;
@@ -385,7 +406,7 @@ void TestNode::got_server_mc_block_id_silent(ton::BlockIdExt blkid, ton::ZeroSta
 bool TestNode::request_block(ton::BlockIdExt blkid) {
   auto b = ton::serialize_tl_object(
       ton::create_tl_object<ton::ton_api::liteServer_getBlock>(ton::create_tl_block_id(blkid)), true);
-  return envelope_send_query(std::move(b), [Self = actor_id(this), blkid](td::Result<td::BufferSlice> res) -> void {
+  return envelope_send_query(std::move(b), [ Self = actor_id(this), blkid ](td::Result<td::BufferSlice> res)->void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot obtain block " << blkid.to_str() << " from server";
       return;
@@ -401,7 +422,7 @@ bool TestNode::request_block(ton::BlockIdExt blkid) {
           LOG(ERROR) << "block id mismatch: expected data for block " << blkid.to_str() << ", obtained for "
                      << blk_id.to_str();
         }
-        td::actor::send_closure_later(Self, &TestNode::got_block, blk_id, std::move(f->data_));
+        td::actor::send_closure_later(Self, &TestNode::got_mc_block, blk_id, std::move(f->data_));
       }
     }
   });
@@ -410,7 +431,7 @@ bool TestNode::request_block(ton::BlockIdExt blkid) {
 bool TestNode::request_state(ton::BlockIdExt blkid) {
   auto b = ton::serialize_tl_object(
       ton::create_tl_object<ton::ton_api::liteServer_getState>(ton::create_tl_block_id(blkid)), true);
-  return envelope_send_query(std::move(b), [Self = actor_id(this), blkid](td::Result<td::BufferSlice> res) -> void {
+  return envelope_send_query(std::move(b), [ Self = actor_id(this), blkid ](td::Result<td::BufferSlice> res)->void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot obtain state " << blkid.to_str() << " from server";
       return;
@@ -433,7 +454,7 @@ bool TestNode::request_state(ton::BlockIdExt blkid) {
   });
 }
 
-void TestNode::got_block(ton::BlockIdExt blkid, td::BufferSlice data) {
+void TestNode::got_mc_block(ton::BlockIdExt blkid, td::BufferSlice data) {
   LOG(INFO) << "obtained " << data.size() << " data bytes for block " << blkid.to_str();
   ton::FileHash fhash;
   td::sha256(data.as_slice(), fhash.as_slice());
@@ -565,13 +586,8 @@ bool TestNode::parse_account_addr(std::string acc_string, ton::WorkchainId& wc, 
   if (acc_string.size() == 64) {
     int i = 0;
     for (int c : acc_string) {
-      int x = -1, m = 15;
-      c |= 0x20;
-      if (c >= '0' && c <= '9') {
-        x = c - '0';
-      } else if (c >= 'a' && c <= 'f') {
-        x = c - 'a' + 10;
-      } else {
+      int x = parse_hex_digit(c), m = 15;
+      if (x < 0) {
         i = -1;
         break;
       }
@@ -602,6 +618,67 @@ bool TestNode::set_error(td::Status error) {
     error_ = std::move(error);
   }
   return false;
+}
+
+int TestNode::parse_hex_digit(int c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  c |= 0x20;
+  if (c >= 'a' && c <= 'z') {
+    return c - 'a' + 10;
+  }
+  return -1;
+}
+
+bool TestNode::parse_hash(const char* str, ton::Bits256& hash) {
+  unsigned char* data = hash.data();
+  for (int i = 0; i < 32; i++) {
+    int a = parse_hex_digit(str[2 * i]);
+    if (a < 0) {
+      return false;
+    }
+    int b = parse_hex_digit(str[2 * i + 1]);
+    if (b < 0) {
+      return false;
+    }
+    data[i] = (unsigned char)((a << 4) + b);
+  }
+  return true;
+}
+
+bool TestNode::parse_block_id_ext(std::string blkid_str, ton::BlockIdExt& blkid, bool allow_incomplete) const {
+  if (blkid_str.empty() || blkid_str[0] != '(') {
+    return false;
+  }
+  auto pos = blkid_str.find(')');
+  if (pos == std::string::npos || pos >= 38) {
+    return false;
+  }
+  char buffer[40];
+  memcpy(buffer, blkid_str.c_str(), pos + 1);
+  buffer[pos + 1] = 0;
+  unsigned long long shard;
+  if (sscanf(buffer, "(%d,%016llx,%u)", &blkid.id.workchain, &shard, &blkid.id.seqno) != 3) {
+    return false;
+  }
+  blkid.id.shard = shard;
+  if (!blkid.id.is_valid_full()) {
+    return false;
+  }
+  pos++;
+  if (pos == blkid_str.size()) {
+    blkid.root_hash.set_zero();
+    blkid.file_hash.set_zero();
+    return allow_incomplete;
+  }
+  return pos + 2 * 65 == blkid_str.size() && blkid_str[pos] == ':' && blkid_str[pos + 65] == ':' &&
+         parse_hash(blkid_str.c_str() + pos + 1, blkid.root_hash) &&
+         parse_hash(blkid_str.c_str() + pos + 66, blkid.file_hash) && blkid.is_valid_full();
+}
+
+bool TestNode::parse_block_id_ext(ton::BlockIdExt& blk, bool allow_incomplete) {
+  return parse_block_id_ext(get_word(), blk, allow_incomplete) || set_error("cannot parse BlockIdExt");
 }
 
 bool TestNode::set_error(std::string err_msg) {
@@ -641,6 +718,11 @@ bool TestNode::show_help(std::string command) {
                            "status\tShow connection and local database status\n"
                            "getaccount <addr>\tLoads the most recent state of specified account; <addr> is in "
                            "[<workchain>:]<hex-or-base64-addr> format\n"
+                           "allshards [<block-id-ext>]\tShows shard configuration from the most recent masterchain "
+                           "state or from masterchain state corresponding to <block-id-ext>\n"
+                           "gethead <block-id-ext>\tShows block header for <block-id-ext>\n"
+                           "getblock <block-id-ext>\tDownloads block\n"
+                           "dumpblock <block-id-ext>\tDownloads and dumps specified block\n"
                            "privkey <filename>\tLoads a private key from file\n"
                            "help [<command>]\tThis help\n"
                            "quit\tExit\n";
@@ -650,6 +732,7 @@ bool TestNode::show_help(std::string command) {
 bool TestNode::do_parse_line() {
   ton::WorkchainId workchain = ton::masterchainId;  // change to basechain later
   ton::StdSmcAddress addr;
+  ton::BlockIdExt blkid;
   std::string word = get_word();
   skipspc();
   if (word == "time") {
@@ -662,10 +745,18 @@ bool TestNode::do_parse_line() {
     return !eoln() && set_error(send_ext_msg_from_filename(get_line_tail()));
   } else if (word == "getaccount") {
     return parse_account_addr(workchain, addr) && seekeoln() && get_account_state(workchain, addr);
+  } else if (word == "allshards") {
+    return eoln() ? get_all_shards() : (parse_block_id_ext(blkid) && seekeoln() && get_all_shards(false, blkid));
+  } else if (word == "getblock") {
+    return parse_block_id_ext(blkid) && seekeoln() && get_block(blkid, false);
+  } else if (word == "dumpblock") {
+    return parse_block_id_ext(blkid) && seekeoln() && get_block(blkid, true);
+  } else if (word == "gethead") {
+    return parse_block_id_ext(blkid) && seekeoln() && get_block_header(blkid, 0xffff);
   } else if (word == "quit" && eoln()) {
     LOG(INFO) << "Exiting";
     stop();
-    exit(0);
+    // exit(0);
     return true;
   } else if (word == "help") {
     return show_help(get_line_tail());
@@ -673,6 +764,19 @@ bool TestNode::do_parse_line() {
     td::TerminalIO::out() << "unknown command: " << word << " ; type `help` to get help" << '\n';
     return false;
   }
+}
+
+td::Result<std::pair<Ref<vm::Cell>, std::shared_ptr<vm::StaticBagOfCellsDb>>> lazy_boc_deserialize(
+    td::BufferSlice data) {
+  vm::StaticBagOfCellsDbLazy::Options options;
+  options.check_crc32c = true;
+  TRY_RESULT(boc, vm::StaticBagOfCellsDbLazy::create(vm::BufferSliceBlobView::create(std::move(data)), options));
+  TRY_RESULT(rc, boc->get_root_count());
+  if (rc != 1) {
+    return td::Status::Error(-668, "bag-of-cells is not standard (exactly one root cell expected)");
+  }
+  TRY_RESULT(root, boc->get_root_cell(0));
+  return std::make_pair(std::move(root), std::move(boc));
 }
 
 td::Status TestNode::send_ext_msg_from_filename(std::string filename) {
@@ -739,7 +843,7 @@ bool TestNode::get_account_state(ton::WorkchainId workchain, ton::StdSmcAddress 
                                     true);
   LOG(INFO) << "requesting account state for " << workchain << ":" << addr.to_hex();
   return envelope_send_query(
-      std::move(b), [Self = actor_id(this), workchain, addr](td::Result<td::BufferSlice> R) -> void {
+      std::move(b), [ Self = actor_id(this), workchain, addr ](td::Result<td::BufferSlice> R)->void {
         if (R.is_error()) {
           return;
         }
@@ -760,18 +864,18 @@ void TestNode::get_account_state_web(std::string address, std::shared_ptr<HttpSe
   ton::StdSmcAddress addr;
   if (!TestNode::parse_account_addr(address, workchain, addr)){
     response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                      "parse_account_addr fail");
+                      "{'error':'parse_account_addr fail'}");
     return;
   }
 
   if (!mc_last_id_.is_valid()) {
     response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                      "must obtain last block information before making other queries");
+                      "{'error':'must obtain last block information before making other queries'}");
     return;
   }
   if (!(ready_ && !client_.empty())) {
     response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                      "server connection not ready");
+                      "{'error':'server connection not ready'}");
     return;
   }
 
@@ -784,13 +888,13 @@ void TestNode::get_account_state_web(std::string address, std::shared_ptr<HttpSe
     std::move(b), [Self = actor_id(this), workchain, addr, response](td::Result<td::BufferSlice> R) -> void {
       if (R.is_error()) {
         response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                          "Unknown Error");
+                          "{'error':'Unknown Error'}");
         return;
       }
       auto F = ton::fetch_tl_object<ton::ton_api::liteServer_accountState>(R.move_as_ok(), true);
       if (F.is_error()) {
         response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                          "cannot parse answer to liteServer.getAccountState");
+                          "{'error':'cannot parse answer to liteServer.getAccountState'}");
       } else {
         auto f = F.move_as_ok();
         td::actor::send_closure_later(Self, &TestNode::got_account_state_web, ton::create_block_id(f->id_),
@@ -827,22 +931,404 @@ void TestNode::got_account_state_web(ton::BlockIdExt blk, ton::BlockIdExt shard_
                                      td::BufferSlice proof, td::BufferSlice state, ton::WorkchainId workchain,
                                      ton::StdSmcAddress addr, std::shared_ptr<HttpServer::Response> response) {
   if (state.empty()) {
-    response -> write("account state is empty");
+    response -> write("{'error':'account state is empty'}");
   } else {
     auto R = vm::std_boc_deserialize(state.clone());
     if (R.is_error()) {
       response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                        "cannot deserialize account state");
+                        "{'error':'cannot deserialize account state'}");
       return;
     }
     auto root = R.move_as_ok();
     std::ostringstream outp;
     block::gen::t_Account.print_ref(outp, root);
     vm::load_cell_slice(root).print_rec(outp);
-    response -> write(outp.str());
+
+    response -> write("{'result':'"+outp.str()+"'}");
   }
 }
 
+bool TestNode::get_all_shards(bool use_last, ton::BlockIdExt blkid) {
+  if (use_last) {
+    blkid = mc_last_id_;
+  }
+  if (!blkid.is_valid_full()) {
+    return set_error(use_last ? "must obtain last block information before making other queries"
+                              : "invalid masterchain block id");
+  }
+  if (!blkid.is_masterchain()) {
+    return set_error("only masterchain blocks contain shard configuration");
+  }
+  if (!(ready_ && !client_.empty())) {
+    return set_error("server connection not ready");
+  }
+  auto b = ton::serialize_tl_object(
+      ton::create_tl_object<ton::ton_api::liteServer_getAllShardsInfo>(ton::create_tl_block_id(blkid)), true);
+  LOG(INFO) << "requesting recent shard configuration";
+  return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> R)->void {
+    if (R.is_error()) {
+      return;
+    }
+    auto F = ton::fetch_tl_object<ton::ton_api::liteServer_allShardsInfo>(R.move_as_ok(), true);
+    if (F.is_error()) {
+      LOG(ERROR) << "cannot parse answer to liteServer.getAllShardsInfo";
+    } else {
+      auto f = F.move_as_ok();
+      td::actor::send_closure_later(Self, &TestNode::got_all_shards, ton::create_block_id(f->id_), std::move(f->proof_),
+                                    std::move(f->data_));
+    }
+  });
+}
+
+void TestNode::got_all_shards(ton::BlockIdExt blk, td::BufferSlice proof, td::BufferSlice data) {
+  LOG(INFO) << "got shard configuration with respect to block " << blk.to_str();
+  if (data.empty()) {
+    td::TerminalIO::out() << "shard configuration is empty" << '\n';
+  } else {
+    auto R = vm::std_boc_deserialize(data.clone());
+    if (R.is_error()) {
+      LOG(ERROR) << "cannot deserialize shard configuration";
+      return;
+    }
+    auto root = R.move_as_ok();
+    auto out = td::TerminalIO::out();
+    out << "shard configuration is ";
+    std::ostringstream outp;
+    block::gen::t_ShardHashes.print_ref(outp, root);
+    vm::load_cell_slice(root).print_rec(outp);
+    out << outp.str();
+    block::ShardConfig sh_conf;
+    if (!sh_conf.unpack(vm::load_cell_slice_ref(root))) {
+      out << "cannot extract shard block list from shard configuration\n";
+    } else {
+      auto ids = sh_conf.get_shard_hash_ids(true);
+      int cnt = 0;
+      for (auto id : ids) {
+        auto ref = sh_conf.get_shard_hash(ton::ShardIdFull(id));
+        if (ref.not_null()) {
+          out << "shard #" << ++cnt << " : " << ref->top_block_id().to_str() << " @ " << ref->created_at() << " lt "
+              << ref->start_lt() << " .. " << ref->end_lt() << std::endl;
+        } else {
+          out << "shard #" << ++cnt << " : " << id.to_str() << " (cannot unpack)\n";
+        }
+      }
+    }
+  }
+}
+
+bool TestNode::get_block(ton::BlockIdExt blkid, bool dump) {
+  LOG(INFO) << "got block download request for " << blkid.to_str();
+  auto b = ton::serialize_tl_object(
+      ton::create_tl_object<ton::ton_api::liteServer_getBlock>(ton::create_tl_block_id(blkid)), true);
+  return envelope_send_query(
+      std::move(b), [ Self = actor_id(this), blkid, dump ](td::Result<td::BufferSlice> res)->void {
+        if (res.is_error()) {
+          LOG(ERROR) << "cannot obtain block " << blkid.to_str()
+                     << " from server : " << res.move_as_error().to_string();
+          return;
+        } else {
+          auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockData>(res.move_as_ok(), true);
+          if (F.is_error()) {
+            LOG(ERROR) << "cannot parse answer to liteServer.getBlock : " << res.move_as_error().to_string();
+          } else {
+            auto f = F.move_as_ok();
+            auto blk_id = ton::create_block_id(f->id_);
+            LOG(INFO) << "obtained block " << blk_id.to_str() << " from server";
+            if (blk_id != blkid) {
+              LOG(ERROR) << "block id mismatch: expected data for block " << blkid.to_str() << ", obtained for "
+                         << blk_id.to_str();
+            }
+            td::actor::send_closure_later(Self, &TestNode::got_block, blk_id, std::move(f->data_), dump);
+          }
+        }
+      });
+}
+
+void TestNode::get_block_web(std::string blkid_str, std::shared_ptr<HttpServer::Response> response, bool dump) {
+    ton::BlockIdExt blkid;
+    if(!TestNode::parse_block_id_ext(blkid_str, blkid, true))
+        {  response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{'error':'cannot parse block_id'}");      
+        }
+
+  auto b = ton::serialize_tl_object(
+      ton::create_tl_object<ton::ton_api::liteServer_getBlock>(ton::create_tl_block_id(blkid)), true);
+  envelope_send_query(
+      std::move(b), [ Self = actor_id(this), blkid, dump, response](td::Result<td::BufferSlice> res)->void {
+        if (res.is_error()) {
+          response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{'error':'cannot obtain block " + blkid.to_str() + \
+                             " from server : " + res.move_as_error().to_string()+"'}");
+          return;
+        } else {
+          auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockData>(res.move_as_ok(), true);
+          if (F.is_error()) {
+            response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                              "{'error':'cannot parse answer to liteServer.getBlock : " +\
+                               res.move_as_error().to_string()+"'}");
+          } else {
+            auto f = F.move_as_ok();
+            auto blk_id = ton::create_block_id(f->id_);
+            if (blk_id != blkid) {
+              response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                                "{'error':'block id mismatch: expected data for block " + blkid.to_str() +\
+                                 ", obtained for " + blk_id.to_str()+"'}");
+            }
+            td::actor::send_closure_later(Self, &TestNode::got_block_web, blk_id, std::move(f->data_), dump, response);
+          }
+        }
+      });
+}
+
+
+void TestNode::got_block_web(ton::BlockIdExt blkid, td::BufferSlice data, bool dump, std::shared_ptr<HttpServer::Response> response) {
+  LOG(INFO) << "obtained " << data.size() << " data bytes for block " << blkid.to_str();
+  ton::FileHash fhash;
+  td::sha256(data.as_slice(), fhash.as_slice());
+  if (fhash != blkid.file_hash) {
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                      "{'error':'file hash mismatch for block " + blkid.to_str() +\
+                      ": expected " + blkid.file_hash.to_hex() + ", computed " + fhash.to_hex()+"'}");
+    return;
+  }
+  if (!db_root_.empty()) {
+    auto res = save_db_file(fhash, data.clone());
+    if (res.is_error()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                        "{'error':'error saving block file: " + res.to_string() + "'}");
+    }
+  }
+  if (dump) {
+    auto res = vm::std_boc_deserialize(data.clone());
+    if (res.is_error()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                        "{'error':'cannot deserialize block data " + res.move_as_error().to_string() + "'}");
+      return;
+    }
+    auto root = res.move_as_ok();
+    ton::RootHash rhash{root->get_hash().bits()};
+    if (rhash != blkid.root_hash) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                        "{'error':'block root hash mismatch: data has " + rhash.to_hex() +\
+                        " , expected " + blkid.root_hash.to_hex() + "'}");      
+
+      return;
+    }
+    //auto out = td::TerminalIO::out();
+    //out << "block contents is ";
+    std::ostringstream block_data, vm_data, header_data;
+    block::gen::t_Block.print_ref(block_data, root);
+    vm::load_cell_slice(root).print_rec(vm_data);
+    give_block_header_description(header_data, blkid, std::move(root), 0xffff);
+    response -> write("{'result': {'block':'"+block_data.str()+
+                               "', 'vm':'"+vm_data.str()+
+                               "', 'header':'"+header_data.str()+"'}}");    
+  } else {
+    auto res = lazy_boc_deserialize(data.clone());
+    if (res.is_error()) {
+      LOG(ERROR) << "cannot lazily deserialize block data : " << res.move_as_error().to_string();
+      return;
+    }
+    auto pair = res.move_as_ok();
+    auto root = std::move(pair.first);
+    ton::RootHash rhash{root->get_hash().bits()};
+    if (rhash != blkid.root_hash) {
+      LOG(ERROR) << "block root hash mismatch: data has " << rhash.to_hex() << " , expected "
+                 << blkid.root_hash.to_hex();
+      return;
+    }
+    show_block_header(blkid, std::move(root), 0xffff);
+  }
+}
+
+void TestNode::got_block(ton::BlockIdExt blkid, td::BufferSlice data, bool dump) {
+  ton::FileHash fhash;
+  td::sha256(data.as_slice(), fhash.as_slice());
+  if (fhash != blkid.file_hash) {
+    LOG(ERROR) << "file hash mismatch for block " << blkid.to_str() << ": expected " << blkid.file_hash.to_hex()
+               << ", computed " << fhash.to_hex();
+    return;
+  }
+  if (!db_root_.empty()) {
+    auto res = save_db_file(fhash, data.clone());
+    if (res.is_error()) {
+      LOG(ERROR) << "error saving block file: " << res.to_string();
+    }
+  }
+  if (dump) {
+    auto res = vm::std_boc_deserialize(data.clone());
+    if (res.is_error()) {
+      LOG(ERROR) << "cannot deserialize block data : " << res.move_as_error().to_string();
+      return;
+    }
+    auto root = res.move_as_ok();
+    ton::RootHash rhash{root->get_hash().bits()};
+    if (rhash != blkid.root_hash) {
+      LOG(ERROR) << "block root hash mismatch: data has " << rhash.to_hex() << " , expected "
+                 << blkid.root_hash.to_hex();
+      return;
+    }
+    auto out = td::TerminalIO::out();
+    out << "block contents is ";
+    std::ostringstream outp;
+    block::gen::t_Block.print_ref(outp, root);
+    vm::load_cell_slice(root).print_rec(outp);
+    out << outp.str();
+    show_block_header(blkid, std::move(root), 0xffff);
+  } else {
+    auto res = lazy_boc_deserialize(data.clone());
+    if (res.is_error()) {
+      LOG(ERROR) << "cannot lazily deserialize block data : " << res.move_as_error().to_string();
+      return;
+    }
+    auto pair = res.move_as_ok();
+    auto root = std::move(pair.first);
+    ton::RootHash rhash{root->get_hash().bits()};
+    if (rhash != blkid.root_hash) {
+      LOG(ERROR) << "block root hash mismatch: data has " << rhash.to_hex() << " , expected "
+                 << blkid.root_hash.to_hex();
+      return;
+    }
+    show_block_header(blkid, std::move(root), 0xffff);
+  }
+}
+
+
+bool TestNode::get_block_header(ton::BlockIdExt blkid, int mode) {
+  LOG(INFO) << "got block header request for " << blkid.to_str() << " with mode " << mode;
+  auto b = ton::serialize_tl_object(
+      ton::create_tl_object<ton::ton_api::liteServer_getBlockHeader>(ton::create_tl_block_id(blkid), mode), true);
+  return envelope_send_query(std::move(b), [ Self = actor_id(this), blkid ](td::Result<td::BufferSlice> res)->void {
+    if (res.is_error()) {
+      LOG(ERROR) << "cannot obtain block header for " << blkid.to_str()
+                 << " from server : " << res.move_as_error().to_string();
+      return;
+    } else {
+      auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockHeader>(res.move_as_ok(), true);
+      if (F.is_error()) {
+        LOG(ERROR) << "cannot parse answer to liteServer.getBlockHeader : " << res.move_as_error().to_string();
+      } else {
+        auto f = F.move_as_ok();
+        auto blk_id = ton::create_block_id(f->id_);
+        LOG(INFO) << "obtained block header for " << blk_id.to_str() << " from server";
+        if (blk_id != blkid) {
+          LOG(ERROR) << "block id mismatch: expected data for block " << blkid.to_str() << ", obtained for "
+                     << blk_id.to_str();
+        }
+        td::actor::send_closure_later(Self, &TestNode::got_block_header, blk_id, std::move(f->header_proof_), f->mode_);
+      }
+    }
+  });
+  return false;
+}
+
+bool TestNode::show_block_header(ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode) {
+  ton::RootHash vhash{root->get_hash().bits()};
+  if (vhash != blkid.root_hash) {
+    LOG(ERROR) << " block header for block " << blkid.to_str() << " has incorrect root hash " << vhash.to_hex()
+               << " instead of " << blkid.root_hash.to_hex();
+    return false;
+  }
+  std::vector<ton::BlockIdExt> prev;
+  ton::BlockIdExt mc_blkid, blkid_u = blkid;
+  bool after_split;
+  auto res = block::unpack_block_prev_blk_ext(root, blkid_u, prev, mc_blkid, after_split);
+  if (res.is_error()) {
+    LOG(ERROR) << "cannot unpack header for block " << blkid.to_str() << " : " << res.to_string();
+    return false;
+  }
+  if (blkid_u.id != blkid.id || blkid_u.root_hash != blkid.root_hash) {
+    LOG(ERROR) << "block header claims it is for block " << blkid_u.to_str() << " not " << blkid.to_str();
+    return false;
+  }
+  block::gen::Block::Record blk;
+  block::gen::BlockInfo::Record info;
+  if (!(tlb::unpack_cell(root, blk) && tlb::unpack_cell(blk.info, info))) {
+    LOG(ERROR) << "cannot unpack header for block " << blkid.to_str();
+    return false;
+  }
+  auto out = td::TerminalIO::out();
+  out << "block header of " << blkid.to_str() << " @ " << info.gen_utime << " lt " << info.start_lt << " .. "
+      << info.end_lt << std::endl;
+  out << "global_id=" << blk.global_id << " version=" << info.version << " not_master=" << info.not_master
+      << " after_merge=" << info.after_merge << " after_split=" << info.after_split
+      << " before_split=" << info.before_split << " want_merge=" << info.want_merge << " want_split=" << info.want_split
+      << " validator_list_hash_short=" << info.gen_validator_list_hash_short
+      << " catchain_seqno=" << info.gen_catchain_seqno << " min_ref_mc_seqno=" << info.min_ref_mc_seqno << std::endl;
+  int cnt = 0;
+  for (auto id : prev) {
+    out << "previous block #" << ++cnt << " : " << id.to_str() << std::endl;
+  }
+  out << "reference masterchain block : " << mc_blkid.to_str() << std::endl;
+  return true;
+}
+
+
+bool TestNode::give_block_header_description(std::ostringstream& out, ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode) {
+  ton::RootHash vhash{root->get_hash().bits()};
+  if (vhash != blkid.root_hash) {
+    LOG(ERROR) << " block header for block " << blkid.to_str() << " has incorrect root hash " << vhash.to_hex()
+               << " instead of " << blkid.root_hash.to_hex();
+    return false;
+  }
+  std::vector<ton::BlockIdExt> prev;
+  ton::BlockIdExt mc_blkid, blkid_u = blkid;
+  bool after_split;
+  auto res = block::unpack_block_prev_blk_ext(root, blkid_u, prev, mc_blkid, after_split);
+  if (res.is_error()) {
+    LOG(ERROR) << "cannot unpack header for block " << blkid.to_str() << " : " << res.to_string();
+    return false;
+  }
+  if (blkid_u.id != blkid.id || blkid_u.root_hash != blkid.root_hash) {
+    LOG(ERROR) << "block header claims it is for block " << blkid_u.to_str() << " not " << blkid.to_str();
+    return false;
+  }
+  block::gen::Block::Record blk;
+  block::gen::BlockInfo::Record info;
+  if (!(tlb::unpack_cell(root, blk) && tlb::unpack_cell(blk.info, info))) {
+    LOG(ERROR) << "cannot unpack header for block " << blkid.to_str();
+    return false;
+  }
+  out << "block header of " << blkid.to_str() << " @ " << info.gen_utime << " lt " << info.start_lt << " .. "
+      << info.end_lt << std::endl;
+  out << "global_id=" << blk.global_id << " version=" << info.version << " not_master=" << info.not_master
+      << " after_merge=" << info.after_merge << " after_split=" << info.after_split
+      << " before_split=" << info.before_split << " want_merge=" << info.want_merge << " want_split=" << info.want_split
+      << " validator_list_hash_short=" << info.gen_validator_list_hash_short
+      << " catchain_seqno=" << info.gen_catchain_seqno << " min_ref_mc_seqno=" << info.min_ref_mc_seqno << std::endl;
+  int cnt = 0;
+  for (auto id : prev) {
+    out << "previous block #" << ++cnt << " : " << id.to_str() << std::endl;
+  }
+  out << "reference masterchain block : " << mc_blkid.to_str() << std::endl;
+  return true;
+}
+
+void TestNode::got_block_header(ton::BlockIdExt blkid, td::BufferSlice data, int mode) {
+  LOG(INFO) << "obtained " << data.size() << " data bytes as block header for " << blkid.to_str();
+  auto res = vm::std_boc_deserialize(data.clone());
+  if (res.is_error()) {
+    LOG(ERROR) << "cannot deserialize block header data : " << res.move_as_error().to_string();
+    return;
+  }
+  auto root = res.move_as_ok();
+  std::ostringstream outp;
+  vm::CellSlice cs{vm::NoVm{}, root};
+  cs.print_rec(outp);
+  td::TerminalIO::out() << outp.str();
+  try {
+    auto virt_root = vm::MerkleProof::virtualize(root, 1);
+    if (virt_root.is_null()) {
+      LOG(ERROR) << " block header proof for block " << blkid.to_str() << " is not a valid Merkle proof";
+      return;
+    }
+    show_block_header(blkid, std::move(virt_root), mode);
+  } catch (vm::VmError err) {
+    LOG(ERROR) << "error processing header for " << blkid.to_str() << " : " << err.get_msg();
+  } catch (vm::VmVirtError err) {
+    LOG(ERROR) << "error processing header for " << blkid.to_str() << " : " << err.get_msg();
+  }
+}
 
 td::Result<td::UInt256> get_uint256(std::string str) {
   if (str.size() != 64) {
@@ -893,7 +1379,7 @@ void run_web_server(td::actor::Scheduler* scheduler, td::actor::ActorOwn<TestNod
   };
   //
 
-  // get a balance
+  // get a account
   server.resource["^/getaccount/(.+)$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
                                                                           std::shared_ptr<HttpServer::Request> request) {
     std::string address = request -> path_match[1].str();
@@ -906,7 +1392,18 @@ void run_web_server(td::actor::Scheduler* scheduler, td::actor::ActorOwn<TestNod
     work_thread.detach();
   };
   //
-
+  // get a account
+  server.resource["^/getblock/(.+)$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::string blkid_str = request -> path_match[1].str();
+    std::thread work_thread([response, scheduler, x, blkid_str] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_block_web, blkid_str, response, true);
+      });
+    });
+    work_thread.detach();
+  };
+  //
   server.start();
 }
 
@@ -929,6 +1426,7 @@ int main(int argc, char* argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
 
   td::actor::ActorOwn<TestNode> x;
+  int autoupdate = 0;
 
   td::OptionsParser p;
   p.set_description("test basic adnl functionality");
@@ -970,13 +1468,23 @@ int main(int argc, char* argv[]) {
     td::actor::send_closure(x, &TestNode::set_liteserver_idx, idx);
     return td::Status::OK();
   });
+  p.add_option('a', "autoupdate", "start autoupdate loop", [&](td::Slice arg) {
+    autoupdate = td::to_integer<int>(arg);
+    return td::Status::OK();
+  });
+  p.add_option('u', "update-on-demand", "update state before each call", [&]() {
+    td::actor::send_closure(x, &TestNode::set_update_on_demand, true);
+    return td::Status::OK();
+  });
   p.add_option('d', "daemonize", "set SIGHUP", [&]() {
-    td::set_signal_handler(td::SignalType::HangUp, [](int sig) {
+    td::set_signal_handler(td::SignalType::HangUp,
+                           [](int sig) {
 #if TD_DARWIN || TD_LINUX
-      close(0);
-      setsid();
+                             close(0);
+                             setsid();
 #endif
-    }).ensure();
+                           })
+        .ensure();
     return td::Status::OK();
   });
 #if TD_DARWIN || TD_LINUX
@@ -1008,7 +1516,9 @@ int main(int argc, char* argv[]) {
   // web server thread
   std::thread webserver = std::thread(run_web_server, &scheduler, &x);
   // updater thread called 'last' command
-  std::thread updater = std::thread(run_updater, &scheduler, &x);
+  if(autoupdate) {
+    std::thread updater = std::thread(run_updater, &scheduler, &x);
+  }
 
   scheduler.run();
 
