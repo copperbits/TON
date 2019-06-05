@@ -42,8 +42,25 @@
 { find 0<> dup ' nip if } : (def?)
 { bl word 1 ' (def?) } :: def?
 { bl word 1 { (def?) not } } :: undef?
+{ char ) word "$" swap $+ 1 { find 0= abort"undefined parameter" execute } } ::_ $(
+{ 0 swap ! } : 0!
 { tuck @ + swap ! } : +!
 { tuck @ swap - swap ! } : -!
 { 1 swap +! } : 1+!
 { -1 swap +! } : 1-!
 { null swap ! } : null!
+0 tuple constant nil
+{ 1 tuple } : single
+{ 2 tuple } : pair
+{ 3 tuple } : triple
+{ 1 untuple } : unsingle
+{ 2 untuple } : unpair
+{ 3 untuple } : untriple
+' pair : cons
+' unpair : uncons
+{ 0 [] } : car
+{ 1 [] } : cdr
+{ cdr car } : cadr
+{ cdr cdr } : cddr
+{ cdr cdr car } : caddr
+{ null ' cons rot times } : list

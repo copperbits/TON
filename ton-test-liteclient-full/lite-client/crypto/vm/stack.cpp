@@ -5,6 +5,8 @@
 namespace td {
 template class td::Cnt<std::string>;
 template class td::Ref<td::Cnt<std::string>>;
+template class td::Cnt<std::vector<vm::StackEntry>>;
+template class td::Ref<td::Cnt<std::vector<vm::StackEntry>>>;
 }  // namespace td
 
 namespace vm {
@@ -36,38 +38,124 @@ std::string str_to_hex(std::string data, std::string prefix) {
 }
 
 std::string StackEntry::to_string() const {
+  std::ostringstream os;
+  dump(os);
+  return std::move(os).str();
+}
+
+void StackEntry::dump(std::ostream& os) const {
   switch (tp) {
     case t_null:
-      return "(null)";
+      os << "(null)";
+      break;
     case t_int:
-      return dec_string(as_int());
+      os << dec_string(as_int());
+      break;
     case t_cell:
-      return "C{" + static_cast<Ref<Cell>>(ref)->get_hash().to_hex() + "}";
+      os << "C{" << static_cast<Ref<Cell>>(ref)->get_hash().to_hex() << "}";
+      break;
     case t_builder:
-      return "BC{" + static_cast<Ref<CellBuilder>>(ref)->to_hex() + "}";
+      os << "BC{" << static_cast<Ref<CellBuilder>>(ref)->to_hex() << "}";
+      break;
     case t_slice: {
-      std::ostringstream s;
-      s << "CS{";
-      static_cast<Ref<CellSlice>>(ref)->dump(s, 1, false);
-      s << '}';
-      return s.str();
+      os << "CS{";
+      static_cast<Ref<CellSlice>>(ref)->dump(os, 1, false);
+      os << '}';
+      break;
     }
     case t_string:
-      return "\"" + as_string() + "\"";
+      os << "\"" << as_string() << "\"";
+      break;
     case t_bytes:
-      return str_to_hex(as_bytes(), "BYTES:");
+      os << "BYTES:" << str_to_hex(as_bytes());
+      break;
     case t_box: {
-      std::ostringstream s;
-      s << "Box{" << (const void*)&*ref << "}";
-      return s.str();
+      os << "Box{" << (const void*)&*ref << "}";
+      break;
+    }
+    case t_tuple: {
+      const auto& tuple = **static_cast<Ref<Tuple>>(ref);
+      auto n = tuple.size();
+      if (!n) {
+        os << "[]";
+      } else if (n == 1) {
+        os << "[ ";
+        tuple[0].dump(os);
+        os << " ]";
+      } else {
+        os << "[ ";
+        for (const auto& entry : tuple) {
+          entry.dump(os);
+          os << ' ';
+        }
+        os << ']';
+      }
+      break;
     }
     case t_object: {
-      std::ostringstream s;
-      s << "Object{" << (const void*)&*ref << "}";
-      return s.str();
+      os << "Object{" << (const void*)&*ref << "}";
+      break;
     }
     default:
-      return "???";
+      os << "???";
+  }
+}
+
+void StackEntry::print_list(std::ostream& os) const {
+  switch (tp) {
+    case t_null:
+      os << "()";
+      break;
+    case t_tuple: {
+      const auto& tuple = **static_cast<Ref<Tuple>>(ref);
+      auto n = tuple.size();
+      if (!n) {
+        os << "[]";
+      } else if (n == 1) {
+        os << "[";
+        tuple[0].print_list(os);
+        os << "]";
+      } else if (n != 2) {
+        os << "[";
+        unsigned c = 0;
+        for (const auto& entry : tuple) {
+          if (c++) {
+            os << ", ";
+          }
+          entry.print_list(os);
+        }
+        os << ']';
+      } else {
+        os << '(';
+        tuple[0].print_list(os);
+        tuple[1].print_list_tail(os);
+      }
+      break;
+    }
+    default:
+      dump(os);
+  }
+}
+
+void StackEntry::print_list_tail(std::ostream& os) const {
+  switch (tp) {
+    case t_null:
+      os << ')';
+      break;
+    case t_tuple: {
+      const auto& tuple = **static_cast<Ref<Tuple>>(ref);
+      if (tuple.size() == 2) {
+        os << ' ';
+        tuple[0].print_list(os);
+        tuple[1].print_list_tail(os);
+        break;
+      }
+    }
+    // fall through
+    default:
+      os << " . ";
+      print_list(os);
+      os << ')';
   }
 }
 
@@ -94,6 +182,35 @@ Ref<Box> StackEntry::as_box() const & {
 
 Ref<Box> StackEntry::as_box() && {
   return move_as<Box, t_box>();
+}
+
+StackEntry::StackEntry(Ref<Tuple> tuple_ref) : ref(std::move(tuple_ref)), tp(t_tuple) {
+}
+
+Ref<Tuple> StackEntry::as_tuple() const & {
+  return as<Tuple, t_tuple>();
+}
+
+Ref<Tuple> StackEntry::as_tuple() && {
+  return move_as<Tuple, t_tuple>();
+}
+
+Ref<Tuple> StackEntry::as_tuple_range(unsigned max_len, unsigned min_len) const & {
+  auto t = as<Tuple, t_tuple>();
+  if (t.not_null() && (*t)->size() <= max_len && (*t)->size() >= min_len) {
+    return t;
+  } else {
+    return {};
+  }
+}
+
+Ref<Tuple> StackEntry::as_tuple_range(unsigned max_len, unsigned min_len) && {
+  auto t = move_as<Tuple, t_tuple>();
+  if (t.not_null() && (*t)->size() <= max_len && (*t)->size() >= min_len) {
+    return t;
+  } else {
+    return {};
+  }
 }
 
 Stack::Stack(const Stack& old_stack, unsigned copy_elem, unsigned skip_top) {
@@ -236,6 +353,24 @@ Ref<Box> Stack::pop_box() {
   return res;
 }
 
+Ref<Tuple> Stack::pop_tuple() {
+  check_underflow(1);
+  auto res = pop().as_tuple();
+  if (res.is_null()) {
+    throw VmError{Excno::type_chk, "not a tuple"};
+  }
+  return res;
+}
+
+Ref<Tuple> Stack::pop_tuple_range(unsigned max_len, unsigned min_len) {
+  check_underflow(1);
+  auto res = pop().as_tuple();
+  if (res.is_null() || (*res)->size() > max_len || (*res)->size() < min_len) {
+    throw VmError{Excno::type_chk, "not a tuple of valid size"};
+  }
+  return res;
+}
+
 void Stack::push_int(td::RefInt256 val) {
   if (!(*val)->signed_fits_bits(257)) {
     throw VmError{Excno::int_ov};
@@ -285,6 +420,10 @@ void Stack::push_cont(Ref<Continuation> cont) {
 
 void Stack::push_box(Ref<Box> box) {
   push(std::move(box));
+}
+
+void Stack::push_tuple(Ref<Tuple> tuple) {
+  push(std::move(tuple));
 }
 
 Ref<Stack> Stack::split_top(unsigned top_cnt, unsigned drop_cnt) {

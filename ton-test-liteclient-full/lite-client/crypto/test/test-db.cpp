@@ -456,6 +456,87 @@ TEST(Cell, MerkleProof) {
   }
 };
 
+TEST(Cell, MerkleProofCombine) {
+  td::Random::Xorshift128plus rnd{123};
+  for (int t = 0; t < 1000; t++) {
+    bool with_prunned_branches = true;
+    auto cell = gen_random_cell(rnd.fast(1, 1000), rnd, with_prunned_branches);
+    auto exploration1 = CellExplorer::random_explore(cell, rnd);
+    auto exploration2 = CellExplorer::random_explore(cell, rnd);
+
+    Ref<Cell> proof1;
+    {
+      auto usage_tree = std::make_shared<CellUsageTree>();
+      auto usage_cell = UsageCell::create(cell, usage_tree->root_ptr());
+      CellExplorer::explore(usage_cell, exploration1.ops);
+      proof1 = MerkleProof::generate(cell, usage_tree.get());
+
+      auto virtualized_proof = MerkleProof::virtualize(proof1, 1);
+      auto exploration = CellExplorer::explore(virtualized_proof, exploration1.ops);
+      ASSERT_EQ(exploration.log, exploration1.log);
+    }
+
+    Ref<Cell> proof2;
+    {
+      auto usage_tree = std::make_shared<CellUsageTree>();
+      auto usage_cell = UsageCell::create(cell, usage_tree->root_ptr());
+      CellExplorer::explore(usage_cell, exploration2.ops);
+      proof2 = MerkleProof::generate(cell, usage_tree.get());
+
+      auto virtualized_proof = MerkleProof::virtualize(proof2, 1);
+      auto exploration = CellExplorer::explore(virtualized_proof, exploration2.ops);
+      ASSERT_EQ(exploration.log, exploration2.log);
+    }
+
+    Ref<Cell> proof12;
+    {
+      auto usage_tree = std::make_shared<CellUsageTree>();
+      auto usage_cell = UsageCell::create(cell, usage_tree->root_ptr());
+      CellExplorer::explore(usage_cell, exploration1.ops);
+      CellExplorer::explore(usage_cell, exploration2.ops);
+      proof12 = MerkleProof::generate(cell, usage_tree.get());
+
+      auto virtualized_proof = MerkleProof::virtualize(proof12, 1);
+      auto exploration_a = CellExplorer::explore(virtualized_proof, exploration1.ops);
+      auto exploration_b = CellExplorer::explore(virtualized_proof, exploration2.ops);
+      ASSERT_EQ(exploration_a.log, exploration1.log);
+      ASSERT_EQ(exploration_b.log, exploration2.log);
+    }
+
+    Ref<Cell> proof_union;
+    {
+      proof_union = MerkleProof::combine(proof1, proof2);
+      ASSERT_EQ(proof_union->get_hash(), proof12->get_hash());
+
+      auto virtualized_proof = MerkleProof::virtualize(proof_union, 1);
+      auto exploration_a = CellExplorer::explore(virtualized_proof, exploration1.ops);
+      auto exploration_b = CellExplorer::explore(virtualized_proof, exploration2.ops);
+      ASSERT_EQ(exploration_a.log, exploration1.log);
+      ASSERT_EQ(exploration_b.log, exploration2.log);
+    }
+    {
+      auto cell = MerkleProof::virtualize(proof12, 1);
+
+      auto usage_tree = std::make_shared<CellUsageTree>();
+      auto usage_cell = UsageCell::create(cell, usage_tree->root_ptr());
+      CellExplorer::explore(usage_cell, exploration1.ops);
+      auto proof = MerkleProof::generate(cell, usage_tree.get());
+
+      auto virtualized_proof = MerkleProof::virtualize(proof, 2);
+      auto exploration = CellExplorer::explore(virtualized_proof, exploration1.ops);
+      ASSERT_EQ(exploration.log, exploration1.log);
+      if (proof->get_hash() != proof1->get_hash()) {
+        CellSlice(NoVm(), proof12).print_rec(std::cerr);
+        CellSlice(NoVm(), proof).print_rec(std::cerr);
+        CellSlice(NoVm(), proof1).print_rec(std::cerr);
+        LOG(ERROR) << proof->get_level() << " " << proof->get_hash().to_hex();
+        LOG(ERROR) << proof->get_level() << " " << proof1->get_hash().to_hex();
+        LOG(FATAL) << "?";
+      }
+    }
+  }
+};
+
 int X = 20;
 auto gen_merkle_update(Ref<Cell> cell, td::Random::Xorshift128plus &rnd, bool with_prunned_branches) {
   auto usage_tree = std::make_shared<CellUsageTree>();
@@ -1459,6 +1540,9 @@ TEST(TonDb, CompactArray) {
   };
 
   auto flush_to_db = [&] {
+    if (rnd() % 10 != 0) {
+      return;
+    }
     bool restart_db = rnd() % 20 == 0;
     bool reload_array = rnd() % 5 == 0;
     smt->set_root(array.root());
@@ -1561,8 +1645,8 @@ TEST(TonDb, CompactArrayOld) {
   }
   //LOG(ERROR) << "OK";
 
-  for (int i = 0; i < 10000; i++) {
-    if (i % 1000 == 999) {
+  for (int i = 0; i < 100; i++) {
+    if (i % 10 == 9) {
       //LOG(ERROR) << ton_db->stats();
       ton_db.reset();
       ton_db = vm::TonDbImpl::open("ttt").move_as_ok();

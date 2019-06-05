@@ -29,9 +29,12 @@ using td::RefAny;
 const char* get_exception_msg(Excno exc_no);
 std::string str_to_hex(std::string data, std::string prefix = "");
 
+class StackEntry;
 class Stack;
 class Continuation;
 class Box;
+
+using Tuple = td::Cnt<std::vector<StackEntry>>;
 
 extern struct from_object_t {
 } from_object;
@@ -50,6 +53,7 @@ class StackEntry {
     t_bytes,
     t_bitstring,
     t_box,
+    t_tuple,
     t_object
   };
 
@@ -77,6 +81,7 @@ class StackEntry {
   StackEntry(Ref<Stack> stack_ref);
   StackEntry(Ref<Continuation> cont_ref);
   StackEntry(Ref<Box> box_ref);
+  StackEntry(Ref<Tuple> tuple_ref);
   StackEntry(const StackEntry& se) noexcept : ref(se.ref), tp(se.tp) {
   }
   StackEntry(StackEntry&& se) noexcept : ref(std::move(se.ref)), tp(se.tp) {
@@ -103,6 +108,9 @@ class StackEntry {
   }
   bool empty() const {
     return tp == t_null;
+  }
+  bool is_tuple() const {
+    return tp == t_tuple;
   }
   void swap(StackEntry& se) {
     ref.swap(se.ref);
@@ -168,6 +176,10 @@ class StackEntry {
   }
   Ref<Box> as_box() const &;
   Ref<Box> as_box() &&;
+  Ref<Tuple> as_tuple() const &;
+  Ref<Tuple> as_tuple() &&;
+  Ref<Tuple> as_tuple_range(unsigned max_len = 255, unsigned min_len = 0) const &;
+  Ref<Tuple> as_tuple_range(unsigned max_len = 255, unsigned min_len = 0) &&;
   template <class T>
   Ref<T> as_object() const & {
     return as<T, t_object>();
@@ -176,6 +188,9 @@ class StackEntry {
   Ref<T> as_object() && {
     return move_as<T, t_object>();
   }
+  void dump(std::ostream& os) const;
+  void print_list(std::ostream& os) const;
+  void print_list_tail(std::ostream& os) const;
   std::string to_string() const;
 };
 
@@ -230,6 +245,10 @@ class Stack : public td::CntObject {
     StackEntry res = std::move(stack.back());
     stack.pop_back();
     return res;
+  }
+  StackEntry pop_chk() {
+    check_underflow(1);
+    return pop();
   }
   void pop_many(int count) {
     stack.resize(stack.size() - count);
@@ -355,6 +374,8 @@ class Stack : public td::CntObject {
   Ref<CellSlice> pop_cellslice();
   Ref<Continuation> pop_cont();
   Ref<Box> pop_box();
+  Ref<Tuple> pop_tuple();
+  Ref<Tuple> pop_tuple_range(unsigned max_len = 255, unsigned min_len = 0);
   std::string pop_string();
   std::string pop_bytes();
   void push_int(td::RefInt256 val);
@@ -368,7 +389,13 @@ class Stack : public td::CntObject {
   void push_cellslice(Ref<CellSlice> cs);
   void push_cont(Ref<Continuation> cont);
   void push_box(Ref<Box> box);
+  void push_tuple(Ref<Tuple> tuple);
   void dump(std::ostream& os, bool cr = true) const;
 };
 
 }  // namespace vm
+
+namespace td {
+extern template class td::Cnt<std::vector<vm::StackEntry>>;
+extern template class td::Ref<td::Cnt<std::vector<vm::StackEntry>>>;
+}  // namespace td

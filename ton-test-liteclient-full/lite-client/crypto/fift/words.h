@@ -16,7 +16,7 @@ void init_words_common(Dictionary& dictionary);
 void init_words_vm(Dictionary& dictionary);
 void init_words_ton(Dictionary& dictionary);
 
-void import_cmdline_args(Dictionary& d, std::string arg0, int n, char* const argv[]);
+void import_cmdline_args(Dictionary& d, std::string arg0, int n, const char* const argv[]);
 
 int funny_interpret_loop(IntCtx& ctx);
 

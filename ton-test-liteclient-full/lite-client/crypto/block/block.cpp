@@ -34,7 +34,7 @@ bool pack_std_smc_addr_to(char result[48], bool base64_url, ton::WorkchainId wc,
     return false;
   }
   unsigned char buffer[36];
-  buffer[0] = (unsigned char)(0x11 + bounceable * 0x40 + testnet * 0x80);
+  buffer[0] = (unsigned char)(0x51 - bounceable * 0x40 + testnet * 0x80);
   buffer[1] = (unsigned char)wc;
   memcpy(buffer + 2, addr.data(), 32);
   unsigned crc = td::crc16(td::Slice{buffer, 34});
@@ -69,7 +69,7 @@ bool unpack_std_smc_addr(const char packed[48], ton::WorkchainId& wc, ton::StdSm
     return false;
   }
   testnet = (buffer[0] & 0x80);
-  bounceable = (buffer[0] & 0x40);
+  bounceable = !(buffer[0] & 0x40);
   wc = (char)buffer[1];
   memcpy(addr.data(), buffer + 2, 32);
   return true;
@@ -121,6 +121,74 @@ bool StdAddress::rdeserialize(const char from[48]) {
 bool StdAddress::operator==(const StdAddress& other) const {
   return workchain == other.workchain && addr == other.addr && bounceable == other.bounceable &&
          testnet == other.testnet;
+}
+
+int parse_hex_digit(int c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  c |= 0x20;
+  if (c >= 'a' && c <= 'z') {
+    return c - 'a' + 10;
+  }
+  return -1;
+}
+
+bool StdAddress::parse_addr(std::string acc_string) {
+  if (rdeserialize(acc_string)) {
+    return true;
+  }
+  testnet = false;
+  bounceable = true;
+  auto pos = acc_string.find(':');
+  if (pos != std::string::npos) {
+    if (pos > 10) {
+      return invalidate();
+    }
+    std::string tmp{acc_string, 0, pos};
+    char* end = 0;
+    auto wc = strtoll(tmp.c_str(), &end, 10);
+    workchain = static_cast<ton::WorkchainId>(wc);
+    if (end != tmp.c_str() + pos || workchain != wc || workchain == ton::workchainInvalid) {
+      return invalidate();
+    }
+    ++pos;
+  } else {
+    pos = 0;
+  }
+  // LOG(DEBUG) << "parsing " << acc_string << " address";
+  if (acc_string.size() != pos + 64) {
+    return invalidate();
+  }
+  for (unsigned i = 0; i < 64; i++) {
+    int x = parse_hex_digit(acc_string[pos + i]), m = 15;
+    if (x < 0) {
+      return invalidate();
+    }
+    if (!(i & 1)) {
+      x <<= 4;
+      m <<= 4;
+    }
+    addr.data()[i >> 1] = (unsigned char)((addr.data()[i >> 1] & ~m) | x);
+  }
+  return true;
+}
+
+bool parse_std_account_addr(std::string acc_string, ton::WorkchainId& wc, ton::StdSmcAddress& addr, bool* bounceable,
+                            bool* testnet_only) {
+  StdAddress a;
+  if (!a.parse_addr(std::move(acc_string))) {
+    return false;
+  }
+  wc = a.workchain;
+  addr = a.addr;
+  if (testnet_only) {
+    *testnet_only = a.testnet;
+  }
+  if (bounceable) {
+    *bounceable = a.bounceable;
+  }
+  return true;
 }
 
 void ShardId::init() {
@@ -246,8 +314,7 @@ bool MsgProcessedUpto::contains(const MsgProcessedUpto& other) const & {
 bool MsgProcessedUpto::contains(ton::ShardId other_shard, ton::LogicalTime other_lt, td::ConstBitPtr other_hash,
                                 ton::BlockSeqno other_mc_seqno) const & {
   return ton::shard_is_ancestor(shard, other_shard) && mc_seqno >= other_mc_seqno &&
-         (last_inmsg_lt > other_lt ||
-          (last_inmsg_lt == other_lt && td::bitstring::bits_memcmp(last_inmsg_hash.bits(), other_hash, 256) > 0));
+         (last_inmsg_lt > other_lt || (last_inmsg_lt == other_lt && !(last_inmsg_hash < other_hash)));
 }
 
 bool MsgProcessedUptoCollection::insert(ton::LogicalTime last_proc_lt, td::ConstBitPtr last_proc_hash,
@@ -264,22 +331,36 @@ bool MsgProcessedUptoCollection::insert(ton::LogicalTime last_proc_lt, td::Const
   return true;
 }
 
+ton::BlockSeqno MsgProcessedUptoCollection::min_mc_seqno() const {
+  ton::BlockSeqno min_mc_seqno = ~0U;
+  for (const auto& z : list) {
+    min_mc_seqno = std::min(min_mc_seqno, z.mc_seqno);
+  }
+  return min_mc_seqno;
+}
+
 bool MsgProcessedUptoCollection::compactify() {
   std::sort(list.begin(), list.end());
-  std::size_t i, j, k = 0, n = list.size();
+  std::size_t i, j, k = 0, m = 0, n = list.size();
+  std::vector<bool> mark(n, false);
+  assert(mark.size() == n);
   for (i = 0; i < n; i++) {
-    bool f = true;
     for (j = 0; j < n; j++) {
-      if (j != i && list[j].contains(list[i])) {
-        f = false;
+      if (j != i && !mark[j] && list[j].contains(list[i])) {
+        mark[i] = true;
+        ++m;
         break;
       }
     }
-    if (f) {
-      list[k++] = list[i];
-    }
   }
-  list.resize(k);
+  if (m) {
+    for (i = 0; i < n; i++) {
+      if (!mark[i]) {
+        list[k++] = list[i];
+      }
+    }
+    list.resize(k);
+  }
   return true;
 }
 

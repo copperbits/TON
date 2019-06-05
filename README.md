@@ -18,7 +18,7 @@ This is open development community and **enthusiasts research place**. We will p
 
 Code was downloaded from https://test.ton.org/download.html
 
-Last codebase update was performed on May 31, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`c01128d483c6c8c1add32019bdafb3d6b002ba60694c0ab8481597827014cc4c`.
+Last codebase update was performed on June 5, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`edd57971cba5cff9b219a1c99401a7315176ac9ab30afc9df0b1ed39e1dbc009`.
 
 ---
 ## Table of contents:
@@ -109,7 +109,7 @@ You will find here [original readme](/docs/README.md), with additions of communi
 
 ## Contributing
 
-All this information shipped by [cooperbits team](https://t.me/ton_research) and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
+All this information shipped by [copperbits team](https://t.me/ton_research) and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
 
 
 - **Questions?** Feel free to [open an issue](https://github.com/copperbits/TON/issues/new). Or ask us on [Telegam public group](https://t.me/ton_research)
