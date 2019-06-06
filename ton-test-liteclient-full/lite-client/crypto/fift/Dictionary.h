@@ -21,6 +21,15 @@ class WordDef : public td::CntObject {
   WordDef() = default;
   virtual ~WordDef() override = default;
   virtual void run(IntCtx& ctx) const = 0;
+  virtual bool is_list() const {
+    return false;
+  }
+  virtual long long list_size() const {
+    return -1;
+  }
+  virtual const std::vector<Ref<WordDef>>* get_list() const {
+    return nullptr;
+  }
 };
 
 class StackWord : public WordDef {
@@ -28,7 +37,7 @@ class StackWord : public WordDef {
 
  public:
   StackWord(StackWordFunc _f);
-  virtual ~StackWord() override = default;
+  ~StackWord() override = default;
   void run(IntCtx& ctx) const override;
 };
 
@@ -37,7 +46,7 @@ class CtxWord : public WordDef {
 
  public:
   CtxWord(CtxWordFunc _f);
-  virtual ~CtxWord() override = default;
+  ~CtxWord() override = default;
   void run(IntCtx& ctx) const override;
 };
 
@@ -45,7 +54,7 @@ class WordList : public WordDef {
   std::vector<Ref<WordDef>> list;
 
  public:
-  virtual ~WordList() override = default;
+  ~WordList() override = default;
   WordList() = default;
   WordList(std::vector<Ref<WordDef>>&& _list);
   WordList(const std::vector<Ref<WordDef>>& _list);
@@ -53,6 +62,16 @@ class WordList : public WordDef {
   WordList& push_back(WordDef& wd);
   void run(IntCtx& ctx) const override;
   void close();
+  bool is_list() const override {
+    return true;
+  }
+  long long list_size() const override {
+    return (long long)list.size();
+  }
+  const std::vector<Ref<WordDef>>* get_list() const override {
+    return &list;
+  }
+  WordList& append(const std::vector<Ref<WordDef>>& other);
 };
 
 class WordRef {
@@ -70,7 +89,7 @@ class WordRef {
   //WordRef(std::vector<Ref<WordDef>>&& word_list);
   WordRef& operator=(const WordRef&) = default;
   WordRef& operator=(WordRef&&) = default;
-  Ref<WordDef> get_def() const&;
+  Ref<WordDef> get_def() const &;
   Ref<WordDef> get_def() &&;
   void operator()(IntCtx& ctx) const;
   bool is_active() const;

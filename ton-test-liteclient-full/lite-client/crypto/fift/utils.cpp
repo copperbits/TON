@@ -17,6 +17,9 @@ std::string load_Fift_fif() {
 std::string load_Asm_fif() {
   return load_source("Asm.fif");
 }
+std::string load_TonUtil_fif() {
+  return load_source("TonUtil.fif");
+}
 
 class MemoryFileLoader : public fift::FileLoader {
  public:
@@ -26,7 +29,7 @@ class MemoryFileLoader : public fift::FileLoader {
       return td::Status::Error();
     }
     fift::FileLoader::File res;
-    res.data = std::move(it->second);
+    res.data = it->second;
     res.path = it->first;
     return std::move(res);
   }
@@ -39,11 +42,29 @@ class MemoryFileLoader : public fift::FileLoader {
   void add_file(std::string path, std::string data) {
     files_[path] = std::move(data);
   }
+  td::Result<File> read_file_part(td::CSlice filename, td::int64 size, td::int64 offset) override {
+    auto it = files_.find(filename);
+    if (it == files_.end()) {
+      return td::Status::Error();
+    }
+    fift::FileLoader::File res;
+    if (static_cast<td::int64>(it->second.size()) < offset) {
+      return td::Status::Error();
+    }
+    res.data = td::Slice(it->second).substr(offset, size).str();
+    res.path = it->first;
+    return std::move(res);
+  }
+
+  bool is_file_exists(td::CSlice filename) override {
+    return files_.count(filename) != 0;
+  }
 
  private:
   std::map<std::string, std::string, std::less<>> files_;
 };
-fift::SourceLookup create_source_lookup(std::string main, bool need_preamble = true, bool need_asm = true) {
+fift::SourceLookup create_source_lookup(std::string main, bool need_preamble = true, bool need_asm = true,
+                                        bool need_ton_util = true) {
   auto loader = std::make_unique<MemoryFileLoader>();
   loader->add_file("/main.fif", std::move(main));
   if (need_preamble) {
@@ -52,13 +73,16 @@ fift::SourceLookup create_source_lookup(std::string main, bool need_preamble = t
   if (need_asm) {
     loader->add_file("/Asm.fif", load_Asm_fif());
   }
+  if (need_ton_util) {
+    loader->add_file("/TonUtil.fif", load_TonUtil_fif());
+  }
   auto res = fift::SourceLookup(std::move(loader));
   res.add_include_path("/");
   return res;
 }
 
-td::Result<fift::SourceLookup> run_fift(fift::SourceLookup source_lookup, std::ostream* stream,
-                                        bool preload_fift = true) {
+td::Result<fift::SourceLookup> run_fift(fift::SourceLookup source_lookup, std::ostream *stream,
+                                        bool preload_fift = true, std::vector<std::string> args = {}) {
   fift::Fift::Config config;
   config.source_lookup = std::move(source_lookup);
   fift::init_words_common(config.dictionary);
@@ -66,6 +90,13 @@ td::Result<fift::SourceLookup> run_fift(fift::SourceLookup source_lookup, std::o
   fift::init_words_ton(config.dictionary);
   config.error_stream = stream;
   config.output_stream = stream;
+  if (args.size() != 0) {
+    std::vector<const char *> argv;
+    for (auto &arg : args) {
+      argv.push_back(arg.c_str());
+    }
+    fift::import_cmdline_args(config.dictionary, argv[0], td::narrow_cast<int>(argv.size() - 1), argv.data() + 1);
+  }
   fift::Fift fift{std::move(config)};
   if (preload_fift) {
     TRY_STATUS(fift.interpret_file("Fift.fif", ""));
@@ -74,9 +105,13 @@ td::Result<fift::SourceLookup> run_fift(fift::SourceLookup source_lookup, std::o
   return std::move(fift.config().source_lookup);
 }
 }  // namespace
-td::Result<FiftOutput> mem_run_fift(std::string source) {
+td::Result<FiftOutput> mem_run_fift(std::string source, std::vector<std::string> args) {
   std::stringstream ss;
-  TRY_RESULT(source_lookup, run_fift(create_source_lookup(source), &ss, true));
+  auto r_source_lookup = run_fift(create_source_lookup(source), &ss, true, std::move(args));
+  if (r_source_lookup.is_error()) {
+    LOG(ERROR) << ss.str();
+  }
+  TRY_RESULT(source_lookup, std::move(r_source_lookup));
   FiftOutput res;
   res.source_lookup = std::move(source_lookup);
   res.output = ss.str();

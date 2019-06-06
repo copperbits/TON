@@ -425,6 +425,11 @@ db.state.key.destroyedSessions = db.state.Key;
 db.state.key.initBlockId = db.state.Key;
 db.state.key.shardClient workchain:int shard:long = db.state.Key;
 
+db.lt.el.key workchain:int shard:long idx:int = db.lt.Key;
+db.lt.desc.key workchain:int shard:long = db.lt.Key;
+db.lt.el.value id:tonNode.blockIdExt lt:long = db.lt.el.Value;
+db.lt.desc.value first_idx:int last_idx:int last_seqno:int last_lt:long = db.lt.desc.Value; 
+
 ---functions---
 
 ---types---
@@ -463,6 +468,7 @@ liteServer.sendMsgStatus status:int = liteServer.SendMsgStatus;
 liteServer.accountState id:tonNode.blockIdExt shardblk:tonNode.blockIdExt shard_proof:bytes proof:bytes state:bytes = liteServer.AccountState;
 liteServer.shardInfo id:tonNode.blockIdExt shardblk:tonNode.blockIdExt shard_proof:bytes shard_descr:bytes = liteServer.ShardInfo;
 liteServer.allShardsInfo id:tonNode.blockIdExt proof:bytes data:bytes = liteServer.AllShardsInfo;
+liteServer.transactionInfo id:tonNode.blockIdExt proof:bytes transaction:bytes = liteServer.TransactionInfo;
 
 liteServer.debug.verbosity value:int = liteServer.debug.Verbosity;
 
@@ -477,6 +483,7 @@ liteServer.sendMessage body:bytes = liteServer.SendMsgStatus;
 liteServer.getAccountState id:tonNode.blockIdExt account:liteServer.accountId = liteServer.AccountState;
 liteServer.getShardInfo id:tonNode.blockIdExt workchain:int shard:long exact:Bool = liteServer.ShardInfo;
 liteServer.getAllShardsInfo id:tonNode.blockIdExt = liteServer.AllShardsInfo;
+liteServer.getOneTransaction id:tonNode.blockIdExt account:liteServer.accountId lt:long = liteServer.TransactionInfo;
 
 liteServer.debug.setVerbosity verbosity:liteServer.debug.verbosity = liteServer.debug.Verbosity;
 

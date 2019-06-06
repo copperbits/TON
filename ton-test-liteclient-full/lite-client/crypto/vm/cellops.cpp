@@ -882,9 +882,34 @@ int exec_load_int_fixed(VmState* st, unsigned args, unsigned mode) {
   return exec_load_int_common(st->get_stack(), bits, mode);
 }
 
+int exec_preload_ref_fixed(VmState* st, unsigned args) {
+  unsigned idx = args & 3;
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute PLDREFIDX " << idx;
+  auto cs = stack.pop_cellslice();
+  if (!cs->have_refs(idx + 1)) {
+    throw VmError{Excno::cell_und};
+  }
+  stack.push_cell(cs->prefetch_ref(idx));
+  return 0;
+}
+
+int exec_preload_ref(VmState* st) {
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute PLDREFVAR";
+  stack.check_underflow(2);
+  unsigned idx = stack.pop_smallint_range(3);
+  auto cs = stack.pop_cellslice();
+  if (!cs->have_refs(idx + 1)) {
+    throw VmError{Excno::cell_und};
+  }
+  stack.push_cell(cs->prefetch_ref(idx));
+  return 0;
+}
+
 int exec_load_ref(VmState* st, unsigned mode) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute " << (mode & 2 ? "P" : "") << "LDREF" << (mode & 4 ? "Q\n" : "\n");
+  VM_LOG(st) << "execute " << (mode & 2 ? "P" : "") << "LDREF" << (mode & 4 ? "Q" : "");
   auto cs = stack.pop_cellslice();
   if (!cs->have_refs()) {
     if (!(mode & 4)) {
@@ -907,7 +932,7 @@ int exec_load_ref(VmState* st, unsigned mode) {
 
 int exec_load_ref_rev_to_slice(VmState* st, unsigned mode) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute " << (mode & 2 ? "P" : "") << "LDREFRTOS" << (mode & 4 ? "Q\n" : "\n");
+  VM_LOG(st) << "execute " << (mode & 2 ? "P" : "") << "LDREFRTOS" << (mode & 4 ? "Q" : "");
   auto cs = stack.pop_cellslice();
   if (!cs->have_refs()) {
     if (!(mode & 4)) {
@@ -1332,9 +1357,11 @@ void register_cell_deserialize_ops(OpcodeTable& cp0) {
           0xd747, 16, "SCHKBITREFSQ",
           std::bind(exec_slice_chk_op_args2, _1, "SCHKBITREFSQ", 1023, 4, true,
                     [](auto cs, unsigned bits, unsigned refs) { return cs.have(bits) && cs.have_refs(refs); })))
+      .insert(OpcodeInstr::mksimple(0xd748, 16, "PLDREFVAR", exec_preload_ref))
       .insert(OpcodeInstr::mksimple(0xd749, 16, "SBITS", std::bind(exec_slice_bits_refs, _1, 1)))
       .insert(OpcodeInstr::mksimple(0xd74a, 16, "SREFS", std::bind(exec_slice_bits_refs, _1, 2)))
       .insert(OpcodeInstr::mksimple(0xd74b, 16, "SBITREFS", std::bind(exec_slice_bits_refs, _1, 3)))
+      .insert(OpcodeInstr::mkfixed(0xd74c >> 2, 14, 2, instr::dump_1c_and(3, "PLDREFIDX "), exec_preload_ref_fixed))
       .insert(OpcodeInstr::mkfixed(0xd75, 12, 4, dump_load_le_int, exec_load_le_int))
       .insert(OpcodeInstr::mksimple(0xd760, 16, "LDZEROES", std::bind(exec_load_same, _1, "LDZEROES", 0)))
       .insert(OpcodeInstr::mksimple(0xd761, 16, "LDONES", std::bind(exec_load_same, _1, "LDONES", 1)))

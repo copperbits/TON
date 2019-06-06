@@ -18,12 +18,15 @@
 #include "vm/dict.h"
 #include "vm/boc.h"
 
+#include "vm/box.hpp"
+
 #include "block/block.h"
 
 #include "td/utils/filesystem.h"
 #include "td/utils/optional.h"
 #include "td/utils/PathView.h"
 #include "td/utils/port/thread.h"
+#include "td/utils/port/Stat.h"
 #include "td/utils/Timer.h"
 #include "td/utils/tl_helpers.h"
 
@@ -55,9 +58,32 @@ void interpret_dot_cellslice_rec(IntCtx& ctx) {
 
 void interpret_dotstack(IntCtx& ctx) {
   for (int i = ctx.stack.depth(); i > 0; i--) {
-    *ctx.output_stream << ctx.stack[i - 1].to_string() << " ";
+    ctx.stack[i - 1].dump(*ctx.output_stream);
+    *ctx.output_stream << ' ';
   }
   *ctx.output_stream << std::endl;
+}
+
+void interpret_dotstack_list(IntCtx& ctx) {
+  for (int i = ctx.stack.depth(); i > 0; i--) {
+    ctx.stack[i - 1].print_list(*ctx.output_stream);
+    *ctx.output_stream << ' ';
+  }
+  *ctx.output_stream << std::endl;
+}
+
+void interpret_dump(IntCtx& ctx) {
+  ctx.stack.pop_chk().dump(*ctx.output_stream);
+  *ctx.output_stream << ' ';
+}
+
+void interpret_dump_internal(vm::Stack& stack) {
+  stack.push_string(stack.pop_chk().to_string());
+}
+
+void interpret_print_list(IntCtx& ctx) {
+  ctx.stack.pop_chk().print_list(*ctx.output_stream);
+  *ctx.output_stream << ' ';
 }
 
 void interpret_dottc(IntCtx& ctx) {
@@ -494,7 +520,6 @@ void interpret_str_remove_trailing_int(vm::Stack& stack, int arg) {
   s.resize(s.find_last_not_of(x) + 1);  // if not found, this expression will be 0
   stack.push_string(std::move(s));
 }
-  
 
 void interpret_bytes_len(vm::Stack& stack) {
   stack.push_smallint((long long)stack.pop_bytes().size());
@@ -838,6 +863,112 @@ void interpret_fetch_ref(vm::Stack& stack, int mode) {
   }
 }
 
+// Box create/fetch/store operations
+
+void interpret_hole(vm::Stack& stack) {
+  stack.push_box(Ref<vm::Box>{true});
+}
+
+void interpret_box(vm::Stack& stack) {
+  stack.push_box(Ref<vm::Box>{true, stack.pop_chk()});
+}
+
+void interpret_box_fetch(vm::Stack& stack) {
+  stack.push(stack.pop_box()->get());
+}
+
+void interpret_box_store(vm::Stack& stack) {
+  stack.check_underflow(2);
+  auto box = stack.pop_box();
+  box->set(stack.pop());
+}
+
+void interpret_push_null(vm::Stack& stack) {
+  stack.push({});
+}
+
+void interpret_is_null(vm::Stack& stack) {
+  stack.push_bool(stack.pop_chk().empty());
+}
+
+// Tuple/array operations
+
+void interpret_empty_tuple(vm::Stack& stack) {
+  stack.push_tuple(Ref<vm::Tuple>{true});
+}
+
+void interpret_tuple_push(vm::Stack& stack) {
+  stack.check_underflow(2);
+  auto val = stack.pop();
+  auto tuple = stack.pop_tuple();
+  tuple.write()->emplace_back(std::move(val));
+  stack.push_tuple(std::move(tuple));
+}
+
+void interpret_tuple_len(vm::Stack& stack) {
+  stack.push_smallint((*stack.pop_tuple())->size());
+}
+
+void interpret_tuple_index(vm::Stack& stack) {
+  auto idx = stack.pop_long_range(std::numeric_limits<long long>::max());
+  auto tuple = stack.pop_tuple();
+  if ((std::size_t)idx >= (*tuple)->size()) {
+    throw vm::VmError{vm::Excno::range_chk, "array index out of range"};
+  }
+  stack.push((**tuple)[idx]);
+}
+
+void interpret_make_tuple(vm::Stack& stack) {
+  int n = stack.pop_smallint_range(255);
+  stack.check_underflow(n);
+  Ref<vm::Tuple> ref{true};
+  auto& tuple = *(ref.unique_write());
+  tuple.reserve(n);
+  for (int i = n - 1; i >= 0; i--) {
+    tuple.push_back(std::move(stack[i]));
+  }
+  stack.pop_many(n);
+  stack.push_tuple(std::move(ref));
+}
+
+void interpret_tuple_explode(vm::Stack& stack, bool pop_count) {
+  std::size_t n = pop_count ? (unsigned)stack.pop_smallint_range(255) : 0;
+  auto ref = stack.pop_tuple();
+  const auto& tuple = **ref;
+  if (!pop_count) {
+    n = tuple.size();
+    if (n > 255) {
+      throw IntError{"tuple too large to be exploded"};
+    }
+  } else if (tuple.size() != (unsigned)n) {
+    throw IntError{"tuple size mismatch"};
+  }
+  if (ref->is_unique()) {
+    auto& tuplew = *(ref.unique_write());
+    for (auto& entry : tuplew) {
+      stack.push(std::move(entry));
+    }
+  } else {
+    for (const auto& entry : tuple) {
+      stack.push(entry);
+    }
+  }
+  if (!pop_count) {
+    stack.push_smallint((int)n);
+  }
+}
+
+void interpret_allot(vm::Stack& stack) {
+  auto n = stack.pop_long_range(0xffffffff);
+  Ref<vm::Tuple> ref{true};
+  auto& tuple = *(ref.unique_write());
+  tuple.reserve(n);
+  while (n-- > 0) {
+    tuple.emplace_back(Ref<vm::Box>{true});
+  }
+  stack.push(std::move(ref));
+}
+
 // BoC (de)serialization
 
 void interpret_boc_serialize(vm::Stack& stack) {
@@ -884,9 +1015,14 @@ void interpret_read_file(IntCtx& ctx) {
 }
 
 void interpret_read_file_part(IntCtx& ctx) {
+  auto size = ctx.stack.pop_long_range(std::numeric_limits<long long>::max());
+  auto offset = ctx.stack.pop_long_range(std::numeric_limits<long long>::max());
   std::string filename = ctx.stack.pop_string();
-  throw IntError{"read file part is not implemented yet"};
-  // TODO: auto r_data = td::read_file_str(filename, size, offset);
+  auto r_data = ctx.source_lookup->read_file_part(filename, size, offset);
+  if (r_data.is_error()) {
+    throw IntError{PSTRING() << "error reading file `" << filename << "`: " << r_data.error()};
+  }
+  ctx.stack.push_bytes(r_data.move_as_ok().data);
 }
 
 void interpret_write_file(IntCtx& ctx) {
@@ -896,6 +1032,12 @@ void interpret_write_file(IntCtx& ctx) {
   if (status.is_error()) {
     throw IntError{PSTRING() << "error writing file `" << filename << "`: " << status.error()};
   }
+}
+
+void interpret_file_exists(IntCtx& ctx) {
+  std::string filename = ctx.stack.pop_string();
+  auto res = ctx.source_lookup->is_file_exists(filename);
+  ctx.stack.push_bool(res);
 }
 
 // custom and crypto
@@ -1519,20 +1661,20 @@ void interpret_pack_std_smc_addr(vm::Stack& stack) {
   CHECK((*x)->export_bytes(a.addr.data(), 32, false));
   a.workchain = stack.pop_smallint_range(0x7f, -0x80);
   a.testnet = mode & 2;
-  a.bounceable = mode & 1;
+  a.bounceable = !(mode & 1);
   stack.push_string(a.rserialize(mode & 4));
 }
 
 void interpret_unpack_std_smc_addr(vm::Stack& stack) {
-  block::StdAddress a{stack.pop_string()};
-  if (!a.is_valid()) {
+  block::StdAddress a;
+  if (!a.parse_addr(stack.pop_string())) {
     stack.push_bool(false);
   } else {
     stack.push_smallint(a.workchain);
     td::RefInt256 x{true};
     CHECK(x.write()->import_bytes(a.addr.data(), 32, false));
     stack.push_int(std::move(x));
-    stack.push_smallint(a.testnet * 2 + a.bounceable);
+    stack.push_smallint(a.testnet * 2 + 1 - a.bounceable);
     stack.push_bool(true);
   }
 }
@@ -1749,7 +1891,12 @@ void interpret_compile_internal(vm::Stack& stack) {
 void do_compile(vm::Stack& stack, Ref<WordDef> word_def) {
   Ref<WordList> wl_ref = pop_word_list(stack);
   if (word_def != Dictionary::nop_word_def) {
-    wl_ref.write().push_back(word_def);
+    if ((std::size_t)word_def->list_size() <= 1) {
+      // inline short definitions
+      wl_ref.write().append(*(word_def->get_list()));
+    } else {
+      wl_ref.write().push_back(word_def);
+    }
   }
   stack.push({vm::from_object, wl_ref});
 }
@@ -1798,7 +1945,11 @@ void init_words_common(Dictionary& d) {
   d.def_ctx_word("b._ ", std::bind(interpret_dotbinary, _1, false));
   d.def_ctx_word("csr. ", interpret_dot_cellslice_rec);
   d.def_ctx_word(".s ", interpret_dotstack);
+  d.def_ctx_word(".sl ", interpret_dotstack_list);
+  d.def_ctx_word(".dump ", interpret_dump);
+  d.def_ctx_word(".l ", interpret_print_list);
   d.def_ctx_word(".tc ", interpret_dottc);
+  d.def_stack_word("(dump) ", interpret_dump_internal);
   d.def_stack_word("(.) ", interpret_dot_internal);
   d.def_stack_word("(x.) ", interpret_dothex_internal);
   d.def_stack_word("(b.) ", interpret_dotbinary_internal);
@@ -1985,6 +2136,7 @@ void init_words_common(Dictionary& d) {
   d.def_ctx_word("file>B ", interpret_read_file);
   d.def_ctx_word("filepart>B ", interpret_read_file_part);
   d.def_ctx_word("B>file ", interpret_write_file);
+  d.def_ctx_word("file-exists? ", interpret_file_exists);
   // custom & crypto
   d.def_stack_word("now ", interpret_now);
   d.def_stack_word("newkeypair ", interpret_new_keypair);
@@ -2013,6 +2165,22 @@ void init_words_common(Dictionary& d) {
   d.def_active_word("B{", interpret_bytes_hex_literal);
   d.def_active_word("x{", interpret_bitstring_hex_literal);
   d.def_active_word("b{", interpret_bitstring_binary_literal);
+  // boxes/holes/variables
+  d.def_stack_word("hole ", interpret_hole);
+  d.def_stack_word("box ", interpret_box);
+  d.def_stack_word("@ ", interpret_box_fetch);
+  d.def_stack_word("! ", interpret_box_store);
+  d.def_stack_word("null ", interpret_push_null);
+  d.def_stack_word("null? ", interpret_is_null);
+  // tuples/arrays
+  d.def_stack_word("| ", interpret_empty_tuple);
+  d.def_stack_word(", ", interpret_tuple_push);
+  d.def_stack_word("[] ", interpret_tuple_index);
+  d.def_stack_word("count ", interpret_tuple_len);
+  d.def_stack_word("tuple ", interpret_make_tuple);
+  d.def_stack_word("untuple ", std::bind(interpret_tuple_explode, _1, true));
+  d.def_stack_word("explode ", std::bind(interpret_tuple_explode, _1, false));
+  d.def_stack_word("allot ", interpret_allot);
   // execution control
   d.def_ctx_word("execute ", interpret_execute);
   d.def_ctx_word("times ", interpret_execute_times);
@@ -2073,7 +2241,7 @@ void init_words_vm(Dictionary& d) {
   d.def_ctx_word("dbrunvm-parallel ", interpret_db_run_vm_parallel);
 }
 
-void import_cmdline_args(Dictionary& d, std::string arg0, int n, char* const argv[]) {
+void import_cmdline_args(Dictionary& d, std::string arg0, int n, const char* const argv[]) {
   using namespace std::placeholders;
   LOG(DEBUG) << "import_cmdlist_args(" << arg0 << "," << n << ")";
   d.def_stack_word("$0 ", std::bind(interpret_literal, _1, vm::StackEntry{arg0}));
@@ -2131,8 +2299,9 @@ int funny_interpret_loop(IntCtx& ctx) {
           ptr_end = ptr;
         }
       }
-      if (!entry) {
-        entry = ctx.dictionary->lookup(Word + " ");
+      auto cur = ctx.dictionary->lookup(Word + " ");
+      if (cur || !entry) {
+        entry = std::move(cur);
         ctx.set_input(ptr);
         ctx.skipspc();
       } else {
