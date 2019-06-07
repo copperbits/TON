@@ -56,6 +56,9 @@
 { 1 untuple } : unsingle
 { 2 untuple } : unpair
 { 3 untuple } : untriple
+{ 0 [] } : first
+{ 1 [] } : second
+{ 2 [] } : third
 ' pair : cons
 ' unpair : uncons
 { 0 [] } : car

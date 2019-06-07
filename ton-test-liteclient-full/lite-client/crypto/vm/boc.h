@@ -14,6 +14,49 @@ td::Result<td::BufferSlice> std_boc_serialize(Ref<Cell> root, int mode = 0);
 td::Result<std::vector<Ref<Cell>>> std_boc_deserialize_multi(td::Slice data);
 td::Result<td::BufferSlice> std_boc_serialize_multi(std::vector<Ref<Cell>> root, int mode = 0);
 
+class NewCellStorageStat {
+ public:
+  NewCellStorageStat() {
+  }
+
+  struct Stat {
+    Stat() {
+    }
+    td::uint64 cells{0};
+    td::uint64 bits{0};
+    td::uint64 internal_refs{0};
+    td::uint64 external_refs{0};
+
+    auto key() const {
+      return std::make_tuple(cells, bits, internal_refs, external_refs);
+    }
+    bool operator==(const Stat& other) const {
+      return key() == other.key();
+    }
+  };
+
+  Stat get_stat() const {
+    return stat_;
+  }
+
+  Stat get_proof_stat() const {
+    return proof_stat_;
+  }
+
+  void add_cell(Ref<Cell> cell);
+  void add_proof(Ref<Cell> cell, CellUsageTree* usage_tree);
+  void add_cell_and_proof(Ref<Cell> cell, CellUsageTree* usage_tree);
+
+ private:
+  CellUsageTree* usage_tree_;
+  std::set<vm::Cell::Hash> seen_;
+  Stat stat_;
+  std::set<vm::Cell::Hash> proof_seen_;
+  Stat proof_stat_;
+
+  void dfs(Ref<Cell> root, bool need_stat, bool need_proof_stat);
+};
+
 struct CellStorageStat {
   unsigned long long cells;
   unsigned long long bits;

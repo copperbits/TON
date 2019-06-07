@@ -21,6 +21,15 @@ CellUsageTree::NodePtr CellUsageTree::NodePtr::create_child(unsigned ref_id) con
   return {tree_weak_, tree->create_child(node_id_, ref_id)};
 }
 
+bool CellUsageTree::NodePtr::is_from_tree(CellUsageTree* master_tree) const {
+  DCHECK(master_tree);
+  auto tree = tree_weak_.lock();
+  if (tree.get() != master_tree) {
+    return false;
+  }
+  return true;
+}
+
 bool CellUsageTree::NodePtr::mark_path(CellUsageTree* master_tree) const {
   DCHECK(master_tree);
   auto tree = tree_weak_.lock();

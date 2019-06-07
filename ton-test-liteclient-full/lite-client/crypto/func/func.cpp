@@ -706,8 +706,8 @@ void VarDescr::show_value(std::ostream& os) const {
 
 void VarDescr::set_const(td::RefInt256 value) {
   int_const = std::move(value);
-  if (!(*int_const)->signed_fits_bits(257)) {
-    int_const.write()->invalidate();
+  if (!int_const->signed_fits_bits(257)) {
+    int_const.write().invalidate();
   }
   val = _Const | _Int;
   int s = sgn(int_const);
@@ -715,19 +715,19 @@ void VarDescr::set_const(td::RefInt256 value) {
     val |= _Nan | _NonZero;
   } else if (s < 0) {
     val |= _NonZero | _Neg | _Finite;
-    if (**int_const == -1) {
+    if (*int_const == -1) {
       val |= _Bool;
     }
   } else if (s > 0) {
     val |= _NonZero | _Pos | _Finite;
   } else if (!s) {
-    if (**int_const == 1) {
+    if (*int_const == 1) {
       val |= _Bit;
     }
     val |= _Zero | _Neg | _Pos | _Finite | _Bool | _Bit;
   }
   if (val & _Finite) {
-    val |= (*int_const)->get_bit(0) ? _Odd : _Even;
+    val |= int_const->get_bit(0) ? _Odd : _Even;
   }
 }
 
@@ -1831,7 +1831,7 @@ Expr* parse_expr100(Lexer& lex, CodeBlob& code, bool nv) {
     Expr* res = new Expr{Expr::_Const, lex.cur().loc};
     res->flags = Expr::_IsRvalue;
     td::RefInt256 val{true};
-    if (!val.unique_write()->parse_dec(lex.cur().str)) {
+    if (!val.unique_write().parse_dec(lex.cur().str)) {
       lex.cur().error_at("invalid integer constant `", "`");
     }
     res->intval = std::move(val);
@@ -2565,7 +2565,7 @@ int emulate_mod(int a, int b, int round_mode = -1) {
 
 int is_pos_pow2(td::RefInt256 x) {
   if (sgn(x) > 0 && !sgn(x & (x - 1))) {
-    return (*x)->bit_size() - 1;
+    return x->bit_size() - 1;
   } else {
     return -1;
   }
@@ -2601,10 +2601,10 @@ std::string push_const(td::RefInt256 x, int mode) {
   if (!mode) {
     return "";
   }
-  if ((*x)->signed_fits_bits(8)) {
+  if (x->signed_fits_bits(8)) {
     return dec_string(std::move(x)) + " PUSHINT\n";
   }
-  if (!(*x)->is_valid()) {
+  if (!x->is_valid()) {
     return "PUSHNAN\n";
   }
   int k = is_pos_pow2(x);
@@ -2632,28 +2632,28 @@ std::string compile_add(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
     return push_const(r.int_const, mode);
   }
   r.val = emulate_add(x.val, y.val);
-  if (y.is_int_const() && (*y.int_const)->signed_fits_bits(8)) {
+  if (y.is_int_const() && y.int_const->signed_fits_bits(8)) {
     y.unused();
     if (y.always_zero()) {
       return "";
     }
-    if (**y.int_const == 1) {
+    if (*y.int_const == 1) {
       return exec_op("INC", mode);
     }
-    if (**y.int_const == -1) {
+    if (*y.int_const == -1) {
       return exec_op("DEC", mode);
     }
     return exec_arg_op("ADDCONST", y.int_const, mode);
   }
-  if (x.is_int_const() && (*x.int_const)->signed_fits_bits(8)) {
+  if (x.is_int_const() && x.int_const->signed_fits_bits(8)) {
     x.unused();
     if (x.always_zero()) {
       return "";
     }
-    if (**x.int_const == 1) {
+    if (*x.int_const == 1) {
       return exec_op("INC", mode);
     }
-    if (**x.int_const == -1) {
+    if (*x.int_const == -1) {
       return exec_op("DEC", mode);
     }
     return exec_arg_op("ADDCONST", x.int_const, mode);
@@ -2671,15 +2671,15 @@ std::string compile_sub(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
     return push_const(r.int_const, mode);
   }
   r.val = emulate_sub(x.val, y.val);
-  if (y.is_int_const() && (*(-y.int_const))->signed_fits_bits(8)) {
+  if (y.is_int_const() && (-y.int_const)->signed_fits_bits(8)) {
     y.unused();
     if (y.always_zero()) {
       return "";
     }
-    if (**y.int_const == 1) {
+    if (*y.int_const == 1) {
       return exec_op("DEC", mode);
     }
-    if (**y.int_const == -1) {
+    if (*y.int_const == -1) {
       return exec_op("INC", mode);
     }
     return exec_arg_op("ADDCONST", -y.int_const, mode);
@@ -2715,17 +2715,17 @@ std::string compile_mul(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
   r.val = emulate_mul(x.val, y.val);
   if (y.is_int_const()) {
     int k = is_pos_pow2(y.int_const);
-    if ((*y.int_const)->signed_fits_bits(8) && k < 0) {
+    if (y.int_const->signed_fits_bits(8) && k < 0) {
       y.unused();
       if (y.always_zero() && x.always_finite()) {
         // dubious optimization: NaN * 0 = ?
         r.set_const(y.int_const);
         return push_const(r.int_const, mode);
       }
-      if (**y.int_const == 1 && x.always_finite()) {
+      if (*y.int_const == 1 && x.always_finite()) {
         return "";
       }
-      if (**y.int_const == -1) {
+      if (*y.int_const == -1) {
         return exec_op("NEGATE", mode);
       }
       return exec_arg_op("MULCONST", y.int_const, mode);
@@ -2737,17 +2737,17 @@ std::string compile_mul(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
   }
   if (x.is_int_const()) {
     int k = is_pos_pow2(x.int_const);
-    if ((*x.int_const)->signed_fits_bits(8) && k < 0) {
+    if (x.int_const->signed_fits_bits(8) && k < 0) {
       x.unused();
       if (x.always_zero() && y.always_finite()) {
         // dubious optimization: NaN * 0 = ?
         r.set_const(x.int_const);
         return push_const(r.int_const, mode);
       }
-      if (**x.int_const == 1 && y.always_finite()) {
+      if (*x.int_const == 1 && y.always_finite()) {
         return "";
       }
-      if (**x.int_const == -1) {
+      if (*x.int_const == -1) {
         return exec_op("NEGATE", mode);
       }
       return exec_arg_op("MULCONST", x.int_const, mode);
@@ -2764,7 +2764,7 @@ std::string compile_lshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (y.is_int_const()) {
-    auto yv = (*y.int_const)->to_long();
+    auto yv = y.int_const->to_long();
     if (yv < 0 || yv > 256) {
       r.set_const_nan();
       x.unused();
@@ -2779,7 +2779,7 @@ std::string compile_lshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
   }
   r.val = emulate_lshift(x.val, y.val);
   if (y.is_int_const()) {
-    int k = (int)(*y.int_const)->to_long();
+    int k = (int)(y.int_const->to_long());
     if (!k /* && x.always_finite() */) {
       // dubious optimization: what if x=NaN ?
       y.unused();
@@ -2789,7 +2789,7 @@ std::string compile_lshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
     return exec_arg_op("LSHIFT#", k, mode);
   }
   if (x.is_int_const()) {
-    auto xv = (*x.int_const)->to_long();
+    auto xv = x.int_const->to_long();
     if (xv == 1) {
       x.unused();
       return exec_op("POW2", mode);
@@ -2806,7 +2806,7 @@ std::string compile_rshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (y.is_int_const()) {
-    auto yv = (*y.int_const)->to_long();
+    auto yv = y.int_const->to_long();
     if (yv < 0 || yv > 256) {
       r.set_const_nan();
       x.unused();
@@ -2822,7 +2822,7 @@ std::string compile_rshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
   r.val = emulate_rshift(x.val, y.val);
   std::string rshift = (round_mode < 0 ? "RSHIFT" : (round_mode ? "RSHIFTC" : "RSHIFTR"));
   if (y.is_int_const()) {
-    int k = (int)(*y.int_const)->to_long();
+    int k = (int)(y.int_const->to_long());
     if (!k /* && x.always_finite() */) {
       // dubious optimization: what if x=NaN ?
       y.unused();
@@ -2845,17 +2845,17 @@ std::string compile_div(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
   }
   r.val = emulate_div(x.val, y.val);
   if (y.is_int_const()) {
-    if (**y.int_const == 0) {
+    if (*y.int_const == 0) {
       x.unused();
       y.unused();
       r.set_const(div(y.int_const, y.int_const));
       return push_const(r.int_const, mode);
     }
-    if (**y.int_const == 1 && x.always_finite()) {
+    if (*y.int_const == 1 && x.always_finite()) {
       y.unused();
       return "";
     }
-    if (**y.int_const == -1) {
+    if (*y.int_const == -1) {
       y.unused();
       return exec_op("NEGATE", mode);
     }
@@ -2887,13 +2887,13 @@ std::string compile_mod(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
   }
   r.val = emulate_mod(x.val, y.val);
   if (y.is_int_const()) {
-    if (**y.int_const == 0) {
+    if (*y.int_const == 0) {
       x.unused();
       y.unused();
       r.set_const(mod(y.int_const, y.int_const));
       return push_const(r.int_const, mode);
     }
-    if ((**y.int_const == 1 || **y.int_const == -1) && x.always_finite()) {
+    if ((*y.int_const == 1 || *y.int_const == -1) && x.always_finite()) {
       x.unused();
       y.unused();
       r.set_const(td::RefInt256{true, 0});

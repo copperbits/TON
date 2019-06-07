@@ -32,6 +32,10 @@ inline td::uint32 shard_prefix_length(ShardId shard) {
   return shard ? 63 - td::count_trailing_zeroes_non_zero64(shard) : 0;
 }
 
+inline td::uint32 shard_prefix_length(ShardIdFull shard) {
+  return shard_prefix_length(shard.shard);
+}
+
 inline bool shard_is_ancestor(ShardId parent, ShardId child) {
   td::uint64 x = td::lower_bit64(parent), y = td::lower_bit64(child);
   return x >= y && !((parent ^ child) & (td::bits_negate64(x) << 1));
@@ -74,6 +78,30 @@ inline bool shard_intersects(ShardId x, ShardId y) {
 
 inline bool shard_intersects(ShardIdFull x, ShardIdFull y) {
   return x.workchain == y.workchain && shard_intersects(x.shard, y.shard);
+}
+
+inline ShardId shard_intersection(ShardId x, ShardId y) {
+  return td::lower_bit64(x) < td::lower_bit64(y) ? x : y;
+}
+
+inline ShardIdFull shard_intersection(ShardIdFull x, ShardIdFull y) {
+  return {x.workchain, shard_intersection(x. shard, y.shard)};
+}
+
+inline bool is_right_child(ShardId x) {
+  return x & (td::lower_bit64(x) << 1);
+}
+
+inline bool is_left_child(ShardId x) {
+  return !is_right_child(x);
+}
+
+inline bool is_right_child(ShardIdFull shard) {
+  return is_right_child(shard.shard);
+}
+
+inline bool is_left_child(ShardIdFull shard) {
+  return is_left_child(shard.shard);
 }
 
 template <typename T>

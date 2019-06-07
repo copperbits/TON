@@ -108,7 +108,7 @@ void interpret_plus(vm::Stack& stack) {
 
 void interpret_cond_dup(vm::Stack& stack) {
   auto x = stack.pop_int();
-  if ((*x)->sgn()) {
+  if (x->sgn()) {
     stack.push_int(x);
   }
   stack.push_int(std::move(x));
@@ -149,10 +149,10 @@ void interpret_times_div(vm::Stack& stack, int round_mode) {
   auto y = stack.pop_int();
   auto x = stack.pop_int();
   td::BigIntG<257 * 2> tmp{0};
-  tmp.add_mul(**x, **y);
+  tmp.add_mul(*x, *y);
   auto q = td::RefInt256{true};
-  tmp.mod_div(**z, *(q.unique_write()), round_mode);
-  q.unique_write()->normalize();
+  tmp.mod_div(*z, q.unique_write(), round_mode);
+  q.unique_write().normalize();
   stack.push_int(std::move(q));
 }
 
@@ -161,10 +161,10 @@ void interpret_times_divmod(vm::Stack& stack, int round_mode) {
   auto y = stack.pop_int();
   auto x = stack.pop_int();
   td::BigIntG<257 * 2> tmp{0};
-  tmp.add_mul(**x, **y);
+  tmp.add_mul(*x, *y);
   auto q = td::RefInt256{true};
-  tmp.mod_div(**z, *(q.unique_write()), round_mode);
-  q.unique_write()->normalize();
+  tmp.mod_div(*z, q.unique_write(), round_mode);
+  q.unique_write().normalize();
   auto r = td::RefInt256{true, tmp};
   stack.push_int(std::move(q));
   stack.push_int(std::move(r));
@@ -175,9 +175,9 @@ void interpret_times_mod(vm::Stack& stack, int round_mode) {
   auto y = stack.pop_int();
   auto x = stack.pop_int();
   td::BigIntG<257 * 2> tmp{0};
-  tmp.add_mul(**x, **y);
+  tmp.add_mul(*x, *y);
   td::BigIntG<257 * 2> q;
-  tmp.mod_div(**z, q, round_mode);
+  tmp.mod_div(*z, q, round_mode);
   auto r = td::RefInt256{true, tmp};
   stack.push_int(std::move(r));
 }
@@ -201,14 +201,14 @@ void interpret_literal(vm::Stack& stack, vm::StackEntry se) {
 void interpret_cmp(vm::Stack& stack, const char opt[3]) {
   auto y = stack.pop_int();
   auto x = stack.pop_int();
-  int r = (*x)->cmp(**y);
+  int r = x->cmp(*y);
   assert((unsigned)(r + 1) <= 2);
   stack.push_smallint(((const signed char*)opt)[r + 1]);
 }
 
 void interpret_sgn(vm::Stack& stack, const char opt[3]) {
   auto x = stack.pop_int();
-  int r = (*x)->sgn();
+  int r = x->sgn();
   assert((unsigned)(r + 1) <= 2);
   stack.push_smallint(((const signed char*)opt)[r + 1]);
 }
@@ -216,34 +216,34 @@ void interpret_sgn(vm::Stack& stack, const char opt[3]) {
 void interpret_fits(vm::Stack& stack, bool sgnd) {
   int n = stack.pop_smallint_range(1023);
   auto x = stack.pop_int();
-  stack.push_bool((*x)->fits_bits(n, sgnd));
+  stack.push_bool(x->fits_bits(n, sgnd));
 }
 
 void interpret_pow2(vm::Stack& stack) {
   int x = stack.pop_smallint_range(255);
   auto r = td::RefInt256{true};
-  r.unique_write()->set_pow2(x);
+  r.unique_write().set_pow2(x);
   stack.push_int(r);
 }
 
 void interpret_neg_pow2(vm::Stack& stack) {
   int x = stack.pop_smallint_range(256);
   auto r = td::RefInt256{true};
-  r.unique_write()->set_pow2(x).negate().normalize();
+  r.unique_write().set_pow2(x).negate().normalize();
   stack.push_int(r);
 }
 
 void interpret_pow2_minus1(vm::Stack& stack) {
   int x = stack.pop_smallint_range(256);
   auto r = td::RefInt256{true};
-  r.unique_write()->set_pow2(x).add_tiny(-1).normalize();
+  r.unique_write().set_pow2(x).add_tiny(-1).normalize();
   stack.push_int(r);
 }
 
 void interpret_mod_pow2(vm::Stack& stack) {
   int y = stack.pop_smallint_range(256);
   auto x = stack.pop_int();
-  x.write()->mod_pow2(y).normalize();
+  x.write().mod_pow2(y).normalize();
   stack.push_int(x);
 }
 
@@ -270,7 +270,7 @@ void interpret_times_rshift(vm::Stack& stack, int round_mode) {
   auto y = stack.pop_int();
   auto x = stack.pop_int();
   td::BigIntG<257 * 2> tmp{0};
-  tmp.add_mul(**x, **y).rshift(z, round_mode).normalize();
+  tmp.add_mul(*x, *y).rshift(z, round_mode).normalize();
   auto q = td::RefInt256{true, tmp};
   stack.push_int(std::move(q));
 }
@@ -279,11 +279,11 @@ void interpret_lshift_div(vm::Stack& stack, int round_mode) {
   int z = stack.pop_smallint_range(256);
   auto y = stack.pop_int();
   auto x = stack.pop_int();
-  td::BigIntG<257 * 2> tmp{**x};
+  td::BigIntG<257 * 2> tmp{*x};
   tmp <<= z;
   auto q = td::RefInt256{true};
-  tmp.mod_div(**y, *(q.unique_write()), round_mode);
-  q.unique_write()->normalize();
+  tmp.mod_div(*y, q.unique_write(), round_mode);
+  q.unique_write().normalize();
   stack.push_int(std::move(q));
 }
 
@@ -577,9 +577,9 @@ void interpret_bytes_fetch_int(vm::Stack& stack, int mode) {
   bool ok;
   const unsigned char* ptr = (const unsigned char*)(str.data());
   if (!(mode & 0x10)) {
-    ok = x.write()->import_bytes(ptr, sz, mode & 1);
+    ok = x.write().import_bytes(ptr, sz, mode & 1);
   } else {
-    ok = x.write()->import_bytes_lsb(ptr, sz, mode & 1);
+    ok = x.write().import_bytes_lsb(ptr, sz, mode & 1);
   }
   if (!ok) {
     throw IntError{"cannot load integer"};
@@ -599,7 +599,7 @@ void interpret_int_to_bytes(vm::Stack& stack, bool sgnd, bool lsb) {
   }
   unsigned sz = bits >> 3;
   unsigned char buffer[33];
-  if (!(lsb ? (*x)->export_bytes_lsb(buffer, sz, sgnd) : (*x)->export_bytes(buffer, sz, sgnd))) {
+  if (!(lsb ? x->export_bytes_lsb(buffer, sz, sgnd) : x->export_bytes(buffer, sz, sgnd))) {
     throw IntError{"cannot store integer"};
   }
   stack.push_bytes(std::string{(char*)buffer, sz});
@@ -610,7 +610,7 @@ void interpret_bytes_hash(vm::Stack& stack) {
   unsigned char buffer[32];
   digest::hash_str<digest::SHA256>(buffer, str.c_str(), str.size());
   td::RefInt256 x{true};
-  x.write()->import_bytes(buffer, 32, false);
+  x.write().import_bytes(buffer, 32, false);
   stack.push_int(std::move(x));
 }
 
@@ -623,7 +623,7 @@ void interpret_store(vm::Stack& stack, bool sgnd) {
   int bits = stack.pop_smallint_range(1023);
   auto x = stack.pop_int();
   auto cell = stack.pop_builder();
-  if (!cell.write().store_bigint256_bool(**x, bits, sgnd)) {
+  if (!cell.write().store_bigint256_bool(*x, bits, sgnd)) {
     throw IntError{"integer does not fit into cell"};
   }
   stack.push(cell);
@@ -736,7 +736,7 @@ void interpret_builder_remaining_bitrefs(vm::Stack& stack, int mode) {
 void interpret_cell_hash(vm::Stack& stack) {
   auto cell = stack.pop_cell();
   td::RefInt256 hash{true};
-  hash.write()->import_bytes(cell->get_hash().as_slice().ubegin(), 32, false);
+  hash.write().import_bytes(cell->get_hash().as_slice().ubegin(), 32, false);
   stack.push_int(std::move(hash));
 }
 
@@ -901,28 +901,28 @@ void interpret_tuple_push(vm::Stack& stack) {
   stack.check_underflow(2);
   auto val = stack.pop();
   auto tuple = stack.pop_tuple();
-  tuple.write()->emplace_back(std::move(val));
+  tuple.write().emplace_back(std::move(val));
   stack.push_tuple(std::move(tuple));
 }
 
 void interpret_tuple_len(vm::Stack& stack) {
-  stack.push_smallint((*stack.pop_tuple())->size());
+  stack.push_smallint(stack.pop_tuple()->size());
 }
 
 void interpret_tuple_index(vm::Stack& stack) {
   auto idx = stack.pop_long_range(std::numeric_limits<long long>::max());
   auto tuple = stack.pop_tuple();
-  if ((std::size_t)idx >= (*tuple)->size()) {
+  if ((std::size_t)idx >= tuple->size()) {
     throw vm::VmError{vm::Excno::range_chk, "array index out of range"};
   }
-  stack.push((**tuple)[idx]);
+  stack.push((*tuple)[idx]);
 }
 
 void interpret_make_tuple(vm::Stack& stack) {
   int n = stack.pop_smallint_range(255);
   stack.check_underflow(n);
   Ref<vm::Tuple> ref{true};
-  auto& tuple = *(ref.unique_write());
+  auto& tuple = ref.unique_write();
   tuple.reserve(n);
   for (int i = n - 1; i >= 0; i--) {
     tuple.push_back(std::move(stack[i]));
@@ -934,7 +934,7 @@ void interpret_make_tuple(vm::Stack& stack) {
 void interpret_tuple_explode(vm::Stack& stack, bool pop_count) {
   std::size_t n = pop_count ? (unsigned)stack.pop_smallint_range(255) : 0;
   auto ref = stack.pop_tuple();
-  const auto& tuple = **ref;
+  const auto& tuple = *ref;
   if (!pop_count) {
     n = tuple.size();
     if (n > 255) {
@@ -943,8 +943,8 @@ void interpret_tuple_explode(vm::Stack& stack, bool pop_count) {
   } else if (tuple.size() != (unsigned)n) {
     throw IntError{"tuple size mismatch"};
   }
-  if (ref->is_unique()) {
-    auto& tuplew = *(ref.unique_write());
+  if (ref.is_unique()) {
+    auto& tuplew = ref.unique_write();
     for (auto& entry : tuplew) {
       stack.push(std::move(entry));
     }
@@ -961,7 +961,7 @@ void interpret_tuple_explode(vm::Stack& stack, bool pop_count) {
 void interpret_allot(vm::Stack& stack) {
   auto n = stack.pop_long_range(0xffffffff);
   Ref<vm::Tuple> ref{true};
-  auto& tuple = *(ref.unique_write());
+  auto& tuple = ref.unique_write();
   tuple.reserve(n);
   while (n-- > 0) {
     tuple.emplace_back(Ref<vm::Box>{true});
@@ -1094,7 +1094,7 @@ void interpret_ed25519_sign_uint(vm::Stack& stack) {
     throw IntError{"Ed25519 private key must be exactly 32 bytes long"};
   }
   unsigned char data[32];
-  if (!(*data_int)->export_bytes(data, 32, false)) {
+  if (!data_int->export_bytes(data, 32, false)) {
     throw IntError{"Ed25519 data to be signed must fit into 256 bits"};
   }
   td::Ed25519::PrivateKey priv_key{td::Slice{key}};
@@ -1459,38 +1459,39 @@ int parse_number(std::string s, td::RefInt256& num, td::RefInt256& denom, bool a
   int len = (int)s.size();
   int frac = -1, base, *frac_ptr = allow_frac ? &frac : nullptr;
   num = td::RefInt256{true};
+  auto& x = num.unique_write();
   if (len >= 4 && str[0] == '-' && str[1] == '0' && (str[2] == 'x' || str[2] == 'b')) {
     if (str[2] == 'x') {
       base = 16;
-      if (num.unique_write()->parse_hex(str + 3, len - 3, frac_ptr) != len - 3) {
+      if (x.parse_hex(str + 3, len - 3, frac_ptr) != len - 3) {
         return 0;
       }
     } else {
       base = 2;
-      if (num.unique_write()->parse_binary(str + 3, len - 3, frac_ptr) != len - 3) {
+      if (x.parse_binary(str + 3, len - 3, frac_ptr) != len - 3) {
         return 0;
       }
     }
-    num.unique_write()->negate();
+    x.negate();
   } else if (len >= 3 && str[0] == '0' && (str[1] == 'x' || str[1] == 'b')) {
     if (str[1] == 'x') {
       base = 16;
-      if (num.unique_write()->parse_hex(str + 2, len - 2, frac_ptr) != len - 2) {
+      if (x.parse_hex(str + 2, len - 2, frac_ptr) != len - 2) {
         return 0;
       }
     } else {
       base = 2;
-      if (num.unique_write()->parse_binary(str + 2, len - 2, frac_ptr) != len - 2) {
+      if (x.parse_binary(str + 2, len - 2, frac_ptr) != len - 2) {
         return 0;
       }
     }
   } else {
     base = 10;
-    if (num.unique_write()->parse_dec(str, len, frac_ptr) != len) {
+    if (x.parse_dec(str, len, frac_ptr) != len) {
       return 0;
     }
   }
-  if (!num.unique_write()->signed_fits_bits(257)) {
+  if (!x.signed_fits_bits(257)) {
     if (throw_error) {
       throw IntError{"integer constant too large"};
     }
@@ -1501,14 +1502,14 @@ int parse_number(std::string s, td::RefInt256& num, td::RefInt256& denom, bool a
   } else {
     denom = td::RefInt256{true, 1};
     while (frac-- > 0) {
-      if (!denom.unique_write()->mul_tiny(base).normalize_bool()) {
+      if (!denom.unique_write().mul_tiny(base).normalize_bool()) {
         if (throw_error) {
           throw IntError{"denominator in constant too large"};
         }
         return 0;
       }
     }
-    if (!denom.unique_write()->unsigned_fits_bits(256)) {
+    if (!denom.unique_write().unsigned_fits_bits(256)) {
       if (throw_error) {
         throw IntError{"denominator in constant too large"};
       }
@@ -1658,7 +1659,7 @@ void interpret_pack_std_smc_addr(vm::Stack& stack) {
   if (td::sgn(x) < 0) {
     throw IntError{"non-negative integer expected"};
   }
-  CHECK((*x)->export_bytes(a.addr.data(), 32, false));
+  CHECK(x->export_bytes(a.addr.data(), 32, false));
   a.workchain = stack.pop_smallint_range(0x7f, -0x80);
   a.testnet = mode & 2;
   a.bounceable = !(mode & 1);
@@ -1672,7 +1673,7 @@ void interpret_unpack_std_smc_addr(vm::Stack& stack) {
   } else {
     stack.push_smallint(a.workchain);
     td::RefInt256 x{true};
-    CHECK(x.write()->import_bytes(a.addr.data(), 32, false));
+    CHECK(x.write().import_bytes(a.addr.data(), 32, false));
     stack.push_int(std::move(x));
     stack.push_smallint(a.testnet * 2 + 1 - a.bounceable);
     stack.push_bool(true);
@@ -1905,10 +1906,10 @@ void compile_one_literal(WordList& wlist, vm::StackEntry val) {
   using namespace std::placeholders;
   if (val.type() == vm::StackEntry::t_int) {
     auto x = std::move(val).as_int();
-    if (!(*x)->signed_fits_bits(257)) {
+    if (!x->signed_fits_bits(257)) {
       throw IntError{"invalid numeric literal"};
-    } else if ((*x)->signed_fits_bits(64)) {
-      wlist.push_back(Ref<StackWord>{true, std::bind(interpret_const, _1, (*x)->to_long())});
+    } else if (x->signed_fits_bits(64)) {
+      wlist.push_back(Ref<StackWord>{true, std::bind(interpret_const, _1, x->to_long())});
     } else {
       wlist.push_back(Ref<StackWord>{true, std::bind(interpret_big_const, _1, std::move(x))});
     }

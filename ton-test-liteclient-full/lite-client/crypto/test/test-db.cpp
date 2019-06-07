@@ -1647,7 +1647,7 @@ TEST(TonDb, CompactArrayOld) {
 
   for (int i = 0; i < 100; i++) {
     if (i % 10 == 9) {
-      //LOG(ERROR) << ton_db->stats();
+      //LOG(ERROR) << ton_db->stat();
       ton_db.reset();
       ton_db = vm::TonDbImpl::open("ttt").move_as_ok();
     }
@@ -1746,6 +1746,45 @@ TEST(TonDb, DoNotMakeListsPrunned) {
   auto virtualized_proof = vm::MerkleProof::virtualize(proof, 1);
   ASSERT_TRUE(virtualized_proof->get_virtualization() == 0);
 }
+
+TEST(TonDb, CellStat) {
+  td::Random::Xorshift128plus rnd(123);
+  for (int i = 0; i < 100; i++) {
+    auto cell = vm::gen_random_cell(20, rnd, true);
+    auto usage_tree = std::make_shared<vm::CellUsageTree>();
+    auto usage_cell = vm::UsageCell::create(cell, usage_tree->root_ptr());
+    auto exploration = vm::CellExplorer::random_explore(usage_cell, rnd);
+    auto new_cell = gen_random_cell(rnd.fast(1, vm::X), rnd, true, std::move(exploration.visited_cells));
+
+    auto is_prunned = [&](const td::Ref<vm::Cell> &cell) {
+      return cell->get_tree_node().is_from_tree(usage_tree.get());
+    };
+    auto proof = vm::MerkleProof::generate_raw(new_cell, is_prunned);
+
+    vm::CellStorageStat stat;
+    stat.add_used_storage(new_cell);
+
+    vm::NewCellStorageStat new_stat;
+    new_stat.add_cell({});
+    new_stat.add_cell(new_cell);
+    ASSERT_EQ(stat.cells, new_stat.get_stat().cells);
+    ASSERT_EQ(stat.bits, new_stat.get_stat().bits);
+
+    vm::CellStorageStat proof_stat;
+    proof_stat.add_used_storage(proof);
+
+    vm::NewCellStorageStat new_proof_stat;
+    new_proof_stat.add_proof(new_cell, usage_tree.get());
+    CHECK(new_proof_stat.get_stat().cells == 0);
+    CHECK(new_proof_stat.get_proof_stat().cells <= proof_stat.cells);
+    CHECK(new_proof_stat.get_proof_stat().cells + new_proof_stat.get_proof_stat().external_refs >= proof_stat.cells);
+
+    vm::NewCellStorageStat new_all_stat;
+    new_all_stat.add_cell_and_proof(new_cell, usage_tree.get());
+    CHECK(new_proof_stat.get_proof_stat() == new_all_stat.get_proof_stat());
+    CHECK(new_stat.get_stat() == new_all_stat.get_stat());
+  }
+}
 struct String {
   String() {
     total_strings.add(1);
@@ -1777,7 +1816,7 @@ TEST(Ref, AtomicRef) {
         auto &node = nodes[td::Random::fast(0, threads_n / 3 - 1)];
         auto name = node.name_.load();
         if (name.not_null()) {
-          CHECK((**name).str == "one" || (**name).str == "twotwo");
+          CHECK(name->str == "one" || name->str == "twotwo");
         }
         if (td::Random::fast(0, 5) == 0) {
           auto new_string = td::Ref<td::Cnt<String>>{true, td::Random::fast(0, 1) == 0 ? "one" : "twotwo"};

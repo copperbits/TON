@@ -1,12 +1,13 @@
 #pragma once
 
-#include "adnl-encryptor.h"
+#include "encryptor.h"
 #include "crypto/Ed25519.h"
 #include "auto/tl/ton_api.h"
-#include "tl-utils.hpp"
+#include "tl-utils/tl-utils.hpp"
 
 namespace ton {
-class AdnlEncryptorNone : public AdnlEncryptor {
+
+class EncryptorNone : public Encryptor {
  public:
   td::Result<td::BufferSlice> encrypt(td::Slice data) override {
     return td::BufferSlice(data);
@@ -15,11 +16,11 @@ class AdnlEncryptorNone : public AdnlEncryptor {
     return td::Status::OK();
   }
 
-  AdnlEncryptorNone() {
+  EncryptorNone() {
   }
 };
 
-class AdnlDecryptorNone : public AdnlDecryptor {
+class DecryptorNone : public Decryptor {
  public:
   td::Result<td::BufferSlice> decrypt(td::Slice data) override {
     return td::BufferSlice(data);
@@ -27,11 +28,11 @@ class AdnlDecryptorNone : public AdnlDecryptor {
   td::Result<td::BufferSlice> sign(td::Slice data) override {
     return td::BufferSlice("");
   }
-  AdnlDecryptorNone() {
+  DecryptorNone() {
   }
 };
 
-class AdnlEncryptorFail : public AdnlEncryptor {
+class EncryptorFail : public Encryptor {
  public:
   td::Result<td::BufferSlice> encrypt(td::Slice data) override {
     return td::Status::Error("Fail encryptor");
@@ -40,11 +41,11 @@ class AdnlEncryptorFail : public AdnlEncryptor {
     return td::Status::Error("Fail encryptor");
   }
 
-  AdnlEncryptorFail() {
+  EncryptorFail() {
   }
 };
 
-class AdnlDecryptorFail : public AdnlDecryptor {
+class DecryptorFail : public Decryptor {
  public:
   td::Result<td::BufferSlice> decrypt(td::Slice data) override {
     return td::Status::Error("Fail decryptor");
@@ -52,11 +53,11 @@ class AdnlDecryptorFail : public AdnlDecryptor {
   td::Result<td::BufferSlice> sign(td::Slice data) override {
     return td::Status::Error("Fail decryptor");
   }
-  AdnlDecryptorFail() {
+  DecryptorFail() {
   }
 };
 
-class AdnlEncryptorEd25519 : public AdnlEncryptor {
+class EncryptorEd25519 : public Encryptor {
  private:
   td::Ed25519::PublicKey pub_;
 
@@ -64,24 +65,24 @@ class AdnlEncryptorEd25519 : public AdnlEncryptor {
   td::Result<td::BufferSlice> encrypt(td::Slice data) override;
   td::Status check_signature(td::Slice message, td::Slice signature) override;
 
-  AdnlEncryptorEd25519(td::UInt256 key) : pub_(as_slice(key)) {
+  EncryptorEd25519(td::UInt256 key) : pub_(as_slice(key)) {
   }
 };
 
-class AdnlDecryptorEd25519 : public AdnlDecryptor {
+class DecryptorEd25519 : public Decryptor {
  private:
   td::Ed25519::PrivateKey pk_;
 
  public:
   td::Result<td::BufferSlice> decrypt(td::Slice data) override;
   td::Result<td::BufferSlice> sign(td::Slice data) override;
-  AdnlDecryptorEd25519(td::UInt256 key) : pk_(as_slice(key)) {
+  DecryptorEd25519(td::UInt256 key) : pk_(as_slice(key)) {
   }
 };
 
-class AdnlEncryptorOverlay : public AdnlEncryptor {
+class EncryptorOverlay : public Encryptor {
  public:
-  AdnlEncryptorOverlay() {
+  EncryptorOverlay() {
   }
   td::Result<td::BufferSlice> encrypt(td::Slice data) override {
     return td::Status::Error("overlay id can not be used for encryption");
@@ -105,7 +106,7 @@ class AdnlEncryptorOverlay : public AdnlEncryptor {
   }
 };
 
-class AdnlEncryptorAES : public AdnlEncryptor {
+class EncryptorAES : public Encryptor {
  private:
   td::UInt256 shared_secret_;
 
@@ -115,11 +116,11 @@ class AdnlEncryptorAES : public AdnlEncryptor {
     return td::Status::Error("can no sign channel messages");
   }
 
-  AdnlEncryptorAES(td::UInt256 shared_secret) : shared_secret_(shared_secret) {
+  EncryptorAES(td::UInt256 shared_secret) : shared_secret_(shared_secret) {
   }
 };
 
-class AdnlDecryptorAES : public AdnlDecryptor {
+class DecryptorAES : public Decryptor {
  private:
   td::UInt256 shared_secret_;
 
@@ -128,7 +129,7 @@ class AdnlDecryptorAES : public AdnlDecryptor {
   td::Result<td::BufferSlice> sign(td::Slice data) override {
     return td::Status::Error("can no sign channel messages");
   }
-  AdnlDecryptorAES(td::UInt256 shared_secret) : shared_secret_(shared_secret) {
+  DecryptorAES(td::UInt256 shared_secret) : shared_secret_(shared_secret) {
   }
 };
 

@@ -37,7 +37,7 @@ void AdnlExtClientImpl::alarm() {
 
 void AdnlExtClientImpl::check_ready(td::Promise<td::Unit> promise) {
   if (conn_.empty() || !conn_.is_alive()) {
-    promise.set_error(td::Status::Error(AdnlError::notready, "not ready"));
+    promise.set_error(td::Status::Error(ErrorCode::notready, "not ready"));
     return;
   }
   td::actor::send_closure(td::actor::ActorId<AdnlExtConnection>{conn_.get()}, &AdnlExtConnection::check_ready_async,

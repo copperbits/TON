@@ -332,7 +332,7 @@ CellBuilder& CellBuilder::store_bigint256(const td::BigInt256& val, unsigned val
 }
 
 bool CellBuilder::store_bigint256_bool(td::RefInt256 val, unsigned val_bits, bool sgnd) {
-  return val.not_null() && store_bigint256_bool(**val, val_bits, sgnd);
+  return val.not_null() && store_bigint256_bool(*val, val_bits, sgnd);
 }
 
 bool CellBuilder::store_builder_ref_bool(vm::CellBuilder&& cb) {

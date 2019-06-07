@@ -16,7 +16,7 @@ dup "basestate0" +suffix +".boc" B>file
 Bhash tuck ."file hash=" dup x. cr 256 u>B "basestate0" +suffix +".fhash" B>file
 hash tuck ."root hash=" dup x. cr 256 u>B "basestate0" +suffix +".rhash" B>file
 
-now 0 60 0 add-std-workchain
+now 0 2 60 0 add-std-workchain
 config.workchains!
 
 // SmartContract #1 (Simple wallet)

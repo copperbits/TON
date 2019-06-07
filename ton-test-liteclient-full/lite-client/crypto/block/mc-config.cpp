@@ -315,6 +315,12 @@ CatchainValidatorsConfig Config::get_catchain_validators_config() const {
   return unpack_catchain_validators_config(get_config_param(28));
 }
 
+void McShardHash::set_fsm(FsmState fsm, ton::UnixTime fsm_utime, ton::UnixTime fsm_interval) {
+  fsm_ = fsm;
+  fsm_utime_ = fsm_utime;
+  fsm_interval_ = fsm_interval;
+}
+
 Ref<McShardHash> McShardHash::unpack(vm::CellSlice& cs, ton::ShardIdFull id) {
   gen::ShardDescr::Record descr;
   if (!tlb::unpack_exact(cs, descr)) {
@@ -325,27 +331,25 @@ Ref<McShardHash> McShardHash::unpack(vm::CellSlice& cs, ton::ShardIdFull id) {
                               descr.next_catchain_seqno, descr.next_validator_shard, descr.nx_cc_updated,
                               descr.before_split, descr.before_merge, descr.want_split, descr.want_merge);
   McShardHash& sh = res.unique_write();
-  unsigned q;
   switch (gen::t_FutureSplitMerge.get_tag(*(descr.split_merge_at))) {
     case gen::FutureSplitMerge::fsm_none:
       return res;
     case gen::FutureSplitMerge::fsm_split:
-      if (!gen::t_FutureSplitMerge.unpack_fsm_split(descr.split_merge_at.write(), q)) {
-        return {};
+      if (gen::t_FutureSplitMerge.unpack_fsm_split(descr.split_merge_at.write(), sh.fsm_utime_, sh.fsm_interval_)) {
+        sh.fsm_ = FsmState::fsm_split;
+        return res;
       }
-      sh.fsm = FsmState::fsm_split;
-      sh.fsm_utime_ = q;
-      return res;
+      break;
     case gen::FutureSplitMerge::fsm_merge:
-      if (!gen::t_FutureSplitMerge.unpack_fsm_merge(descr.split_merge_at.write(), q)) {
-        return {};
+      if (!gen::t_FutureSplitMerge.unpack_fsm_merge(descr.split_merge_at.write(), sh.fsm_utime_, sh.fsm_interval_)) {
+        sh.fsm_ = FsmState::fsm_merge;
+        return res;
       }
-      sh.fsm = FsmState::fsm_merge;
-      sh.fsm_utime_ = q;
-      return res;
+      break;
     default:
-      return {};
+      break;
   }
+  return {};
 }
 
 bool McShardHash::pack(vm::CellBuilder& cb) const {
@@ -368,13 +372,13 @@ bool McShardHash::pack(vm::CellBuilder& cb) const {
         )) {
     return false;
   }
-  switch (fsm) {  // split_merge_at:FutureSplitMerge = ShardDescr;
+  switch (fsm_) {  // split_merge_at:FutureSplitMerge = ShardDescr;
     case FsmState::fsm_none:
       return gen::t_FutureSplitMerge.pack_fsm_none(cb);
     case FsmState::fsm_split:
-      return gen::t_FutureSplitMerge.pack_fsm_split(cb, fsm_utime_);
+      return gen::t_FutureSplitMerge.pack_fsm_split(cb, fsm_utime_, fsm_interval_);
     case FsmState::fsm_merge:
-      return gen::t_FutureSplitMerge.pack_fsm_merge(cb, fsm_utime_);
+      return gen::t_FutureSplitMerge.pack_fsm_merge(cb, fsm_utime_, fsm_interval_);
     default:
       return false;
   }
@@ -628,6 +632,72 @@ bool ShardConfig::process_shard_hashes(std::function<int(McShardHash&)> func) {
   return ok;
 }
 
+static int process_workchain_sibling_shard_hashes(Ref<vm::Cell>& branch, Ref<vm::Cell> sibling, ton::ShardIdFull shard,
+                                                  std::function<int(McShardHash&, const McShardHash*)>& func) {
+  auto cs = vm::load_cell_slice(branch);
+  int f = (int)cs.fetch_ulong(1);
+  if (f == 1) {
+    if ((shard.shard & 1) || cs.size_ext() != 0x20000) {
+      return false;
+    }
+    auto left = cs.prefetch_ref(0), right = cs.prefetch_ref(1);
+    auto orig_left = left;
+    int r = process_workchain_sibling_shard_hashes(left, right, ton::shard_child(shard, true), func);
+    if (r < 0) {
+      return r;
+    }
+    r |= process_workchain_sibling_shard_hashes(right, std::move(orig_left), ton::shard_child(shard, false), func);
+    if (r <= 0) {
+      return r;
+    }
+    vm::CellBuilder cb;
+    return cb.store_bool_bool(true) && cb.store_ref_bool(std::move(left)) && cb.store_ref_bool(std::move(right)) &&
+                   cb.finalize_to(branch)
+               ? r
+               : -1;
+  } else if (!f) {
+    auto shard_info = McShardHash::unpack(cs, shard);
+    if (shard_info.is_null()) {
+      return -1;
+    }
+    Ref<McShardHash> sibling_info;
+    if (sibling.not_null()) {
+      auto cs2 = vm::load_cell_slice(sibling);
+      if (!cs2.fetch_ulong(1)) {
+        sibling_info = McShardHash::unpack(cs2, ton::shard_sibling(shard));
+        if (sibling_info.is_null()) {
+          return -1;
+        }
+      }
+    }
+    int r = func(shard_info.write(), sibling_info.get());
+    if (r <= 0) {
+      return r;
+    }
+    vm::CellBuilder cb;
+    return cb.store_bool_bool(false) && shard_info->pack(cb) && cb.finalize_to(branch) ? r : -1;
+  } else {
+    return -1;
+  }
+}
+
+bool ShardConfig::process_sibling_shard_hashes(std::function<int(McShardHash&, const McShardHash*)> func) {
+  if (!shard_hashes_dict_) {
+    return false;
+  }
+  bool ok = true;
+  shard_hashes_dict_->map([&ok, &func](vm::CellBuilder& cb, Ref<vm::CellSlice> csr, td::ConstBitPtr key,
+                                       int n) -> bool {
+    Ref<vm::Cell> root;
+    ok = ok && (n == 32) && csr->size_ext() == 0x10000 && std::move(csr)->prefetch_ref_to(root) &&
+         process_workchain_sibling_shard_hashes(root, Ref<vm::Cell>{}, ton::ShardIdFull{(int)key.get_int(32)}, func) >=
+             0 &&
+         cb.store_ref_bool(std::move(root));
+    return true;
+  });
+  return ok;
+}
+
 std::vector<ton::BlockId> ShardConfig::get_shard_hash_ids(
     const std::function<bool(ton::ShardIdFull, bool)>& filter) const {
   if (!shard_hashes_dict_) {
@@ -748,7 +818,7 @@ bool ShardConfig::new_workchain(ton::WorkchainId workchain, const ton::RootHash&
 
 td::Result<bool> ShardConfig::may_update_shard_block_info(Ref<McShardHash> new_info,
                                                           const std::vector<ton::BlockIdExt>& old_blkids,
-                                                          ton::LogicalTime lt_limit) const {
+                                                          ton::LogicalTime lt_limit, Ref<McShardHash>* ancestor) const {
   if (!shard_hashes_dict_) {
     return td::Status::Error(-666, "no shard top block dictionary present");
   }
@@ -784,6 +854,9 @@ td::Result<bool> ShardConfig::may_update_shard_block_info(Ref<McShardHash> new_i
     return td::Status::Error(
         -666, "the start block of a top shard block update must either coincide with the final shard or be its parent");
   }
+  if (ancestor) {
+    ancestor->clear();
+  }
   ton::CatchainSeqno old_cc_seqno = 0;
   for (const auto& ob : old_blkids) {
     auto odef = get_shard_hash(ob.shard_full());
@@ -810,6 +883,42 @@ td::Result<bool> ShardConfig::may_update_shard_block_info(Ref<McShardHash> new_i
                           << " had before_merge=" << odef->before_merge_
                           << " but the top shard block update is valid only if before_merge=" << before_merge);
     }
+    if (new_info->before_split_) {
+      if (before_merge || before_split) {
+        return td::Status::Error(
+            -666, PSTRING() << "cannot register a before-split block " << new_info->top_block_id().to_str()
+                            << " at the end of a chain that itself starts with a split/merge event");
+      }
+      if (odef->fsm_state() != block::McShardHash::FsmState::fsm_split) {
+        return td::Status::Error(-666, PSTRING() << "cannot register a before-split block "
+                                                 << new_info->top_block_id().to_str()
+                                                 << " because fsm_split state was not set for this shard beforehand");
+      }
+      if (new_info->gen_utime_ < odef->fsm_utime_ || new_info->gen_utime_ >= odef->fsm_utime_ + odef->fsm_interval_) {
+        return td::Status::Error(-666, PSTRING() << "cannot register a before-split block "
+                                                 << new_info->top_block_id().to_str()
+                                                 << " because fsm_split state was enabled for unixtime "
+                                                 << odef->fsm_utime_ << " .. " << odef->fsm_utime_ + odef->fsm_interval_
+                                                 << " but the block is generated at " << new_info->gen_utime_);
+      }
+    }
+    if (before_merge) {
+      if (odef->fsm_state() != block::McShardHash::FsmState::fsm_merge) {
+        return td::Status::Error(-666, PSTRING() << "cannot register merged block " << new_info->top_block_id().to_str()
+                                                 << " because fsm_merge state was not set for shard "
+                                                 << odef->top_block_id().shard_full().to_str() << " beforehand");
+      }
+      if (new_info->gen_utime_ < odef->fsm_utime_ || new_info->gen_utime_ >= odef->fsm_utime_ + odef->fsm_interval_) {
+        return td::Status::Error(-666, PSTRING() << "cannot register merged block " << new_info->top_block_id().to_str()
+                                                 << " because fsm_merge state was enabled for shard "
+                                                 << odef->top_block_id().shard_full().to_str() << " for unixtime "
+                                                 << odef->fsm_utime_ << " .. " << odef->fsm_utime_ + odef->fsm_interval_
+                                                 << " but the block is generated at " << new_info->gen_utime_);
+      }
+    }
+    if (ancestor && !before_merge && !before_split) {
+      *ancestor = odef;
+    }
   }
   if (old_cc_seqno + before_merge != new_info->next_catchain_seqno_) {
     return td::Status::Error(-666, PSTRING()
@@ -826,13 +935,17 @@ td::Result<bool> ShardConfig::may_update_shard_block_info(Ref<McShardHash> new_i
 
 td::Result<bool> ShardConfig::update_shard_block_info(Ref<McShardHash> new_info,
                                                       const std::vector<ton::BlockIdExt>& old_blkids) {
-  auto res = may_update_shard_block_info(new_info, old_blkids);
+  Ref<McShardHash> ancestor;
+  auto res = may_update_shard_block_info(new_info, old_blkids, ~0ULL, &ancestor);
   if (res.is_error()) {
     return res;
   }
   if (!res.move_as_ok()) {
     return td::Status::Error(-666, std::string{"cannot apply the after-split update for "} + new_info->blk_.to_str() +
                                        " without a corresponding sibling update");
+  }
+  if (ancestor.not_null() && ancestor->fsm_ != McShardHash::FsmState::fsm_none) {
+    new_info.write().set_fsm(ancestor->fsm_, ancestor->fsm_utime_, ancestor->fsm_interval_);
   }
   bool ok = do_update_shard_info(std::move(new_info));
   if (!ok) {
@@ -862,7 +975,7 @@ td::Result<bool> ShardConfig::update_shard_block_info2(Ref<McShardHash> new_info
   if (new_info1->blk_.id.shard > new_info2->blk_.id.shard) {
     std::swap(new_info1, new_info2);
   }
-  bool ok = do_update_shard_info(std::move(new_info1), std::move(new_info2));
+  bool ok = do_update_shard_info2(std::move(new_info1), std::move(new_info2));
   if (!ok) {
     return td::Status::Error(
         -666,
@@ -882,7 +995,7 @@ bool ShardConfig::do_update_shard_info(Ref<McShardHash> new_info) {
          && cb.finalize_to(ref) && set_shard_info(new_info->shard(), std::move(ref));
 }
 
-bool ShardConfig::do_update_shard_info(Ref<McShardHash> new_info1, Ref<McShardHash> new_info2) {
+bool ShardConfig::do_update_shard_info2(Ref<McShardHash> new_info1, Ref<McShardHash> new_info2) {
   if (new_info1.is_null() || new_info2.is_null() || !ton::shard_is_sibling(new_info1->shard(), new_info2->shard())) {
     return false;
   }
@@ -1148,6 +1261,7 @@ bool WorkchainInfo::unpack(ton::WorkchainId wc, vm::CellSlice& cs) {
     return false;
   }
   enabled_since = info.enabled_since;
+  actual_min_split = info.actual_min_split;
   min_split = info.min_split;
   max_split = info.max_split;
   basic = info.basic;

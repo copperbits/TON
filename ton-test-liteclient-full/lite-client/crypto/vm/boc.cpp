@@ -906,6 +906,9 @@ td::Result<Ref<Cell>> std_boc_deserialize(td::Slice data) {
 }
 
 td::Result<std::vector<Ref<Cell>>> std_boc_deserialize_multi(td::Slice data) {
+  if (data.empty()) {
+    return std::vector<Ref<Cell>>{};
+  }
   BagOfCells boc;
   auto res = boc.deserialize(data);
   if (res.is_error()) {
@@ -940,6 +943,9 @@ td::Result<td::BufferSlice> std_boc_serialize(Ref<Cell> root, int mode) {
 }
 
 td::Result<td::BufferSlice> std_boc_serialize_multi(std::vector<Ref<Cell>> roots, int mode) {
+  if (roots.empty()) {
+    return td::BufferSlice{};
+  }
   BagOfCells boc;
   boc.add_roots(std::move(roots));
   auto res = boc.import_cells();
@@ -1021,6 +1027,64 @@ bool CellStorageStat::add_used_storage(Ref<vm::Cell> cell, bool kill_dup, bool s
   }
   vm::CellSlice cs{vm::NoVm{}, std::move(cell)};
   return add_used_storage(std::move(cs), kill_dup, skip_count_root);
+}
+
+void NewCellStorageStat::add_cell(Ref<Cell> cell) {
+  dfs(std::move(cell), true, false);
+}
+void NewCellStorageStat::add_proof(Ref<Cell> cell, CellUsageTree* usage_tree) {
+  CHECK(usage_tree);
+  usage_tree_ = usage_tree;
+  dfs(std::move(cell), false, true);
+}
+void NewCellStorageStat::add_cell_and_proof(Ref<Cell> cell, CellUsageTree* usage_tree) {
+  CHECK(usage_tree);
+  usage_tree_ = usage_tree;
+  dfs(std::move(cell), true, true);
+}
+
+void NewCellStorageStat::dfs(Ref<Cell> cell, bool need_stat, bool need_proof_stat) {
+  if (cell.is_null()) {
+    // FIXME: save error flag?
+    return;
+  }
+  if (need_stat) {
+    stat_.internal_refs++;
+    if (!seen_.insert(cell->get_hash()).second) {
+      need_stat = false;
+    } else {
+      stat_.cells++;
+    }
+  }
+
+  if (need_proof_stat) {
+    auto tree_node = cell->get_tree_node();
+    if (!tree_node.empty() && tree_node.is_from_tree(usage_tree_)) {
+      proof_stat_.external_refs++;
+      need_proof_stat = false;
+    } else {
+      proof_stat_.internal_refs++;
+      if (!proof_seen_.insert(cell->get_hash()).second) {
+        need_proof_stat = false;
+      } else {
+        proof_stat_.cells++;
+      }
+    }
+  }
+
+  if (!need_proof_stat && !need_stat) {
+    return;
+  }
+  vm::CellSlice cs{vm::NoVm{}, std::move(cell)};
+  if (need_stat) {
+    stat_.bits += cs.size();
+  }
+  if (need_proof_stat) {
+    proof_stat_.bits += cs.size();
+  }
+  while (cs.size_refs()) {
+    dfs(cs.fetch_ref(), need_stat, need_proof_stat);
+  }
 }
 
 }  // namespace vm

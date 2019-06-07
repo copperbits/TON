@@ -10,7 +10,7 @@ struct CppIdentSet {
   CppIdentSet(const std::set<std::string>* forbid = nullptr) : extra_forbidden_idents(forbid) {
   }
   static std::string compute_cpp_ident(std::string orig_ident, int count = 0);
-  std::string new_ident(std::string orig_ident, int count = 0);
+  std::string new_ident(std::string orig_ident, int count = 0, std::string suffix = "");
   bool insert(std::string ident) {
     return cpp_idents.insert(ident).second;
   }
@@ -131,11 +131,13 @@ class CppTypeCode {
     const Constructor& constr;
     int cons_idx;
     bool is_trivial;
+    bool is_small;
     bool triv_conflict;
     bool has_trivial_name;
     bool inline_record;
     bool declared;
     cpp_val_type equiv_cpp_type;
+    std::vector<cpp_val_type> equiv_cpp_types;
     std::string cpp_name;
     std::vector<ConsField> cpp_fields;
     ConsRecord(const CppTypeCode& _cpp_type, const Constructor& _constr, int idx, bool _triv = false)

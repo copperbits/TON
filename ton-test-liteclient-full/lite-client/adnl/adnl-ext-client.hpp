@@ -1,10 +1,10 @@
 #pragma once
 
 #include "adnl-ext-connection.hpp"
-#include "tl-utils.hpp"
+#include "tl-utils/tl-utils.hpp"
 #include "td/utils/Random.h"
 #include "adnl-query.h"
-#include "adnl-encryptor.h"
+#include "keys/encryptor.h"
 #include "adnl-ext-client.h"
 
 namespace ton {
@@ -27,7 +27,7 @@ class AdnlOutboundConnection : public AdnlExtConnection {
   }
   void start_up() override {
     AdnlExtConnection::start_up();
-    auto X = dst_.create_encryptor();
+    auto X = dst_.pubkey().create_encryptor();
     if (X.is_error()) {
       LOG(ERROR) << "failed to init encryptor: " << X.move_as_error();
       stop();

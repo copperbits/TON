@@ -36,7 +36,7 @@ int main() {
 #else
   generate_cpp<>("auto/tl", "tonlib_api", "std::string", "std::string",
                  {"\"tl/tl_object_parse.h\"", "\"tl/tl_object_store.h\"", "\"td/utils/int_types.h\""}, {"<string>"});
+#endif
   td::gen_json_converter(td::tl::read_tl_config_from_file("scheme/tonlib_api.tlo"), "auto/tl/tonlib_api_json",
                          "tonlib_api");
-#endif
 }

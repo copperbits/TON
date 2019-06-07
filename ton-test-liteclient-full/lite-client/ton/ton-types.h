@@ -29,6 +29,9 @@ using ValidatorSessionId = td::UInt256;
 constexpr WorkchainId masterchainId = -1, basechainId = 0, workchainInvalid = 0x80000000;
 constexpr ShardId shardIdAll = (1ULL << 63);
 
+constexpr unsigned split_merge_delay = 100;     // prepare (delay) split/merge for 100 seconds
+constexpr unsigned split_merge_interval = 100;  // split/merge is enabled during 60 second interval
+
 static inline int shard_pfx_len(ShardId shard) {
   return shard ? 63 - td::count_trailing_zeroes_non_zero64(shard) : 0;
 }
