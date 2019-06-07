@@ -1,10 +1,10 @@
 #include "adnl-query.h"
-#include "adnl-error.h"
+#include "common/errorcode.h"
 #include "td/utils/Random.h"
 
 namespace ton {
 void AdnlQuery::alarm() {
-  promise_.set_error(td::Status::Error(AdnlError::timeout, "adnl query timeout"));
+  promise_.set_error(td::Status::Error(ErrorCode::timeout, "adnl query timeout"));
   hangup();
 }
 void AdnlQuery::result(td::BufferSlice data) {

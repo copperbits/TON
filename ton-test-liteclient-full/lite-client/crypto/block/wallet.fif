@@ -1,32 +1,48 @@
 #!/usr/bin/fift -s
-def? $1 { "new-wallet" =: $1 } ifnot
-$1 $len { "new-wallet" =: $1 } ifnot
-$1 +".addr" file>B 256 B>u@ dup constant wallet_addr
-."Wallet address = " x. cr
-$1 +".pk" file>B dup Blen 32 <> abort"Private key must be exactly 32 bytes long"
+"TonUtil.fif" include
+
+{ ."usage: " @' $0 type ." <filename-base> <dest-addr> <seqno> <amount> [<savefile>]" cr
+  ."Creates a request to simple wallet created by new-wallet.fif, with private key loaded from file <filename-base>.pk "
+  ."and address from <filename-base>.addr, and saves it into <savefile>.boc ('wallet-query.boc' by default)" cr 1 halt
+} : usage
+def? $# { @' $# dup 4 < swap 5 > or ' usage if } if
+
+"new-wallet" constant file-base
+Basechain constant wallet_wc
+0x13CB612A00A7C092C7DFD2EA45D603A9B54591BA4C88F71E707E009B879F0FB2 constant dest_addr
+Basechain constant dest_wc
+0 constant seqno
+GR$.666 constant amount
+true constant bounce
+
+def? $4 {
+  @' $1 =: file-base
+  @' $2 parse-smc-addr =: bounce =: dest_addr =: dest_wc
+  @' $3 parse-int =: seqno
+  @' $4 $>GR =: amount
+} if
+def? $5 { @' $5 } { "wallet-query" } cond constant savefile
+
+file-base +".addr" file>B 32 B| 
+dup Blen { 32 B>i@ =: wallet_wc } { drop } cond
+256 B>u@ dup constant wallet_addr
+."Source wallet address = " wallet_wc ._ .":" x. cr
+wallet_wc wallet_addr 6 smca>$ type cr
+file-base +".pk" file>B dup Blen 32 <> abort"Private key must be exactly 32 bytes long"
 constant wallet_pk
 
-// 0x1111111122222222333333334444444455555555666666667777777788888888 constant dest_addr
-0x13CB612A00A7C092C7DFD2EA45D603A9B54591BA4C88F71E707E009B879F0FB2 constant dest_addr
--1 constant wc
-0 constant seqno
-
-1000000000 constant Gram
-{ Gram swap */ } : Gram*/
-
-.666 Gram*/ constant amount
-
-// b x --> b'  ( serializes a Gram amount )
-{ -1 { 1+ 2dup 8 * ufits } until
-  rot over 4 u, -rot 8 * u, } : Gram, 
+."Transferring " amount .GR ."to account "
+dest_wc dest_addr bounce 7 + smca>$ type ." = " dest_wc ._ .":"
+dest_addr x. ."seqno=0x" seqno x. ."bounce=" bounce . cr
   
 // create a message
-<b b{011000100} s, wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "TEST" $, b>
+<b b{01} s, bounce 1 i, b{000100} s, dest_wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "TEST" $, b>
 <b seqno 32 u, 1 8 u, swap ref, b>
 dup ."signing message: " <s csr. cr
 dup hash wallet_pk ed25519_sign_uint
-<b b{1000100} s, wc 8 i, wallet_addr 256 u, 0 Gram, b{00} s,
+<b b{1000100} s, wallet_wc 8 i, wallet_addr 256 u, 0 Gram, b{00} s,
    swap B, swap <s s, b>
 dup ."resulting external message: " <s csr. cr
 2 boc+>B dup Bx. cr
-$1 +"-query.boc" B>file
+savefile +".boc" tuck B>file
+."(Saved to file " type .")" cr

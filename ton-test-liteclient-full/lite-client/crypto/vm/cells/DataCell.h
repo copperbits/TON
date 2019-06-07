@@ -137,6 +137,9 @@ class DataCell : public Cell {
   td::uint32 get_virtualization() const override {
     return info_.virtualization_;
   }
+  CellUsageTree::NodePtr get_tree_node() const override {
+    return {};
+  }
   bool is_loaded() const override {
     return true;
   }

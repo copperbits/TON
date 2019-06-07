@@ -452,12 +452,12 @@ TEST(RefInt, main) {
   //z.unique_write()->set_pow2(256);
   x = td::RefInt256{true, 0};
   int i = 1;
-  while ((*z)->sgn() > 0) {
+  while (z->sgn() > 0) {
     x += z;
-    z.write()->add_tiny(i >> 1).divmod_tiny(i);
+    z.write().add_tiny(i >> 1).divmod_tiny(i);
     ++i;
   }
-  x.write()->normalize();
+  x.write().normalize();
   os << x << " = " << hex_string(x) << std::endl;
   REGRESSION_VERIFY(os.str());
 }

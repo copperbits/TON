@@ -72,11 +72,6 @@ set(CMAKE_THREAD_PREFER_PTHREAD ON)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-set(Boost_USE_STATIC_LIBS OFF)
-set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_RUNTIME OFF)
-find_package(Boost 1.69)
-
 if (NOT MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=core2")
 endif()
@@ -161,13 +156,12 @@ if (USE_LIBRAPTORQ)
 endif()
 
 add_subdirectory(terminal)
+add_subdirectory(keys)
+add_subdirectory(tl-utils)
 add_subdirectory(adnl)
 
 add_subdirectory(crypto)
 
-add_executable (test-lite-client test/test-lite-client.cpp)
+add_executable (test-lite-client test/test-lite-client.cpp test/test-lite-client.h)
 target_link_libraries(test-lite-client tdutils tdactor adnllite tl_api 
   ton_crypto ton_block terminal )
-
-add_executable (test-lite-client-with-webserver test/test-lite-client-with-webserver.cpp)
-target_link_libraries(test-lite-client-with-webserver tdutils tdactor adnllite tl_api ton_crypto ton_block terminal)

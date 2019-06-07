@@ -152,9 +152,9 @@ bool CppIdentSet::is_good_ident(std::string ident) {
          !(extra_forbidden_idents && extra_forbidden_idents->count(ident));
 }
 
-std::string CppIdentSet::new_ident(std::string orig_ident, int count) {
+std::string CppIdentSet::new_ident(std::string orig_ident, int count, std::string suffix) {
   while (true) {
-    std::string ident = compute_cpp_ident(orig_ident, count);
+    std::string ident = compute_cpp_ident(orig_ident, count) + suffix;
     if (is_good_ident(ident)) {
       cpp_idents.insert(ident);
       return ident;
@@ -447,6 +447,7 @@ void CppTypeCode::assign_record_cons_names() {
     CppIdentSet rec_cpp_ids;
     rec_cpp_ids.insert("type_class");
     rec_cpp_ids.insert(record.cpp_name);
+    // maybe : add field identifiers from type class context (?)
     for (int j = 0; j < ctor.fields_num; j++) {
       const Field& field = ctor.fields.at(j);
       if (field.constraint) {
@@ -489,19 +490,27 @@ void CppTypeCode::assign_record_cons_names() {
       }
     }
     record.is_trivial = (record.cpp_fields.size() <= 1);
+    record.is_small = (record.cpp_fields.size() <= 3);
     record.inline_record = (record.cpp_fields.size() <= 2);
     cpp_val_type t = ct_unknown;
     if (record.is_trivial) {
       t = (record.cpp_fields.size() == 1) ? record.cpp_fields.at(0).ctype : ct_void;
     }
+    std::vector<cpp_val_type> tv;
+    for (const auto& f : record.cpp_fields) {
+      if (f.ctype == ct_subrecord) {
+        record.is_trivial = record.is_small = false;
+      } else if (!f.implicit) {
+        tv.push_back(f.ctype);
+      }
+    }
     record.equiv_cpp_type = t;
+    record.equiv_cpp_types = tv;
     record.triv_conflict = false;
-    if (t) {
-      for (int j = 0; j < i; j++) {
-        if (records[j].equiv_cpp_type == t) {
-          record.triv_conflict = records[j].triv_conflict = true;
-          break;
-        }
+    for (int j = 0; j < i; j++) {
+      if (records[j].equiv_cpp_types == tv) {
+        record.triv_conflict = records[j].triv_conflict = true;
+        break;
       }
     }
   }
@@ -529,7 +538,7 @@ void CppTypeCode::assign_class_field_names() {
       constructor_args += ", ";
     }
     if (f) {
-      id = local_cpp_ids.new_ident(std::string{cn});
+      id = local_cpp_ids.new_ident(std::string{cn}, 0, "_");
       if (cn != 't') {
         ++cn;
       }
@@ -541,7 +550,7 @@ void CppTypeCode::assign_class_field_names() {
         skip_extra_args_pass += ", ";
       }
     } else {
-      id = local_cpp_ids.new_ident(std::string{ct});
+      id = local_cpp_ids.new_ident(std::string{ct}, 0, "_");
       if (ct != 'Z') {
         ++ct;
       } else {
@@ -1184,6 +1193,14 @@ void CppTypeCode::generate_type_fields(std::ostream& os, int options) {
   }
 }
 
+static std::string constr_arg_name(std::string type_field_name) {
+  if (type_field_name.size() <= 1 || type_field_name.back() != '_') {
+    return std::string{"_"} + type_field_name;
+  } else {
+    return {type_field_name, 0, type_field_name.size() - 1};
+  }
+}
+
 void CppTypeCode::generate_type_constructor(std::ostream& os, int options) {
   os << "  " << cpp_type_class_name << "(";
   for (int i = 0, j = 0; i < tot_params; i++) {
@@ -1194,7 +1211,7 @@ void CppTypeCode::generate_type_constructor(std::ostream& os, int options) {
       os << ", ";
     }
     os << (type_param_is_nat[i] ? "int " : "const TLB& ");
-    os << '_' << type_param_name[i];
+    os << constr_arg_name(type_param_name[i]);
   }
   os << ")";
   for (int i = 0, j = 0; i < tot_params; i++) {
@@ -1206,7 +1223,7 @@ void CppTypeCode::generate_type_constructor(std::ostream& os, int options) {
     } else {
       os << " : ";
     }
-    os << type_param_name[i] << "(_" << type_param_name[i] << ")";
+    os << type_param_name[i] << "(" << constr_arg_name(type_param_name[i]) << ")";
   }
   os << " {}\n";
 }
@@ -2242,7 +2259,7 @@ void CppTypeCode::generate_print_cons_method(std::ostream& os, std::string nl, i
 
 void CppTypeCode::generate_print_method(std::ostream& os, int options) {
   bool ret_ext = options & 2;
-  os << "\nbool " << cpp_type_class_name << "::print_skip(PrettyPrinter&pp, vm::CellSlice& cs";
+  os << "\nbool " << cpp_type_class_name << "::print_skip(PrettyPrinter& pp, vm::CellSlice& cs";
   if (ret_ext) {
     os << skip_extra_args;
   }
@@ -2465,8 +2482,8 @@ void CppTypeCode::generate_unpack_method(std::ostream& os, CppTypeCode::ConsReco
       os << "(cs, data";
     } else {
       os << "_" << cons_enum_name.at(rec.cons_idx) << "(cs";
-      if (rec.equiv_cpp_type != ct_void) {
-        os << ", " << rec.cpp_fields.at(0).name;
+      for (const auto& f : rec.cpp_fields) {
+        os << ", " << f.name;
       }
     }
     if (options & 2) {
@@ -2697,12 +2714,13 @@ void CppTypeCode::generate_pack_method(std::ostream& os, CppTypeCode::ConsRecord
       os << "(cb, data";
     } else {
       os << "_" << cons_enum_name.at(rec.cons_idx) << "(cb";
-      if (rec.equiv_cpp_type != ct_void) {
-        std::string id = rec.cpp_fields.at(0).name;
-        if (rec.equiv_cpp_type == ct_cell || rec.equiv_cpp_type == ct_slice || rec.equiv_cpp_type == ct_integer) {
-          os << ", std::move(" << id << ")";
+      for (const auto& f : rec.cpp_fields) {
+        // skip SOME implicit fields ???
+        if (f.implicit) {
+        } else if (f.get_cvt().needs_move()) {
+          os << ", std::move(" << f.name << ")";
         } else {
-          os << ", " << id;
+          os << ", " << f.name;
         }
       }
     }
@@ -2831,10 +2849,10 @@ bool CppTypeCode::ConsRecord::declare_record_unpack(std::ostream& os, std::strin
   if (!(options & 8)) {
     os << nl << "bool " << class_name << fun_name << "(" << slice_arg << ", " << class_name << cpp_name << "& data";
     is_ok = true;
-  } else if (is_trivial) {
+  } else if (is_small) {
     os << nl << "bool " << class_name << fun_name << "_" << cpp_type.cons_enum_name.at(cons_idx) << "(" << slice_arg;
-    if (equiv_cpp_type != ct_void) {
-      os << ", " << cpp_fields.at(0).get_cvt() << "& " << cpp_fields.at(0).name;
+    for (const auto& f : cpp_fields) {
+      os << ", " << f.get_cvt() << "& " << f.name;
     }
     is_ok = true;
   }
@@ -2863,12 +2881,13 @@ bool CppTypeCode::ConsRecord::declare_record_pack(std::ostream& os, std::string 
     os << nl << "bool " << class_name << fun_name << "(" << builder_arg << ", const " << class_name << cpp_name
        << "& data";
     is_ok = true;
-  } else if (is_trivial) {
+  } else if (is_small) {
     os << nl << "bool " << class_name << fun_name << "_" << cpp_type.cons_enum_name.at(cons_idx) << "(" << builder_arg;
-    if (equiv_cpp_type != ct_void) {
-      os << ", ";
-      cpp_fields.at(0).get_cvt().show(os, true);
-      os << " " << cpp_fields.at(0).name;
+    for (const auto& f : cpp_fields) {
+      // skip SOME implicit fields ???
+      if (!f.implicit) {
+        os << ", " << f.get_cvt() << " " << f.name;
+      }
     }
     is_ok = true;
   }

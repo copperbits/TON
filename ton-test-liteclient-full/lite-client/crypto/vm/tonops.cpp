@@ -26,8 +26,8 @@ int exec_set_gas_limit(VmState* st) {
   VM_LOG(st) << "execute SETGASLIMIT";
   td::RefInt256 x = st->get_stack().pop_int_finite();
   long long gas = 0;
-  if ((*x)->sgn() > 0) {
-    gas = (*x)->unsigned_fits_bits(63) ? (*x)->to_long() : GasLimits::infty;
+  if (x->sgn() > 0) {
+    gas = x->unsigned_fits_bits(63) ? x->to_long() : GasLimits::infty;
   }
   return exec_set_gas_generic(st, gas);
 }
@@ -57,7 +57,7 @@ int exec_compute_hash(VmState* st, int mode) {
     hash = cb.finalize()->get_hash().as_array();
   }
   td::RefInt256 res{true};
-  CHECK(res.write()->import_bytes(hash.data(), hash.size(), false));
+  CHECK(res.write().import_bytes(hash.data(), hash.size(), false));
   stack.push_int(std::move(res));
   return 0;
 }
@@ -70,13 +70,13 @@ int exec_ed25519_check_signature(VmState* st) {
   auto signature_cs = stack.pop_cellslice();
   auto hash_int = stack.pop_int();
   unsigned char hash[32], key[32], signature[64];
-  if (!(*hash_int)->export_bytes(hash, 32, false)) {
+  if (!hash_int->export_bytes(hash, 32, false)) {
     throw VmError{Excno::range_chk, "data hash must fit in an unsigned 256-bit integer"};
   }
   if (!signature_cs->prefetch_bytes(signature, 64)) {
     throw VmError{Excno::cell_und, "Ed25519 signature must contain at least 512 data bits"};
   }
-  if (!(*key_int)->export_bytes(key, 32, false)) {
+  if (!key_int->export_bytes(key, 32, false)) {
     throw VmError{Excno::range_chk, "Ed25519 public key must fit in an unsigned 256-bit integer"};
   }
   td::Ed25519::PublicKey pub_key{td::Slice{key, 32}};
@@ -116,8 +116,8 @@ int exec_send_raw_message(VmState* st) {
 }
 
 bool store_grams(CellBuilder& cb, td::RefInt256 value) {
-  int k = (*value)->bit_size(false);
-  return k <= 15 * 8 && cb.store_long_bool((k + 7) >> 3, 4) && cb.store_bigint256_bool(**value, (k + 7) & -8, false);
+  int k = value->bit_size(false);
+  return k <= 15 * 8 && cb.store_long_bool((k + 7) >> 3, 4) && cb.store_bigint256_bool(*value, (k + 7) & -8, false);
 }
 
 int exec_reserve_raw(VmState* st, int mode) {

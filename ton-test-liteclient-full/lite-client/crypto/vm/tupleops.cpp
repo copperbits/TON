@@ -20,10 +20,25 @@ int exec_is_null(VmState* st) {
   return 0;
 }
 
+int exec_null_swap_if(VmState* st, bool cond, int depth) {
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute NULL" << (depth ? "ROTR" : "SWAP") << (cond ? "IF" : "IFNOT");
+  stack.check_underflow(depth + 1);
+  auto x = stack.pop_int_finite();
+  if (!x->sgn() != cond) {
+    stack.push({});
+    for (int i = 0; i < depth; i++) {
+      swap(stack[i], stack[i + 1]);
+    }
+  }
+  stack.push_int(std::move(x));
+  return 0;
+}
+
 int exec_mktuple_common(Stack& stack, unsigned n) {
   stack.check_underflow(n);
   Ref<vm::Tuple> ref{true};
-  auto& tuple = *(ref.unique_write());
+  auto& tuple = ref.unique_write();
   tuple.reserve(n);
   for (int i = n - 1; i >= 0; i--) {
     tuple.push_back(std::move(stack[i]));
@@ -54,7 +69,7 @@ const StackEntry& tuple_index(const Tuple& tup, unsigned idx) {
 
 int exec_tuple_index_common(Stack& stack, unsigned n) {
   auto tuple = stack.pop_tuple_range(255);
-  stack.push(tuple_index(**tuple, n));
+  stack.push(tuple_index(*tuple, n));
   return 0;
 }
 
@@ -72,13 +87,13 @@ int exec_tuple_index_var(VmState* st) {
 }
 
 int do_explode_tuple(Stack& stack, Ref<Tuple> tuple, unsigned n) {
-  if (tuple->is_unique()) {
-    auto& tw = *(tuple.unique_write());
+  if (tuple.is_unique()) {
+    auto& tw = tuple.unique_write();
     for (unsigned i = 0; i < n; i++) {
       stack.push(std::move(tw[i]));
     }
   } else {
-    const auto& t = **tuple;
+    const auto& t = *tuple;
     for (unsigned i = 0; i < n; i++) {
       stack.push(t[i]);
     }
@@ -122,7 +137,7 @@ int exec_untuple_first_var(VmState* st) {
 
 int exec_explode_tuple_common(Stack& stack, unsigned n) {
   auto t = stack.pop_tuple_range(n);
-  unsigned l = (unsigned)((*t)->size());
+  unsigned l = (unsigned)(t->size());
   do_explode_tuple(stack, std::move(t), l);
   stack.push_smallint(l);
   return 0;
@@ -144,11 +159,10 @@ int exec_explode_tuple_var(VmState* st) {
 int exec_tuple_set_index_common(Stack& stack, unsigned idx) {
   auto x = stack.pop();
   auto tuple = stack.pop_tuple_range(255);
-  if (idx >= (*tuple)->size()) {
+  if (idx >= tuple->size()) {
     throw VmError{Excno::range_chk, "tuple index out of range"};
   }
-  auto& tw = *(tuple.write());
-  tw[idx] = std::move(x);
+  tuple.write()[idx] = std::move(x);
   stack.push(std::move(tuple));
   return 0;
 }
@@ -171,7 +185,7 @@ int exec_tuple_length(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute TLEN";
   auto t = stack.pop_tuple_range(255);
-  stack.push_smallint((long long)((*t)->size()));
+  stack.push_smallint((long long)(t->size()));
   return 0;
 }
 
@@ -179,7 +193,7 @@ int exec_tuple_length_quiet(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute QTLEN";
   auto t = stack.pop_chk();
-  stack.push_smallint(t.is_tuple() ? (long long)((*t.as_tuple())->size()) : -1LL);
+  stack.push_smallint(t.is_tuple() ? (long long)(t.as_tuple()->size()) : -1LL);
   return 0;
 }
 
@@ -194,7 +208,7 @@ int exec_tuple_last(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute LAST";
   auto t = stack.pop_tuple_range(255, 1);
-  stack.push((*t)->back());
+  stack.push(t->back());
   return 0;
 }
 
@@ -204,7 +218,7 @@ int exec_tuple_push(VmState* st) {
   stack.check_underflow(2);
   auto x = stack.pop();
   auto t = stack.pop_tuple_range(254);
-  t.write()->push_back(std::move(x));
+  t.write().push_back(std::move(x));
   stack.push(std::move(t));
   return 0;
 }
@@ -213,8 +227,8 @@ int exec_tuple_pop(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute TPOP";
   auto t = stack.pop_tuple_range(255, 1);
-  auto x = std::move(t.write()->back());
-  t.write()->pop_back();
+  auto x = std::move(t.write().back());
+  t.write().pop_back();
   stack.push(std::move(t));
   stack.push(std::move(x));
   return 0;
@@ -225,11 +239,11 @@ int exec_tuple_index2(VmState* st, unsigned args) {
   VM_LOG(st) << "execute INDEX2 " << i << "," << j;
   Stack& stack = st->get_stack();
   auto tuple = stack.pop_tuple_range(255);
-  auto t1 = tuple_index(**tuple, i).as_tuple_range(255);
+  auto t1 = tuple_index(*tuple, i).as_tuple_range(255);
   if (t1.is_null()) {
     throw VmError{Excno::type_chk, "intermediate value is not a tuple"};
   }
-  stack.push(tuple_index(**t1, j));
+  stack.push(tuple_index(*t1, j));
   return 0;
 }
 
@@ -245,15 +259,15 @@ int exec_tuple_index3(VmState* st, unsigned args) {
   VM_LOG(st) << "execute INDEX3 " << i << "," << j << "," << k;
   Stack& stack = st->get_stack();
   auto tuple = stack.pop_tuple_range(255);
-  auto t1 = tuple_index(**tuple, i).as_tuple_range(255);
+  auto t1 = tuple_index(*tuple, i).as_tuple_range(255);
   if (t1.is_null()) {
     throw VmError{Excno::type_chk, "intermediate value is not a tuple"};
   }
-  auto t2 = tuple_index(**t1, j).as_tuple_range(255);
+  auto t2 = tuple_index(*t1, j).as_tuple_range(255);
   if (t2.is_null()) {
     throw VmError{Excno::type_chk, "intermediate value is not a tuple"};
   }
-  stack.push(tuple_index(**t2, k));
+  stack.push(tuple_index(*t2, k));
   return 0;
 }
 
@@ -265,6 +279,7 @@ std::string dump_tuple_index3(CellSlice& cs, unsigned args) {
 }
 
 void register_tuple_ops(OpcodeTable& cp0) {
+  using namespace std::placeholders;
   cp0.insert(OpcodeInstr::mksimple(0x6d, 8, "PUSHNULL", exec_push_null))
       .insert(OpcodeInstr::mksimple(0x6e, 8, "ISNULL", exec_is_null))
       .insert(OpcodeInstr::mkfixed(0x6f0, 12, 4, instr::dump_1c("TUPLE "), exec_mktuple))
@@ -285,6 +300,10 @@ void register_tuple_ops(OpcodeTable& cp0) {
       .insert(OpcodeInstr::mksimple(0x6f8b, 16, "LAST", exec_tuple_last))
       .insert(OpcodeInstr::mksimple(0x6f8c, 16, "TPUSH", exec_tuple_push))
       .insert(OpcodeInstr::mksimple(0x6f8d, 16, "TPOP", exec_tuple_pop))
+      .insert(OpcodeInstr::mksimple(0x6fa0, 16, "NULLSWAPIF", std::bind(exec_null_swap_if, _1, true, 0)))
+      .insert(OpcodeInstr::mksimple(0x6fa1, 16, "NULLSWAPIFNOT", std::bind(exec_null_swap_if, _1, false, 0)))
+      .insert(OpcodeInstr::mksimple(0x6fa2, 16, "NULLROTRIF", std::bind(exec_null_swap_if, _1, true, 1)))
+      .insert(OpcodeInstr::mksimple(0x6fa3, 16, "NULLROTRIFNOT", std::bind(exec_null_swap_if, _1, false, 1)))
       .insert(OpcodeInstr::mkfixed(0x6fb, 12, 4, dump_tuple_index2, exec_tuple_index2))
       .insert(OpcodeInstr::mkfixed(0x6fc >> 2, 10, 6, dump_tuple_index3, exec_tuple_index3));
 }

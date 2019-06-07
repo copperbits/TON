@@ -8,29 +8,29 @@
 
 namespace ton {
 
-class AdnlEncryptor {
+class Encryptor {
  public:
   virtual td::Result<td::BufferSlice> encrypt(td::Slice data) = 0;
   virtual td::Status check_signature(td::Slice message, td::Slice signature) = 0;
-  virtual ~AdnlEncryptor() = default;
-  static td::Result<std::unique_ptr<AdnlEncryptor>> create(const ton_api::adnl_id_Full *id);
+  virtual ~Encryptor() = default;
+  static td::Result<std::unique_ptr<Encryptor>> create(const ton_api::PublicKey *id);
 };
 
-class AdnlDecryptor {
+class Decryptor {
  public:
   virtual td::Result<td::BufferSlice> decrypt(td::Slice data) = 0;
   virtual td::Result<td::BufferSlice> sign(td::Slice data) = 0;
   virtual std::vector<td::Result<td::BufferSlice>> sign_batch(std::vector<td::Slice> data);
-  virtual ~AdnlDecryptor() = default;
-  static td::Result<std::unique_ptr<AdnlDecryptor>> create(const ton_api::adnl_id_Pk *id);
+  virtual ~Decryptor() = default;
+  static td::Result<std::unique_ptr<Decryptor>> create(const ton_api::PrivateKey *id);
 };
 
-class AdnlEncryptorAsync : public td::actor::Actor {
+class EncryptorAsync : public td::actor::Actor {
  private:
-  std::unique_ptr<AdnlEncryptor> encryptor_;
+  std::unique_ptr<Encryptor> encryptor_;
 
  public:
-  AdnlEncryptorAsync(std::unique_ptr<AdnlEncryptor> encryptor) : encryptor_(std::move(encryptor)) {
+  EncryptorAsync(std::unique_ptr<Encryptor> encryptor) : encryptor_(std::move(encryptor)) {
   }
   void check_signature(td::BufferSlice data, td::BufferSlice signature, td::Promise<td::Unit> promise) {
     auto res = encryptor_->check_signature(data.as_slice(), signature.as_slice());
@@ -44,23 +44,23 @@ class AdnlEncryptorAsync : public td::actor::Actor {
     promise.set_result(encryptor_->encrypt(data.as_slice()));
   }
   template <class T>
-  static td::Result<td::actor::ActorOwn<AdnlEncryptorAsync>> create(T &id) {
-    TRY_RESULT(d, AdnlEncryptor::create(id));
-    return td::actor::create_actor<AdnlEncryptorAsync>("encryptor", std::move(d));
+  static td::Result<td::actor::ActorOwn<EncryptorAsync>> create(T &id) {
+    TRY_RESULT(d, Encryptor::create(id));
+    return td::actor::create_actor<EncryptorAsync>("encryptor", std::move(d));
   }
   template <class T>
-  static td::Result<td::actor::ActorOwn<AdnlEncryptorAsync>> create(T *id) {
-    TRY_RESULT(d, AdnlEncryptor::create(id));
-    return td::actor::create_actor<AdnlEncryptorAsync>("encryptor", std::move(d));
+  static td::Result<td::actor::ActorOwn<EncryptorAsync>> create(T *id) {
+    TRY_RESULT(d, Encryptor::create(id));
+    return td::actor::create_actor<EncryptorAsync>("encryptor", std::move(d));
   }
 };
 
-class AdnlDecryptorAsync : public td::actor::Actor {
+class DecryptorAsync : public td::actor::Actor {
  private:
-  std::unique_ptr<AdnlDecryptor> decryptor_;
+  std::unique_ptr<Decryptor> decryptor_;
 
  public:
-  AdnlDecryptorAsync(std::unique_ptr<AdnlDecryptor> decryptor) : decryptor_(std::move(decryptor)) {
+  DecryptorAsync(std::unique_ptr<Decryptor> decryptor) : decryptor_(std::move(decryptor)) {
   }
   auto decrypt(td::BufferSlice data) {
     return decryptor_->decrypt(data.as_slice());
@@ -77,14 +77,14 @@ class AdnlDecryptorAsync : public td::actor::Actor {
     return decryptor_->sign_batch(v);
   }
   template <class T>
-  static td::Result<td::actor::ActorOwn<AdnlDecryptorAsync>> create(T &id) {
-    TRY_RESULT(d, AdnlDecryptor::create(id));
-    return td::actor::create_actor<AdnlDecryptorAsync>("decryptor", std::move(d));
+  static td::Result<td::actor::ActorOwn<DecryptorAsync>> create(T &id) {
+    TRY_RESULT(d, Decryptor::create(id));
+    return td::actor::create_actor<DecryptorAsync>("decryptor", std::move(d));
   }
   template <class T>
-  static td::Result<td::actor::ActorOwn<AdnlDecryptorAsync>> create(T *id) {
-    TRY_RESULT(d, AdnlDecryptor::create(id));
-    return td::actor::create_actor<AdnlDecryptorAsync>("decryptor", std::move(d));
+  static td::Result<td::actor::ActorOwn<DecryptorAsync>> create(T *id) {
+    TRY_RESULT(d, Decryptor::create(id));
+    return td::actor::create_actor<DecryptorAsync>("decryptor", std::move(d));
   }
 };
 
