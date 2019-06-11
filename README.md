@@ -38,7 +38,7 @@ Last codebase update was performed on June 5, 2019.`sha256sum('ton-test-liteclie
 - 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
 - 🖥 Started Lite Client on macOS
 - 📩 Explain, how to send  transactions to TON network
-- 🎓 Now we are [writing tutorials](https://www.youtube.com/watch?v=J7K2nq5lf7I) / FAQ / HOWTO how to use TON.
+- 🎓 Now we are [writing video tutorials](https://www.youtube.com/watch?v=J7K2nq5lf7I) / [writing manual for MacOS](/docs/Mac_tutorial.md) / FAQ / HOWTO how to use TON.
 - 🐧 Added build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/ubuntu16.04.sh)
 - 🐳 Packaged lite client into [Docker](https://github.com/copperbits/TON#docker)  container
 - 👓 Launched a [beta explorer](https://explorer.test.ton.cryptoprocessing.io/) for test network
@@ -91,7 +91,7 @@ docker exec ton fift test.fif
 
 **Releases (macOS)**
 
-[Lite Client Latest release](https://github.com/copperbits/TON/releases/tag/test-1)
+[Lite Client Latest release](https://github.com/copperbits/TON/releases/latest)
 
 - Download [latest release](https://github.com/copperbits/TON/releases/)
 - Go to command line, where binary placed
@@ -100,6 +100,8 @@ docker exec ton fift test.fif
 ./test-lite-client -C ton-lite-client-test1.config.json
 ```
 - run `help` to get started
+
+More detailed instructions you can find [here](/docs/Mac_tutorial.md).
 
 ## Tutorial
 
