@@ -101,7 +101,7 @@ docker exec ton fift test.fif
 ```
 - run `help` to get started
 
-More detailed instructions you can find [here](/docs/Mac_tutorial.md).
+More detailed instruction you can find [here](/docs/Mac_tutorial.md).
 
 ## Tutorial
 
