@@ -156,10 +156,12 @@ if (USE_LIBRAPTORQ)
 endif()
 
 add_subdirectory(terminal)
+add_subdirectory(keys)
+add_subdirectory(tl-utils)
 add_subdirectory(adnl)
 
 add_subdirectory(crypto)
 
-add_executable (test-lite-client test/test-lite-client.cpp)
+add_executable (test-lite-client test/test-lite-client.cpp test/test-lite-client.h)
 target_link_libraries(test-lite-client tdutils tdactor adnllite tl_api 
   ton_crypto ton_block terminal )
