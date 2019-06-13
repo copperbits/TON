@@ -6,7 +6,7 @@
       "ip": 1137658550,
       "port": 4924,
       "id": {
-        "@type": "adnl.id.ed25519",
+        "@type": "pub.ed25519",
         "key": "peJTw/arlRfssgTuf9BMypJzqOi7SXEqSPSWiEw2U1M="
       }
     }

@@ -150,7 +150,7 @@ void interpret_set_config_smartcontract(vm::Stack& stack) {
   }
   td::RefInt256 int_addr = stack.pop_int_finite();
   hash_t addr;
-  if (!(*int_addr)->export_bits(addr.bits(), 256, false)) {
+  if (!int_addr->export_bits(addr.bits(), 256, false)) {
     throw fift::IntError{"not a valid smart-contract address"};
   }
   auto it = smart_contracts.find(addr);
@@ -221,7 +221,7 @@ td::RefInt256 create_smartcontract(Ref<vm::Cell> code, Ref<vm::Cell> data, Ref<v
   Ref<vm::DataCell> state_init = cb.finalize();
   hash_t addr = state_init->get_hash().as_array();
   td::RefInt256 smc_addr = td::RefInt256{true};
-  PDO(smc_addr.write()->import_bits(addr.data(), 0, 256, false));
+  PDO(smc_addr.write().import_bits(addr.data(), 0, 256, false));
   if (verbosity > 2) {
     std::cerr << "smart-contract address is ";
     std::cerr << addr << " = " << smc_addr << std::endl;
@@ -252,9 +252,9 @@ td::RefInt256 create_smartcontract(Ref<vm::Cell> code, Ref<vm::Cell> data, Ref<v
     throw fift::IntError{"total smart-contract balance exceeds limit"};
   }
   cb.reset();
-  PDO(cb.store_long_bool(0, 64)                                  // account_storage$_ last_trans_lt:uint64
-      && block::tlb::t_Grams.store_integer_value(cb, **balance)  // balance.grams:Grams
-      && cb.store_long_bool(0, 1));                              // balance.other:ExtraCurrencyCollection
+  PDO(cb.store_long_bool(0, 64)                                 // account_storage$_ last_trans_lt:uint64
+      && block::tlb::t_Grams.store_integer_value(cb, *balance)  // balance.grams:Grams
+      && cb.store_long_bool(0, 1));                             // balance.other:ExtraCurrencyCollection
   if (mode == 1) {
     PDO(block::gen::t_AccountState.pack_account_uninit(cb));
   } else {
@@ -416,7 +416,7 @@ Ref<vm::Cell> create_state() {
   THRERR("workchain_id is unset, cannot generate state");
   PDO(workchain_id != wc_master || config_addr_set);
   THRERR("configuration smart contract must be selected");
-  PDO(cb.store_long_bool(0x9023afde, 32)      // shard_state#9023afde
+  PDO(cb.store_long_bool(0x9023afdf, 32)      // shard_state#9023afdf
       && cb.store_long_bool(global_id, 32));  // global_id:int32
   PDO(cb.store_long_bool(0, 8) && cb.store_long_bool(workchain_id, 32) &&
       cb.store_long_bool(0, 64)             // shard_id:ShardIdent
@@ -430,12 +430,12 @@ Ref<vm::Cell> create_state() {
       && cb.store_long_bool(0, 1)           // before_split:Bool
       && store_accounts(cb)                 // accounts:ShardAccounts
       && cb2.store_zeroes_bool(128)         // ^[ overload_history:uint64 underload_history:uint64
-      && block::tlb::t_Grams.store_integer_value(cb2, **total_smc_balance) &&
+      && block::tlb::t_Grams.store_integer_value(cb2, *total_smc_balance) &&
       cb2.store_long_bool(0, 1)                            //   total_balance:CurrencyCollection
       && block::tlb::t_CurrencyCollection.null_value(cb2)  //   total_validator_fees:CurrencyCollection
       && store_public_libraries(cb2)                       //   libraries:(Hashmap 256 LibDescr)
+      && cb2.store_long_bool(0, 1)                         //   master_ref:(Maybe BlkMasterInfo)
       && cb.store_ref_bool(cb2.finalize())                 // ]
-      && cb.store_long_bool(0, 1)                          // master_ref:(Maybe BlkMasterInfo)
       && store_custom(cb));                                // custom:(Maybe  ^McStateExtra)
   THRERR("cannot create blockchain state");
   Ref<vm::Cell> cell = cb.finalize();
@@ -625,6 +625,7 @@ void preload_preamble(fift::Fift& fift, std::string filename, bool standard = tr
 }
 
 int main(int argc, char* const argv[]) {
+  td::set_default_failure_signal_handler().ensure();
   bool interactive = false;
   bool fift_preload = true, no_env = false, script_mode = false;
   std::vector<std::string> library_source_files, source_list;
@@ -632,8 +633,6 @@ int main(int argc, char* const argv[]) {
   std::string ton_db_path;
 
   fift::Fift::Config config;
-
-  td::setup_signals_alt_stack().ensure();
 
   int i;
   int new_verbosity_level = VERBOSITY_NAME(INFO);

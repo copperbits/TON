@@ -6,7 +6,7 @@
   ."Creates a new wallet in specified workchain, with private key saved to or loaded from <filename-base>.pk" cr
   ."('new-wallet.pk' by default)" cr 1 halt
 } : usage
-def? $# { @' $# 1- 1 ufits ' usage ifnot } if
+def? $# { @' $# 1- -2 and ' usage if } if
 
 Basechain constant wc  // create a wallet in workchain 0 (basechain)
 def? $1 { @' $1 parse-workchain-id =: wc } if   // set workchain id from command line argument
@@ -44,7 +44,7 @@ b> // data
 dup ."StateInit: " <s csr. cr
 dup hash dup constant wallet_addr
 ."new wallet address = " wc ._ .":" dup x. cr
-dup 256 u>B file-base +".addr" B>file
+dup 256 u>B wc 32 i>B B+ file-base +".addr" B>file
 wc swap 2dup 7 smca>$ ."Non-bounceable address (for init): " type cr
 6 smca>$ ."Bounceable address (for later access): " type cr
 <b 0 32 u, b>

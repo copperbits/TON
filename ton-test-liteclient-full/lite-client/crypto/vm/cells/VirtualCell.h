@@ -37,6 +37,10 @@ class VirtualCell : public Cell {
     return virt_.get_virtualization();
   }
 
+  CellUsageTree::NodePtr get_tree_node() const override {
+    return cell_->get_tree_node();
+  }
+
   bool is_loaded() const override {
     return cell_->is_loaded();
   }

@@ -117,8 +117,9 @@ struct McShardHash : public ton::validator::McShardHash {
   ton::LogicalTime start_lt_, end_lt_;
   ton::UnixTime gen_utime_{0};
   ton::UnixTime fsm_utime_{0};
+  ton::UnixTime fsm_interval_{0};
   ton::BlockSeqno min_ref_mc_seqno_{-1U};
-  FsmState fsm{FsmState::fsm_none};
+  FsmState fsm_{FsmState::fsm_none};
   bool before_split_{false}, before_merge_{false}, want_split_{false}, want_merge_{false};
   bool nx_cc_updated_{false};
   ton::CatchainSeqno next_catchain_seqno_{-1U};
@@ -160,11 +161,23 @@ struct McShardHash : public ton::validator::McShardHash {
   ton::UnixTime fsm_utime() const override final {
     return fsm_utime_;
   }
+  ton::UnixTime fsm_utime_end() const {
+    return fsm_utime_ + fsm_interval_;
+  }
   ton::UnixTime created_at() const {
     return gen_utime_;
   }
   FsmState fsm_state() const override final {
-    return fsm;
+    return fsm_;
+  }
+  bool is_fsm_none() const {
+    return fsm_ == FsmState::fsm_none;
+  }
+  bool is_fsm_split() const {
+    return fsm_ == FsmState::fsm_split;
+  }
+  bool is_fsm_merge() const {
+    return fsm_ == FsmState::fsm_merge;
   }
   ton::ShardIdFull shard() const override final {
     return ton::ShardIdFull(blk_);
@@ -180,6 +193,16 @@ struct McShardHash : public ton::validator::McShardHash {
   }
   ton::BlockSeqno seqno() const {
     return blk_.id.seqno;
+  }
+  void clear_fsm() {
+    fsm_ = FsmState::fsm_none;
+  }
+  void set_fsm(FsmState fsm, ton::UnixTime fsm_utime, ton::UnixTime fsm_interval);
+  void set_fsm_split(ton::UnixTime fsm_utime, ton::UnixTime fsm_interval) {
+    set_fsm(FsmState::fsm_split, fsm_utime, fsm_interval);
+  }
+  void set_fsm_merge(ton::UnixTime fsm_utime, ton::UnixTime fsm_interval) {
+    set_fsm(FsmState::fsm_merge, fsm_utime, fsm_interval);
   }
   bool pack(vm::CellBuilder& cb) const;
   static Ref<McShardHash> unpack(vm::CellSlice& cs, ton::ShardIdFull id);
@@ -240,6 +263,7 @@ struct CatchainValidatorsConfig {
 struct WorkchainInfo : public td::CntObject {
   ton::WorkchainId workchain{ton::workchainInvalid};
   ton::UnixTime enabled_since;
+  td::uint32 actual_min_split;
   td::uint32 min_split, max_split;
   bool basic;
   bool active;
@@ -292,6 +316,7 @@ class ShardConfig {
   std::vector<ton::BlockId> get_neighbor_shard_hash_ids(ton::ShardIdFull myself) const;
   std::vector<ton::BlockId> get_proper_neighbor_shard_hash_ids(ton::ShardIdFull myself) const;
   bool process_shard_hashes(std::function<int(McShardHash&)> func);
+  bool process_sibling_shard_hashes(std::function<int(McShardHash&, const McShardHash*)> func);
   // may become non-static const in the future
   static bool is_neighbor(ton::ShardIdFull x, ton::ShardIdFull y);
   Ref<McShardHash> get_mc_hash() const {
@@ -311,12 +336,13 @@ class ShardConfig {
                                             const std::vector<ton::BlockIdExt>& old_blkids);
   td::Result<bool> may_update_shard_block_info(Ref<McShardHash> new_info,
                                                const std::vector<ton::BlockIdExt>& old_blkids,
-                                               ton::LogicalTime lt_limit = ~0ULL) const;
+                                               ton::LogicalTime lt_limit = ~0ULL,
+                                               Ref<McShardHash>* ancestor = nullptr) const;
 
  private:
   bool init();
   bool do_update_shard_info(Ref<McShardHash> new_info);
-  bool do_update_shard_info(Ref<McShardHash> new_info1, Ref<McShardHash> new_info2);
+  bool do_update_shard_info2(Ref<McShardHash> new_info1, Ref<McShardHash> new_info2);
   bool set_shard_info(ton::ShardIdFull shard, Ref<vm::Cell> value);
 };
 

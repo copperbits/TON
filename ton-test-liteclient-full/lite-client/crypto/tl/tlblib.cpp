@@ -154,6 +154,24 @@ bool TLB::print_ref(std::ostream& os, Ref<vm::Cell> cell_ref, int indent) const 
   return pp.fail_unless(print_ref(pp, std::move(cell_ref)));
 }
 
+std::string TLB::as_string_skip(vm::CellSlice& cs, int indent) const {
+  std::ostringstream os;
+  print_skip(os, cs, indent);
+  return os.str();
+}
+
+std::string TLB::as_string(const vm::CellSlice& cs, int indent) const {
+  std::ostringstream os;
+  print(os, cs, indent);
+  return os.str();
+}
+
+std::string TLB::as_string_ref(Ref<vm::Cell> cell_ref, int indent) const {
+  std::ostringstream os;
+  print_ref(os, std::move(cell_ref), indent);
+  return os.str();
+}
+
 PrettyPrinter::~PrettyPrinter() {
   if (failed || level) {
     if (nl_used) {
