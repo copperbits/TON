@@ -43,8 +43,8 @@ Last codebase update was performed on June 5, 2019.`sha256sum('ton-test-liteclie
 - 🐳 Packaged lite client into [Docker](https://github.com/copperbits/TON#docker)  container
 - 👓 Launched a [beta explorer](https://explorer.test.ton.cryptoprocessing.io/) for test network
 - 💸 Made a UI friendly [faucet for TON](https://faucet.copperbits.io/)
-- 🔁 [Mirror with updates on any changes in source code](https://github.com/poma/TON-mirror) updates any 5 minutes
-- 📣[Telegram bot post message with there](https://t.me/ton_research) - with any new commits into original repo
+- 🔁 [Mirror with updates it builds binaries and docker container on any changes in source code](https://github.com/poma/ton-lite-client) updates any 5 minutes (former TON-mirror)
+- 📣 Telegram bot post message about updates [here](https://t.me/ton_research) and [here](https://t.me/TrackingTONupdates) - with any new commits into original repo
 
 👉 _pull request and suggestions are **[very welcome](https://github.com/copperbits/TON/issues/new)**!_
 
