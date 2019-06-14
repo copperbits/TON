@@ -7,6 +7,7 @@ This is open development community and **enthusiasts research place**. We will p
 
 <!-- toc -->
 
+- [About source and github repositories](#about-source-and-github-repositories)
 - [TON whitepapers:](#ton-whitepapers)
 - [TON source code](#ton-source-code)
   * [Source code check](#source-code-check)
@@ -18,6 +19,13 @@ This is open development community and **enthusiasts research place**. We will p
 - [Contact us](#contact-us)
 
 <!-- tocstop -->
+
+## About source and github repositories
+http://test.ton.org/downloads.html - is the "official"* ton client tarball
+https://github.com/copperbits/TON - community version with added features but sometimes outdated code and releases
+https://github.com/poma/ton-lite-client - unchanged up to date version of tarball but on github. Also fresh binaries and docker container
+
+\*There is no official statement that ton.org is related to TON network. But this is only one real source of information and code at this moment.
 
 ## TON whitepapers:
 
