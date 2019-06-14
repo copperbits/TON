@@ -42,6 +42,10 @@ class UsageCell : public Cell {
     return cell_->get_virtualization();
   }
 
+  CellUsageTree::NodePtr get_tree_node() const override {
+    return tree_node_;
+  }
+
   bool is_loaded() const override {
     return cell_->is_loaded();
   }

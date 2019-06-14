@@ -115,7 +115,7 @@ void AdnlExtConnection::loop() {
 
 td::Status AdnlExtConnection::init_crypto(td::Slice S) {
   if (S.size() < 96) {
-    return td::Status::Error(AdnlError::protoviolation, "too small enc data");
+    return td::Status::Error(ErrorCode::protoviolation, "too small enc data");
   }
   CHECK(S.size() >= 96);
   td::UInt256 s1, s2;
@@ -147,7 +147,7 @@ td::Status AdnlExtConnection::receive_packet(td::BufferSlice data) {
   D.remove_prefix(data.size() - 32);
 
   if (td::sha256(S) != D) {
-    return td::Status::Error(AdnlError::protoviolation, "sha256 mismatch");
+    return td::Status::Error(ErrorCode::protoviolation, "sha256 mismatch");
   }
 
   data.truncate(data.size() - 32);

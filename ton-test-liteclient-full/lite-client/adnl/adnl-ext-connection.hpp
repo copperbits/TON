@@ -3,9 +3,9 @@
 #include "td/net/TcpListener.h"
 #include "td/utils/crypto.h"
 #include "td/utils/BufferedFd.h"
-#include "tl-utils.hpp"
+#include "tl-utils/tl-utils.hpp"
 #include "td/utils/Random.h"
-#include "adnl-error.h"
+#include "common/errorcode.h"
 
 #include <map>
 #include <set>
@@ -48,7 +48,7 @@ class AdnlExtConnection : public td::actor::Actor, public td::ObserverBase {
     if (check_ready()) {
       promise.set_value(td::Unit());
     } else {
-      promise.set_error(td::Status::Error(AdnlError::notready, "not ready"));
+      promise.set_error(td::Status::Error(ErrorCode::notready, "not ready"));
     }
   }
   void send_ready() {

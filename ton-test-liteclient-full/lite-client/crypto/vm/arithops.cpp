@@ -94,7 +94,7 @@ int exec_push_pow2(VmState* st, unsigned args) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute PUSHPOW2 " << x;
   td::RefInt256 r{true};
-  r.unique_write()->set_pow2(x);
+  r.unique_write().set_pow2(x);
   stack.push(std::move(r));
   return 0;
 }
@@ -103,7 +103,7 @@ int exec_push_nan(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute PUSHNAN";
   td::RefInt256 r{true};
-  r.unique_write()->invalidate();
+  r.unique_write().invalidate();
   stack.push(std::move(r));
   return 0;
 }
@@ -113,7 +113,7 @@ int exec_push_pow2dec(VmState* st, unsigned args) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute PUSHPOW2DEC " << x;
   td::RefInt256 r{true};
-  r.unique_write()->set_pow2(x).add_tiny(-1).normalize();
+  r.unique_write().set_pow2(x).add_tiny(-1).normalize();
   stack.push(std::move(r));
   return 0;
 }
@@ -123,7 +123,7 @@ int exec_push_negpow2(VmState* st, unsigned args) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute PUSHNEGPOW2 " << x;
   td::RefInt256 r{true};
-  r.unique_write()->set_pow2(x).negate().normalize();
+  r.unique_write().set_pow2(x).negate().normalize();
   stack.push(std::move(r));
   return 0;
 }
@@ -317,7 +317,7 @@ int exec_shrmod(VmState* st, unsigned args, int mode) {
       stack.push_int_quiet(td::rshift(x, y, round_mode), mode & 1);
       // fallthrough
     case 2:
-      x.write()->mod_pow2(y, round_mode).normalize();
+      x.write().mod_pow2(y, round_mode).normalize();
       stack.push_int_quiet(std::move(x), mode & 1);
       break;
   }
@@ -370,16 +370,16 @@ int exec_muldivmod(VmState* st, unsigned args, int quiet) {
   auto y = stack.pop_int();
   auto x = stack.pop_int();
   typename td::BigInt256::DoubleInt tmp{0};
-  tmp.add_mul(**x, **y);
+  tmp.add_mul(*x, *y);
   auto q = td::RefInt256{true};
-  tmp.mod_div(**z, *(q.unique_write()), round_mode);
+  tmp.mod_div(*z, q.unique_write(), round_mode);
   switch ((args >> 2) & 3) {
     case 1:
-      q.unique_write()->normalize();
+      q.unique_write().normalize();
       stack.push_int_quiet(std::move(q), quiet);
       break;
     case 3:
-      q.unique_write()->normalize();
+      q.unique_write().normalize();
       stack.push_int_quiet(std::move(q), quiet);
       // fallthrough
     case 2:
@@ -428,7 +428,7 @@ int exec_mulshrmod(VmState* st, unsigned args, int mode) {
   auto y = stack.pop_int();
   auto x = stack.pop_int();
   typename td::BigInt256::DoubleInt tmp{0};
-  tmp.add_mul(**x, **y);
+  tmp.add_mul(*x, *y);
   switch ((args >> 2) & 3) {
     case 1:
       tmp.rshift(z, round_mode).normalize();
@@ -502,27 +502,27 @@ int exec_shldivmod(VmState* st, unsigned args, int mode) {
   }
   auto z = stack.pop_int();
   auto x = stack.pop_int();
-  typename td::BigInt256::DoubleInt tmp{**x};
+  typename td::BigInt256::DoubleInt tmp{*x};
   tmp <<= y;
   switch ((args >> 2) & 3) {
     case 1: {
       auto q = td::RefInt256{true};
-      tmp.mod_div(**z, *(q.unique_write()), round_mode);
-      q.unique_write()->normalize();
+      tmp.mod_div(*z, q.unique_write(), round_mode);
+      q.unique_write().normalize();
       stack.push_int_quiet(std::move(q), mode & 1);
       break;
     }
     case 3: {
       auto q = td::RefInt256{true};
-      tmp.mod_div(**z, *(q.unique_write()), round_mode);
-      q.unique_write()->normalize();
+      tmp.mod_div(*z, q.unique_write(), round_mode);
+      q.unique_write().normalize();
       stack.push_int_quiet(std::move(q), mode & 1);
       stack.push_int_quiet(td::RefInt256{true, tmp}, mode & 1);
       break;
     }
     case 2: {
       typename td::BigInt256::DoubleInt tmp2;
-      tmp.mod_div(**z, tmp2, round_mode);
+      tmp.mod_div(*z, tmp2, round_mode);
       stack.push_int_quiet(td::RefInt256{true, tmp}, mode & 1);
       break;
     }
@@ -619,7 +619,7 @@ int exec_pow2(VmState* st, bool quiet) {
   stack.check_underflow(1);
   int x = stack.pop_smallint_range(1023);
   td::RefInt256 r{true};
-  r.unique_write()->set_pow2(x);
+  r.unique_write().set_pow2(x);
   stack.push_int_quiet(std::move(r), quiet);
   return 0;
 }
@@ -665,8 +665,8 @@ int exec_fits_tinyint8(VmState* st, unsigned args, bool quiet) {
   VM_LOG(st) << "execute FITS " << y;
   stack.check_underflow(1);
   auto x = stack.pop_int();
-  if (!(*x)->signed_fits_bits(y)) {
-    x.write()->invalidate();
+  if (!x->signed_fits_bits(y)) {
+    x.write().invalidate();
   }
   stack.push_int_quiet(std::move(x), quiet);
   return 0;
@@ -678,8 +678,8 @@ int exec_ufits_tinyint8(VmState* st, unsigned args, bool quiet) {
   VM_LOG(st) << "execute UFITS " << y;
   stack.check_underflow(1);
   auto x = stack.pop_int();
-  if (!(*x)->unsigned_fits_bits(y)) {
-    x.write()->invalidate();
+  if (!x->unsigned_fits_bits(y)) {
+    x.write().invalidate();
   }
   stack.push_int_quiet(std::move(x), quiet);
   return 0;
@@ -691,8 +691,8 @@ int exec_fits(VmState* st, bool quiet) {
   stack.check_underflow(2);
   int y = stack.pop_smallint_range(1023);
   auto x = stack.pop_int();
-  if (!(*x)->signed_fits_bits(y)) {
-    x.write()->invalidate();
+  if (!x->signed_fits_bits(y)) {
+    x.write().invalidate();
   }
   stack.push_int_quiet(std::move(x), quiet);
   return 0;
@@ -704,8 +704,8 @@ int exec_ufits(VmState* st, bool quiet) {
   stack.check_underflow(2);
   int y = stack.pop_smallint_range(1023);
   auto x = stack.pop_int();
-  if (!(*x)->unsigned_fits_bits(y)) {
-    x.write()->invalidate();
+  if (!x->unsigned_fits_bits(y)) {
+    x.write().invalidate();
   }
   stack.push_int_quiet(std::move(x), quiet);
   return 0;
@@ -716,7 +716,7 @@ int exec_bitsize(VmState* st, bool sgnd, bool quiet) {
   VM_LOG(st) << "execute " << (sgnd ? "" : "U") << "BITSIZE";
   stack.check_underflow(1);
   auto x = stack.pop_int();
-  int y = (*x)->bit_size(sgnd);
+  int y = x->bit_size(sgnd);
   if (y < 0x7fffffff) {
     stack.push_smallint(y);
   } else if (!quiet) {
@@ -775,9 +775,9 @@ int exec_minmax(VmState* st, int mode) {
   stack.check_underflow(2);
   auto x = stack.pop_int();
   auto y = stack.pop_int();
-  if (!(*x)->is_valid()) {
+  if (!x->is_valid()) {
     y = x;
-  } else if (!(*y)->is_valid()) {
+  } else if (!y->is_valid()) {
     x = y;
   } else if (cmp(x, y) > 0) {
     swap(x, y);
@@ -796,7 +796,7 @@ int exec_abs(VmState* st, bool quiet) {
   VM_LOG(st) << "execute ABS";
   stack.check_underflow(1);
   auto x = stack.pop_int();
-  if ((*x)->is_valid() && (*x)->sgn() < 0) {
+  if (x->is_valid() && x->sgn() < 0) {
     stack.push_int_quiet(-std::move(x), quiet);
   } else {
     stack.push_int_quiet(std::move(x), quiet);
@@ -821,7 +821,7 @@ int exec_sgn(VmState* st, int mode, bool quiet, const char* name) {
   VM_LOG(st) << "execute " << name;
   stack.check_underflow(1);
   auto x = stack.pop_int();
-  if (!(*x)->is_valid()) {
+  if (!x->is_valid()) {
     stack.push_int_quiet(std::move(x), quiet);
   } else {
     int y = td::sgn(std::move(x));
@@ -836,7 +836,7 @@ int exec_cmp(VmState* st, int mode, bool quiet, const char* name) {
   stack.check_underflow(2);
   auto y = stack.pop_int();
   auto x = stack.pop_int();
-  if (!(*x)->is_valid() || !(*y)->is_valid()) {
+  if (!x->is_valid() || !y->is_valid()) {
     stack.push_int_quiet(std::move(x), quiet);
   } else {
     int z = td::cmp(std::move(x), std::move(y));
@@ -851,7 +851,7 @@ int exec_cmp_int(VmState* st, unsigned args, int mode, bool quiet, const char* n
   VM_LOG(st) << "execute " << name << "INT " << y;
   stack.check_underflow(1);
   auto x = stack.pop_int();
-  if (!(*x)->is_valid()) {
+  if (!x->is_valid()) {
     stack.push_int_quiet(std::move(x), quiet);
   } else {
     int z = td::cmp(std::move(x), y);
@@ -865,7 +865,7 @@ int exec_is_nan(VmState* st) {
   VM_LOG(st) << "execute ISNAN";
   stack.check_underflow(1);
   auto x = stack.pop_int();
-  stack.push_smallint((*x)->is_valid() ? 0 : -1);
+  stack.push_smallint(x->is_valid() ? 0 : -1);
   return 0;
 }
 

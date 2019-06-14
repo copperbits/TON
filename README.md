@@ -20,6 +20,10 @@ Code was downloaded from https://test.ton.org/download.html
 
 Last codebase update was performed on June 5, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`edd57971cba5cff9b219a1c99401a7315176ac9ab30afc9df0b1ed39e1dbc009`.
 
+### Source code check
+
+Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a codebase to be sure it's up-to-date
+
 ---
 ## Table of contents:
 

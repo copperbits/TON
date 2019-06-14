@@ -5,7 +5,7 @@
   ."Creates a request to TestGiver and saves it into <savefile>.boc" cr
   ."('testgiver-query.boc' by default)" cr 1 halt
 } : usage
-def? $# { @' $# 3 - 1 ufits ' usage ifnot } if
+def? $# { @' $# 3 - -2 and ' usage if } if
 
 // "testgiver.addr" file>B 256 B>u@ 
 0x8156775b79325e5d62e742d9b96c30b6515a5cd2f1f64c5da4b193c03f070e0d
@@ -30,7 +30,7 @@ def? $3 {
 def? $4 { @' $4 } { "testgiver-query" } cond constant savefile
 
 ."Requesting " amount .GR ."to account "
-dest_wc dest_addr bounce 5 + smca>$ type ." = " dest_wc ._ .":"
+dest_wc dest_addr bounce 7 + smca>$ type ." = " dest_wc ._ .":"
 dest_addr x. ."seqno=0x" seqno x. ."bounce=" bounce . cr
 
 // create a message (NB: 01b00.., b = bounce)

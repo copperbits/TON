@@ -199,6 +199,10 @@ x{6F8A} @Defop ISTUPLE
 x{6F8B} @Defop LAST
 x{6F8C} dup @Defop TPUSH @Defop COMMA
 x{6F8D} @Defop TPOP
+x{6FA0} @Defop NULLSWAPIF
+x{6FA1} @Defop NULLSWAPIFNOT
+x{6FA2} @Defop NULLROTRIF
+x{6FA3} @Defop NULLROTRIFNOT
 { <b x{6FB} s, rot 2 u, swap 2 u, @addopb } : INDEX2
 x{6FB4} @Defop CADR
 x{6FB5} @Defop CDDR
@@ -912,6 +916,13 @@ x{F4AB} @Defop PFXDICTGETEXEC
   { swap <b x{F4AC_} s, swap s, swap 10 u, @addopb
   } if
 } dup : PFXDICTCONSTGETJMP : PFXDICTSWITCH
+
+x{F4B1} @Defop SUBDICTGET
+x{F4B2} @Defop SUBDICTIGET
+x{F4B3} @Defop SUBDICTUGET
+x{F4B5} @Defop SUBDICTRPGET
+x{F4B6} @Defop SUBDICTIRPGET
+x{F4B7} @Defop SUBDICTURPGET
 
 //
 // blockchain-specific primitives

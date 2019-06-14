@@ -15,9 +15,9 @@
 <b b> constant empty_cell
 
 // workchain-id -- wc-zero-state
-{ <b x{9023afde} s, globalid@ 32 i, 0 8 i, swap 32 i, 1 63 << 64 u,
+{ <b x{9023afdf} s, globalid@ 32 i, 0 8 i, swap 32 i, 1 63 << 64 u,
   0 64 i, now 32 u, 0 64 i, -1 32 i, <b 0 67 u, b> ref, 0 7 u,
-  <b 0 128 11 + u, b> ref, 0 2 u, b>
+  <b 0 128 10 + 1+ 1+ u, b> ref, 0 1 u, b>
   dup isShardState? not abort"invalid ShardState created"
 } : mkemptyShardState
 
@@ -54,8 +54,8 @@ dictnew 0 2constant validator-dict
 } : config.validators!
 
 dictnew constant workchain-dict
-// root-hash file-hash enable-utime min-split max-split workchain-id --
-{ <b x{a5} s, 4 roll 32 u, 3 roll 8 u, rot 8 u, x{e000} s,
+// root-hash file-hash enable-utime actual-min-split min-split max-split workchain-id --
+{ <b x{a6} s, 5 roll 32 u, 4 roll 8 u, 3 roll 8 u, rot 8 u, x{e000} s,
   3 roll 256 u, rot 256 u, 0 32 u, x{1} s, -1 32 i, 0 64 u, b>
   dup isWorkchainDescr? not abort"invalid WorkchainDescr created"
   <s swap @' workchain-dict 32 idict!+ 0= abort"cannot add workchain"

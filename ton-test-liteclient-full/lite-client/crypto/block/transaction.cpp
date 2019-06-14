@@ -321,12 +321,12 @@ td::RefInt256 Account::compute_storage_fees(ton::UnixTime now, const std::vector
     ton::UnixTime valid_until = (i < n - 1 ? std::min(now, pricing[i + 1].valid_since) : now);
     if (upto < valid_until) {
       assert(upto >= pricing[i].valid_since);
-      add_partial_storage_payment(*total.unique_write(), valid_until - upto, pricing[i], storage_stat,
+      add_partial_storage_payment(total.unique_write(), valid_until - upto, pricing[i], storage_stat,
                                   is_masterchain());
     }
     upto = valid_until;
   }
-  total.unique_write()->rshift(16, 1);  // divide by 2^16 with ceil rounding to obtain nanograms
+  total.unique_write().rshift(16, 1);  // divide by 2^16 with ceil rounding to obtain nanograms
   return total;
 }
 
@@ -570,7 +570,7 @@ td::uint64 ComputePhaseConfig::gas_bought_for(td::RefInt256 nanograms) const {
     return gas_limit;
   }
   auto res = td::div(std::move(nanograms) << 16, gas_price256);
-  return (*res)->to_long();
+  return res->to_long();
 }
 
 td::RefInt256 ComputePhaseConfig::compute_gas_price(td::uint64 gas_used) const {
@@ -604,7 +604,7 @@ bool Transaction::compute_gas_limits(ComputePhase& cp, const ComputePhaseConfig&
 Ref<vm::Stack> Transaction::prepare_vm_stack(ComputePhase& cp) {
   Ref<vm::Stack> stack_ref{true};
   td::RefInt256 acc_addr{true};
-  CHECK(acc_addr.write()->import_bits(account.addr.cbits(), 256));
+  CHECK(acc_addr.write().import_bits(account.addr.cbits(), 256));
   vm::Stack& stack = stack_ref.write();
   switch (trans_type) {
     case tr_tick:
@@ -786,8 +786,8 @@ bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
   cp.exit_arg = 0;
   if (!cp.success && stack->depth() > 0) {
     td::RefInt256 tos = stack->tos().as_int();
-    if (tos.not_null() && (*tos)->signed_fits_bits(32)) {
-      cp.exit_arg = (int)(*tos)->to_long();
+    if (tos.not_null() && tos->signed_fits_bits(32)) {
+      cp.exit_arg = (int)tos->to_long();
     }
   }
   if (cp.accepted) {
@@ -897,12 +897,12 @@ bool Transaction::prepare_action_phase(const ActionPhaseConfig& cfg) {
   }
   ap.result_arg = 0;
   ap.result_code = 0;
-  CHECK((*ap.remaining_balance)->sgn() >= 0);
-  CHECK((*ap.reserved_balance)->sgn() >= 0);
+  CHECK(ap.remaining_balance->sgn() >= 0);
+  CHECK(ap.reserved_balance->sgn() >= 0);
   ap.remaining_balance += ap.reserved_balance;
   CHECK(block::add_extra_currency(ap.remaining_extra, ap.reserved_extra, ap.remaining_extra));
   if (ap.acc_delete_req) {
-    CHECK(!(*ap.remaining_balance)->sgn());
+    CHECK(!ap.remaining_balance->sgn());
     CHECK(ap.remaining_extra.is_null());
     ap.acc_status_change = ActionPhase::acst_deleted;
     acc_status = Account::acc_deleted;
@@ -1115,16 +1115,16 @@ int Transaction::try_action_send_msg(vm::CellSlice& cs, ActionPhase& ap, const A
   auto fees_c = msg_prices.compute_fwd_ihr_fees(sstat.cells, sstat.bits, info.ihr_disabled);
   LOG(DEBUG) << "computed fwd fees = " << fees_c.first << " + " << fees_c.second;
 
-  if (account.is_special && false) {  // FIXME: remove '&& false' left here for debugging
+  if (account.is_special) {
     LOG(DEBUG) << "computed fwd fees set to zero for special account";
     fees_c.first = fees_c.second = 0;
   }
 
   // set fees to computed values
-  if ((*fwd_fee)->unsigned_fits_bits(63) && (*fwd_fee)->to_long() < (long long)fees_c.first) {
+  if (fwd_fee->unsigned_fits_bits(63) && fwd_fee->to_long() < (long long)fees_c.first) {
     fwd_fee = td::RefInt256{true, fees_c.first};
   }
-  if (fees_c.second && (*ihr_fee)->unsigned_fits_bits(63) && (*ihr_fee)->to_long() < (long long)fees_c.second) {
+  if (fees_c.second && ihr_fee->unsigned_fits_bits(63) && ihr_fee->to_long() < (long long)fees_c.second) {
     ihr_fee = td::RefInt256{true, fees_c.second};
   }
 
@@ -1281,9 +1281,9 @@ int Transaction::try_action_send_msg(vm::CellSlice& cs, ActionPhase& ap, const A
   ap.total_fwd_fees += fees_total;
 
   if (act_rec.mode & 0x80) {
-    CHECK(!(*ap.remaining_balance)->sgn());
+    CHECK(!ap.remaining_balance->sgn());
     CHECK(ap.remaining_extra.is_null());
-    ap.acc_delete_req = ((*ap.reserved_balance)->sgn() == 0 && ap.reserved_extra.is_null());
+    ap.acc_delete_req = (ap.reserved_balance->sgn() == 0 && ap.reserved_extra.is_null());
   }
 
   ap.tot_msg_bits += sstat.bits + new_msg_bits;
@@ -1372,7 +1372,7 @@ bool Transaction::prepare_bounce_phase(const ActionPhaseConfig& cfg) {
   // compute forwarding fees
   bp.fwd_fees = msg_prices.compute_fwd_fees(sstat.cells, sstat.bits);
   // check whether the message has enough funds
-  if ((*msg_balance_remaining)->signed_fits_bits(64) && (*msg_balance_remaining)->to_long() < (long long)bp.fwd_fees) {
+  if (msg_balance_remaining->signed_fits_bits(64) && msg_balance_remaining->to_long() < (long long)bp.fwd_fees) {
     // not enough funds
     bp.nofunds = true;
     return true;

@@ -569,7 +569,7 @@ td::RefInt256 CellSlice::fetch_int256(unsigned bits, bool sgnd) {
     return td::RefInt256{true, val};
   } else {
     td::RefInt256 res{true};
-    res.unique_write()->import_bits(data_bits(), bits, sgnd);
+    res.unique_write().import_bits(data_bits(), bits, sgnd);
     advance(bits);
     return res;
   }
@@ -583,7 +583,7 @@ td::RefInt256 CellSlice::prefetch_int256(unsigned bits, bool sgnd) const {
     return td::RefInt256{true, val};
   } else {
     td::RefInt256 res{true};
-    res.unique_write()->import_bits(data_bits(), bits, sgnd);
+    res.unique_write().import_bits(data_bits(), bits, sgnd);
     return res;
   }
 }
@@ -599,7 +599,7 @@ td::RefInt256 CellSlice::prefetch_int256_zeroext(unsigned bits, bool sgnd) const
       return td::RefInt256{true, val};
     } else {
       td::RefInt256 res{true};
-      res.unique_write()->import_bits(data_bits(), ld_bits, sgnd);
+      res.unique_write().import_bits(data_bits(), ld_bits, sgnd);
       res <<= bits - ld_bits;
       return res;
     }

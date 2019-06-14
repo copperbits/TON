@@ -36,6 +36,9 @@ class ExtCell : public Cell {
   td::uint32 get_virtualization() const override {
     return 0;
   }
+  CellUsageTree::NodePtr get_tree_node() const override {
+    return {};
+  }
   bool is_loaded() const override {
     return CellView(this)->is_loaded();
   }
