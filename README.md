@@ -2,6 +2,22 @@
 
 This is open development community and **enthusiasts research place**. We will post our news and updates this project there.
 
+---
+## Table of contents:
+
+<!-- toc -->
+
+- [TON whitepapers:](#ton-whitepapers)
+- [TON source code](#ton-source-code)
+  * [Source code check](#source-code-check)
+- [What we already did:](#what-we-already-did)
+- [Future steps:](#future-steps)
+- [Installation & Setup](#installation--setup)
+- [Tutorial](#tutorial)
+- [Contributing](#contributing)
+- [Contact us](#contact-us)
+
+<!-- tocstop -->
 
 ## TON whitepapers:
 
@@ -23,20 +39,6 @@ Last codebase update was performed on June 5, 2019.`sha256sum('ton-test-liteclie
 ### Source code check
 
 Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a codebase to be sure it's up-to-date
-
----
-## Table of contents:
-
-<!-- toc -->
-
-- [What we already did:](#what-we-already-did)
-- [Future steps:](#future-steps)
-- [Installation & Setup](#installation--setup)
-- [Tutorial](#tutorial)
-- [Contributing](#contributing)
-- [Contact us](#contact-us)
-
-<!-- tocstop -->
 
 ## What we already did:
 - 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
