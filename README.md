@@ -2,6 +2,30 @@
 
 This is open development community and **enthusiasts research place**. We will post our news and updates this project there.
 
+---
+## Table of contents:
+
+<!-- toc -->
+
+- [About source and github repositories](#about-source-and-github-repositories)
+- [TON whitepapers:](#ton-whitepapers)
+- [TON source code](#ton-source-code)
+  * [Source code check](#source-code-check)
+- [What we already did:](#what-we-already-did)
+- [Future steps:](#future-steps)
+- [Installation & Setup](#installation--setup)
+- [Tutorial](#tutorial)
+- [Contributing](#contributing)
+- [Contact us](#contact-us)
+
+<!-- tocstop -->
+
+## About source and github repositories
+http://test.ton.org/downloads.html - is the "official"* ton client tarball
+https://github.com/copperbits/TON - community version with added features but sometimes outdated code and releases
+https://github.com/poma/ton-lite-client - unchanged up to date version of tarball but on github. Also fresh binaries and docker container
+
+\*There is no official statement that ton.org is related to TON network. But this is only one real source of information and code at this moment.
 
 ## TON whitepapers:
 
@@ -23,20 +47,6 @@ Last codebase update was performed on June 5, 2019.`sha256sum('ton-test-liteclie
 ### Source code check
 
 Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a codebase to be sure it's up-to-date
-
----
-## Table of contents:
-
-<!-- toc -->
-
-- [What we already did:](#what-we-already-did)
-- [Future steps:](#future-steps)
-- [Installation & Setup](#installation--setup)
-- [Tutorial](#tutorial)
-- [Contributing](#contributing)
-- [Contact us](#contact-us)
-
-<!-- tocstop -->
 
 ## What we already did:
 - 🏗 Build lite client node: [First release](https://github.com/copperbits/TON/releases/tag/test-1)
