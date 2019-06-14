@@ -203,8 +203,8 @@ processed_upto$_ last_msg_lt:uint64 last_msg_hash:bits256 = ProcessedUpto;
 // key is [ shard:uint64 mc_seqno:uint32 ]  
 _ (HashmapE 96 ProcessedUpto) = ProcessedInfo;
 
-ihr_pending$_ shard:uint64 import_lt:uint64 = IhrPendingSince;
-_ (HashmapE 256 IhrPendingSince) = IhrPendingInfo;
+ihr_pending$_ import_lt:uint64 = IhrPendingSince;
+_ (HashmapE 320 IhrPendingSince) = IhrPendingInfo;
 
 _ out_queue:OutMsgQueue proc_info:ProcessedInfo
   ihr_pending:IhrPendingInfo = OutMsgQueueInfo;
@@ -374,7 +374,7 @@ block_id_ext$_ shard_id:ShardIdent seq_no:uint32
 
 master_info$_ master:ExtBlkRef = BlkMasterInfo;
 
-shard_state#9023afde global_id:int32
+shard_state#9023afdf global_id:int32
   shard_id:ShardIdent 
   seq_no:uint32 vert_seq_no:#
   gen_utime:uint32 gen_lt:uint64
@@ -385,8 +385,8 @@ shard_state#9023afde global_id:int32
   ^[ overload_history:uint64 underload_history:uint64
   total_balance:CurrencyCollection
   total_validator_fees:CurrencyCollection
-  libraries:(HashmapE 256 LibDescr) ]
-  master_ref:(Maybe BlkMasterInfo)
+  libraries:(HashmapE 256 LibDescr)
+  master_ref:(Maybe BlkMasterInfo) ]
   custom:(Maybe ^McStateExtra)
   = ShardStateUnsplit;
   
@@ -446,8 +446,8 @@ bt_fork$1 {X:Type} left:^(BinTree X) right:^(BinTree X)
           = BinTree X;
 
 fsm_none$0 = FutureSplitMerge;
-fsm_split$10 split_utime:uint32 = FutureSplitMerge;
-fsm_merge$11 merge_utime:uint32 = FutureSplitMerge;
+fsm_split$10 split_utime:uint32 interval:uint32 = FutureSplitMerge;
+fsm_merge$11 merge_utime:uint32 interval:uint32 = FutureSplitMerge;
 
 shard_descr$_ seq_no:uint32 start_lt:uint64 end_lt:uint64
   root_hash:bits256 file_hash:bits256 
@@ -522,8 +522,10 @@ wfmt_ext#0 min_addr_len:(## 12) max_addr_len:(## 12) addr_len_step:(## 12)
   workchain_type_id:(## 32) { workchain_type_id >= 1 }
   = WorkchainFormat 0;
 
-workchain#a5 enabled_since:uint32 min_split:(## 8) max_split:(## 8)
-  { min_split <= max_split } { max_split <= 60 }
+workchain#a6 enabled_since:uint32 actual_min_split:(## 8) 
+  min_split:(## 8) max_split:(## 8) { actual_min_split <= min_split }
+//workchain#a5 enabled_since:uint32 min_split:(## 8) max_split:(## 8)
+//  { min_split <= max_split } { max_split <= 60 }
   basic:(## 1) active:Bool accept_msgs:Bool flags:(## 13) { flags = 0 }
   zerostate_root_hash:bits256 zerostate_file_hash:bits256
   version:uint32 format:(WorkchainFormat basic)

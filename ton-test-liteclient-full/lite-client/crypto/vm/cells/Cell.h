@@ -39,6 +39,7 @@ class Cell : public CellTraits {
   virtual td::Result<LoadedCell> load_cell() const = 0;
   virtual Ref<Cell> virtualize(VirtualizationParameters virt) const;
   virtual td::uint32 get_virtualization() const = 0;
+  virtual CellUsageTree::NodePtr get_tree_node() const = 0;
   virtual bool is_loaded() const = 0;
 
   // hash and level

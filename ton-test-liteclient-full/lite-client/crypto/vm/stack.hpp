@@ -122,24 +122,36 @@ class StackEntry {
 
  private:
   template <typename T, Type tag>
-  Ref<T> as() const & {
+  Ref<T> dynamic_as() const & {
     return tp == tag ? static_cast<Ref<T>>(ref) : td::Ref<T>{};
   }
   template <typename T, Type tag>
-  Ref<T> as() && {
+  Ref<T> dynamic_as() && {
     return tp == tag ? static_cast<Ref<T>>(std::move(ref)) : td::Ref<T>{};
   }
   template <typename T, Type tag>
-  Ref<T> move_as() & {
+  Ref<T> dynamic_move_as() & {
     return tp == tag ? static_cast<Ref<T>>(std::move(ref)) : td::Ref<T>{};
+  }
+  template <typename T, Type tag>
+  Ref<T> as() const & {
+    return tp == tag ? Ref<T>{td::static_cast_ref(), ref} : td::Ref<T>{};
+  }
+  template <typename T, Type tag>
+  Ref<T> as() && {
+    return tp == tag ? Ref<T>{td::static_cast_ref(), std::move(ref)} : td::Ref<T>{};
+  }
+  template <typename T, Type tag>
+  Ref<T> move_as() & {
+    return tp == tag ? Ref<T>{td::static_cast_ref(), std::move(ref)} : td::Ref<T>{};
   }
 
  public:
   td::RefInt256 as_int() const & {
-    return tp == t_int ? static_cast<td::RefInt256>(ref) : td::RefInt256{};
+    return as<td::CntInt256, t_int>();
   }
   td::RefInt256 as_int() && {
-    return tp == t_int ? static_cast<td::RefInt256>(std::move(ref)) : td::RefInt256{};
+    return move_as<td::CntInt256, t_int>();
   }
   Ref<Cell> as_cell() const & {
     return as<Cell, t_cell>();
@@ -169,10 +181,10 @@ class StackEntry {
   }
   std::string as_string() const {
     //assert(!as_string_ref().is_null());
-    return tp == t_string ? **as_string_ref() : "";
+    return tp == t_string ? *as_string_ref() : "";
   }
   std::string as_bytes() const {
-    return tp == t_bytes ? **as_bytes_ref() : "";
+    return tp == t_bytes ? *as_bytes_ref() : "";
   }
   Ref<Box> as_box() const &;
   Ref<Box> as_box() &&;
@@ -182,11 +194,11 @@ class StackEntry {
   Ref<Tuple> as_tuple_range(unsigned max_len = 255, unsigned min_len = 0) &&;
   template <class T>
   Ref<T> as_object() const & {
-    return as<T, t_object>();
+    return dynamic_as<T, t_object>();
   }
   template <class T>
   Ref<T> as_object() && {
-    return move_as<T, t_object>();
+    return dynamic_move_as<T, t_object>();
   }
   void dump(std::ostream& os) const;
   void print_list(std::ostream& os) const;

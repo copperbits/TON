@@ -18,6 +18,9 @@ void TerminalLogInterface::append(CSlice slice, int log_level) {
     instance_->deactivate_readline();
     td::TsCerr() << TC_GREEN << slice << TC_EMPTY;
     instance_->reactivate_readline();
+    if (log_level == VERBOSITY_NAME(FATAL)) {
+      process_fatal_error(slice);
+    }
   }
 }
 

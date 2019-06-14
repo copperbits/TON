@@ -39,11 +39,13 @@ struct StdAddress {
   bool rdeserialize(td::Slice from);
   bool rdeserialize(std::string from);
   bool rdeserialize(const char from[48]);
-  bool parse_addr(std::string acc_string);
+  bool parse_addr(td::Slice acc_string);
   bool operator==(const StdAddress& other) const;
+
+  static td::Result<StdAddress> parse(td::Slice acc_string);
 };
 
-bool parse_std_account_addr(std::string acc_string, ton::WorkchainId& wc, ton::StdSmcAddress& addr,
+bool parse_std_account_addr(td::Slice acc_string, ton::WorkchainId& wc, ton::StdSmcAddress& addr,
                             bool* bounceable = nullptr, bool* testnet_only = nullptr);
 
 struct ShardId {
@@ -1032,7 +1034,7 @@ struct BlockIdExt final : TLB_Complex {
 extern const BlockIdExt t_BlockIdExt;
 
 struct ShardState final : TLB_Complex {
-  enum { shard_state = (int)0x9023afde };
+  enum { shard_state = (int)0x9023afdf };
   bool skip(vm::CellSlice& cs) const override;
   bool validate_skip(vm::CellSlice& cs) const override;
   int get_tag(const vm::CellSlice& cs) const override {
@@ -1132,5 +1134,10 @@ bool get_old_mc_block_id(vm::Dictionary& prev_blocks_dict, ton::BlockSeqno seqno
                          ton::LogicalTime* end_lt = nullptr);
 bool check_old_mc_block_id(vm::Dictionary* prev_blocks_dict, const ton::BlockIdExt& blkid);
 bool check_old_mc_block_id(vm::Dictionary& prev_blocks_dict, const ton::BlockIdExt& blkid);
+
+td::Result<Ref<vm::Cell>> get_block_transaction(Ref<vm::Cell> block_root, ton::WorkchainId workchain,
+                                                const ton::StdSmcAddress& addr, ton::LogicalTime lt);
+td::Result<Ref<vm::Cell>> get_block_transaction_try(Ref<vm::Cell> block_root, ton::WorkchainId workchain,
+                                                    const ton::StdSmcAddress& addr, ton::LogicalTime lt);
 
 }  // namespace block

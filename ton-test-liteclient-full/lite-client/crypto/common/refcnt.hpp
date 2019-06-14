@@ -66,6 +66,75 @@ class CntObject {
 typedef Ref<CntObject> RefAny;
 
 template <class T>
+class Cnt : public CntObject {
+  T value;
+
+ public:
+  template <typename... Args>
+  Cnt(Args&&... args) : value(std::forward<Args>(args)...) {
+    ///std::cout << "(N " << (void*)this << ")";
+  }
+  Cnt(const Cnt& x) : CntObject(), value(x.value) {
+    ///std::cout << "(C)";
+  }
+  virtual ~Cnt() {
+    ///std::cout << "(D " << (void*)this << ")";
+  }
+  T* operator->() {
+    return &value;
+  }
+  const T* operator->() const {
+    return &value;
+  }
+  T& operator*() {
+    return value;
+  }
+  const T& operator*() const {
+    return value;
+  }
+  Cnt* make_copy() const override {
+    ///std::cout << "(c " << (const void*)this << ")";
+    return new Cnt{value};
+  }
+};
+
+template <class T>
+struct RefValue {
+  using Type = T;
+  static Type& make_ref(T* ptr) {
+    return *ptr;
+  }
+  static const Type& make_const_ref(const T* ptr) {
+    return *ptr;
+  }
+  static Type* make_ptr(T* ptr) {
+    return ptr;
+  }
+  static const Type* make_const_ptr(const T* ptr) {
+    return ptr;
+  }
+};
+
+template <class T>
+struct RefValue<Cnt<T>> {
+  using Type = T;
+  static Type& make_ref(Cnt<T>* ptr) {
+    return **ptr;
+  }
+  static const Type& make_const_ref(const Cnt<T>* ptr) {
+    return **ptr;
+  }
+  static Type* make_ptr(Cnt<T>* ptr) {
+    return &(**ptr);
+  }
+  static const Type* make_const_ptr(const Cnt<T>* ptr) {
+    return &(**ptr);
+  }
+};
+
+struct static_cast_ref {};
+
+template <class T>
 class Ref {
   T* ptr;
 
@@ -106,7 +175,7 @@ class Ref {
       ///std::cout << "(rc+ " << (const void*)ptr << ")";
     }
   }
-  Ref(Ref&& r) : ptr(std::move(r.ptr)) {
+  Ref(Ref&& r) noexcept : ptr(std::move(r.ptr)) {
     r.ptr = 0;
   }
 
@@ -120,7 +189,7 @@ class Ref {
   }
 
   template <class S>
-  Ref(const Ref<S>& r, std::enable_if_t<std::is_base_of<T, S>::value, int> t = 0) : ptr(dynamic_cast<T*>(r.ptr)) {
+  Ref(const Ref<S>& r, std::enable_if_t<std::is_base_of<T, S>::value, int> t = 0) : ptr(static_cast<T*>(r.ptr)) {
     static_assert(std::is_base_of<T, S>::value, "Invalid static Ref conversion");
     if (ptr) {
       acquire_shared(ptr);
@@ -141,6 +210,17 @@ class Ref {
   }
 
   template <class S>
+  Ref(static_cast_ref, const Ref<S>& r, std::enable_if_t<std::is_base_of<S, T>::value, int> t = 0)
+      : ptr(static_cast<T*>(r.ptr)) {
+    static_assert(std::is_base_of<S, T>::value, "Invalid static Ref downcast");
+    if (r.ptr) {
+      acquire_shared(ptr);
+    } else {
+      ptr = nullptr;
+    }
+  }
+
+  template <class S>
   Ref(Ref<S>&& r, std::enable_if_t<std::is_base_of<T, S>::value, int> t = 0) : ptr(static_cast<T*>(r.ptr)) {
     static_assert(std::is_base_of<T, S>::value, "Invalid static Ref conversion");
     r.ptr = nullptr;
@@ -153,7 +233,18 @@ class Ref {
     if (!ptr && r.ptr) {
       release_shared(r.ptr);
     }
-    r.ptr = 0;
+    r.ptr = nullptr;
+  }
+
+  template <class S>
+  Ref(static_cast_ref, Ref<S>&& r, std::enable_if_t<std::is_base_of<S, T>::value, int> t = 0) noexcept
+      : ptr(static_cast<T*>(r.ptr)) {
+    static_assert(std::is_base_of<S, T>::value, "Invalid static Ref downcast");
+    if (r.ptr) {
+      r.ptr = nullptr;
+    } else {
+      ptr = nullptr;
+    }
   }
 
   ~Ref() {
@@ -165,19 +256,19 @@ class Ref {
   Ref& operator=(Ref&& r);
   template <class S>
   Ref& operator=(Ref<S>&& r);
-  const T* operator->() const {
+  const typename RefValue<T>::Type* operator->() const {
     if (!ptr) {
       CHECK(ptr && "deferencing null Ref");
       throw NullRef{};
     }
-    return ptr;
+    return RefValue<T>::make_const_ptr(ptr);
   }
-  const T& operator*() const {
+  const typename RefValue<T>::Type& operator*() const {
     if (!ptr) {
       CHECK(ptr && "deferencing null Ref");
       throw NullRef{};
     }
-    return *ptr;
+    return RefValue<T>::make_const_ref(ptr);
   }
   const T* get() const {
     return ptr;
@@ -187,6 +278,13 @@ class Ref {
   }
   bool not_null() const {
     return ptr != 0;
+  }
+  bool is_unique() const {
+    if (!ptr) {
+      CHECK(ptr && "defererencing null Ref");
+      throw NullRef{};
+    }
+    return ptr->is_unique();
   }
   void clear() {
     if (ptr) {
@@ -203,8 +301,8 @@ class Ref {
   Ref& operator&=(bool retain);
   bool operator==(const Ref& r) const;
   bool operator!=(const Ref& r) const;
-  T& write();
-  T& unique_write() const;
+  typename RefValue<T>::Type& write();
+  typename RefValue<T>::Type& unique_write() const;
 
   template <class S>
   static void release_shared(S* obj, int cnt = 1) {
@@ -272,7 +370,7 @@ Ref<T>& Ref<T>::operator=(Ref<S>&& r) {
 }
 
 template <class T>
-T& Ref<T>::write() {
+typename RefValue<T>::Type& Ref<T>::write() {
   if (!ptr) {
     throw CntObject::WriteError();
   }
@@ -284,15 +382,15 @@ T& Ref<T>::write() {
     release_shared(ptr);
     ptr = copy;
   }
-  return *ptr;
+  return RefValue<T>::make_ref(ptr);
 }
 
 template <class T>
-T& Ref<T>::unique_write() const {
+typename RefValue<T>::Type& Ref<T>::unique_write() const {
   if (!ptr || !ptr->is_unique()) {
     throw CntObject::WriteError();
   }
-  return *ptr;
+  return RefValue<T>::make_ref(ptr);
 }
 
 template <class T>
@@ -336,38 +434,5 @@ template <class T>
 void swap(Ref<T>& r1, Ref<T>& r2) {
   r1.swap(r2);
 }
-
-template <class T>
-class Cnt : public CntObject {
-  T value;
-
- public:
-  template <typename... Args>
-  Cnt(Args&&... args) : value(std::forward<Args>(args)...) {
-    ///std::cout << "(N " << (void*)this << ")";
-  }
-  Cnt(const Cnt& x) : CntObject(), value(x.value) {
-    ///std::cout << "(C)";
-  }
-  virtual ~Cnt() {
-    ///std::cout << "(D " << (void*)this << ")";
-  }
-  T* operator->() {
-    return &value;
-  }
-  const T* operator->() const {
-    return &value;
-  }
-  T& operator*() {
-    return value;
-  }
-  const T& operator*() const {
-    return value;
-  }
-  Cnt* make_copy() const override {
-    ///std::cout << "(c " << (const void*)this << ")";
-    return new Cnt{value};
-  }
-};
 
 }  // namespace td

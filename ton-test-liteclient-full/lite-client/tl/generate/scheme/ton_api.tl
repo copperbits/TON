@@ -33,31 +33,33 @@ getTestObject = TestObject;
 
 ---types---
 
+pk.unenc data:bytes = PrivateKey;
+pk.ed25519 key:int256 = PrivateKey;
+pk.aes key:int256 = PrivateKey;
+pk.overlay name:bytes = PrivateKey;
+
+pub.unenc data:bytes = PublicKey;
+pub.ed25519 key:int256 = PublicKey;
+pub.aes key:int256 = PublicKey;
+pub.overlay name:bytes = PublicKey;
+
+
+---functions---
+
+---types---
+
 adnl.id.short id:int256 = adnl.id.Short;
-
-adnl.id.pk.unenc data:bytes = adnl.id.Pk;
-adnl.id.pk.ed25519 key:int256 = adnl.id.Pk;
-adnl.id.pk.aes key:int256 = adnl.id.Pk;
-adnl.id.pk.overlay name:bytes = adnl.id.Pk;
-
-adnl.id.ed25519 key:int256 = adnl.id.Full;
-adnl.id.aes key:int256 = adnl.id.Full;
-// test only
-// random is used to have different hashes
-// of unenc type
-adnl.id.unenc data:bytes = adnl.id.Full;
-adnl.id.overlay name:bytes = adnl.id.Full;
 
 adnl.address.udp ip:int port:int = adnl.Address;
 adnl.address.udp6 ip:int128 port:int = adnl.Address;
 adnl.address.tcp ip:int port:int = adnl.Address;
 adnl.address.tcp6 ip:int128 port:int = adnl.Address;
 
-adnl.address.tunnel to:adnl.Address tunid:adnl.id.Full = adnl.Address; 
+//adnl.address.tunnel to:adnl.Address tunid: = adnl.Address; 
 
 adnl.addressList addrs:(vector adnl.Address) version:int = adnl.AddressList;
 
-adnl.node id:adnl.id.Full addr_list:adnl.addressList signature:bytes = adnl.Node;
+adnl.node id:PublicKey addr_list:adnl.addressList signature:bytes = adnl.Node;
 adnl.nodes nodes:(vector adnl.node) = adnl.Nodes;
 
 ---functions---
@@ -87,7 +89,7 @@ adnl.packetHeader.channel dst:int256 hash:int256 = adnl.PacketHeader;
 //             - last received addr list version
 // @signature  - signature of sender
 // @rand2      - random padding
-adnl.packetContents rand1:bytes flags:# from:flags.0?adnl.id.Full from_short:flags.1?adnl.id.short
+adnl.packetContents rand1:bytes flags:# from:flags.0?PublicKey from_short:flags.1?adnl.id.short
                     message:flags.2?adnl.Message messages:flags.3?(vector adnl.Message)
                     address:flags.6?adnl.addressList seqno:flags.8?long recv_addr_list_version:flags.9?int
                     confirm_seqno:flags.10?long reinit_date:flags.11?int dst_reinit_date:flags.11?int
@@ -123,7 +125,7 @@ rldp.answer query_id:int256 data:bytes = rldp.Message;
 ---functions---
 ---types---
 
-dht.node id:adnl.id.Full addr_list:adnl.addressList version:int signature:bytes = dht.Node;
+dht.node id:PublicKey addr_list:adnl.addressList version:int signature:bytes = dht.Node;
 dht.nodes nodes:(vector dht.node) = dht.Nodes;
 
 dht.key id:int256 name:bytes idx:int = dht.Key;
@@ -133,7 +135,7 @@ dht.updateRule.anybody = dht.UpdateRule;
 dht.updateRule.nodes max_nodes:int = dht.UpdateRule;
 dht.updateRule.overlayNodes max_nodes:int = dht.UpdateRule;
 
-dht.keyDescription key:dht.key id:adnl.id.Full update_rule:dht.UpdateRule signature:bytes = dht.KeyDescription;
+dht.keyDescription key:dht.key id:PublicKey update_rule:dht.UpdateRule signature:bytes = dht.KeyDescription;
 
 dht.value key:dht.keyDescription value:bytes ttl:int signature:bytes = dht.Value; 
 
@@ -158,7 +160,7 @@ dht.query node:dht.node = True;
 ---types---
 
 overlay.node.toSign id:int256 overlay:int256 version:int = overlay.node.ToSign;
-overlay.node id:adnl.id.Full overlay:int256 version:int signature:bytes = overlay.Node;
+overlay.node id:PublicKey overlay:int256 version:int signature:bytes = overlay.Node;
 overlay.nodes nodes:(vector overlay.node) = overlay.Nodes;
 
 overlay.message overlay:int256 = overlay.Message;
@@ -174,16 +176,16 @@ overlay.broadcastFer.partId broadcast_hash:int256 data_hash:int256 seqno:int = o
 
 overlay.broadcast.toSign hash:int256 date:int = overlay.broadcast.ToSign;
 
-overlay.certificate issued_by:adnl.id.Full expire_at:int max_size:int signature:bytes = overlay.Certificate;
+overlay.certificate issued_by:PublicKey expire_at:int max_size:int signature:bytes = overlay.Certificate;
 overlay.emptyCertificate = overlay.Certificate;
 
 overlay.certificateId overlay_id:int256 node:int256 expire_at:int max_size:int = overlay.CertificateId;
 
 overlay.unicast data:bytes = overlay.Broadcast;
-overlay.broadcast src:adnl.id.Full certificate:overlay.Certificate flags:int data:bytes date:int signature:bytes = overlay.Broadcast;
-overlay.broadcastFer src:adnl.id.Full certificate:overlay.Certificate data_hash:int256 data_size:int flags:int
+overlay.broadcast src:PublicKey certificate:overlay.Certificate flags:int data:bytes date:int signature:bytes = overlay.Broadcast;
+overlay.broadcastFer src:PublicKey certificate:overlay.Certificate data_hash:int256 data_size:int flags:int
           data:bytes seqno:int fer:fer.Type date:int signature:bytes = overlay.Broadcast;
-overlay.broadcastFerShort src:adnl.id.Full certificate:overlay.Certificate broadcast_hash:int256 part_data_hash:int256 seqno:int signature:bytes = overlay.Broadcast; 
+overlay.broadcastFerShort src:PublicKey certificate:overlay.Certificate broadcast_hash:int256 part_data_hash:int256 seqno:int signature:bytes = overlay.Broadcast; 
 overlay.broadcastNotFound = overlay.Broadcast;
 
 ---functions---
@@ -355,7 +357,7 @@ test0.masterchainBlockExtra.empty = test0.MasterchainBlockExtra;
 test0.masterchainBlockExtra.extra randseed:int rotate:Bool shards:(vector test0.masterchain.shardInfo) = test0.MasterchainBlockExtra;
 
 test0.masterchainStateExtra.empty = test0.MasterchainStateExtra;
-test0.masterchainStateExtra.extra validator_ts:int validator_randseed:int next_randseed:int next_rotate_at:int prev_blocks:(vector tonNode.blockIdExt) shards:(vector test0.masterchain.shardInfo) pool:(vector adnl.id.Full) = test0.MasterchainStateExtra;
+test0.masterchainStateExtra.extra validator_ts:int validator_randseed:int next_randseed:int next_rotate_at:int prev_blocks:(vector tonNode.blockIdExt) shards:(vector test0.masterchain.shardInfo) pool:(vector PublicKey) = test0.MasterchainStateExtra;
 
 test0.shardchain.block workchain:int shard:long seqno:int prev:(vector tonNode.blockIdExt) split:Bool ts:int state:int256 
             catchain_seqno:int validator_set_hash:int pad:bytes extra:test0.MasterchainBlockExtra = test.shardchain.Block;
@@ -427,28 +429,33 @@ db.state.key.shardClient workchain:int shard:long = db.state.Key;
 
 db.lt.el.key workchain:int shard:long idx:int = db.lt.Key;
 db.lt.desc.key workchain:int shard:long = db.lt.Key;
+db.lt.shard.key idx:int = db.lt.Key;
+db.lt.status.key = db.lt.Key;
 db.lt.el.value id:tonNode.blockIdExt lt:long = db.lt.el.Value;
 db.lt.desc.value first_idx:int last_idx:int last_seqno:int last_lt:long = db.lt.desc.Value; 
+db.lt.shard.value workchain:int shard:long = db.lt.shard.Value; 
+db.lt.status.value total_shards:int = db.lt.status.Value;
 
 ---functions---
 
 ---types---
 
-id.config.local id:adnl.id.Pk addr_list:adnl.addressList = id.config.Local;
+id.config.local id:PrivateKey addr_list:adnl.addressList = id.config.Local;
 dht.config.local id:adnl.id.short = dht.config.Local;
 dht.config.random.local cnt:int addr_list:adnl.addressList = dht.config.Local;
 overlay.config.local name:bytes id:adnl.id.short = overlay.config.Local;
 overlay.config.random.local cnt:int name:bytes addr_list:adnl.addressList = overlay.config.Local;
 catchain.config.local tag:int256 id:adnl.id.short = catchain.config.Local;
-liteserver.config.local id:adnl.id.Pk port:int = liteserver.config.Local;
+liteserver.config.local id:PrivateKey port:int = liteserver.config.Local;
 dummyworkchain0.config.local id:adnl.id.short = dummyworkchain0.config.Local;
 validator.config.local id:adnl.id.short = validator.config.Local;
-config.local udp_ports:(vector int) tcp_ports:(vector int) local_ids:(vector id.config.local) dht:(vector dht.config.Local) public_overlays:(vector overlay.config.Local) catchains:(vector catchain.config.local) dummy0:(vector dummyworkchain0.config.local) validators:(vector validator.config.local) liteservers:(vector liteserver.config.local) = config.Local;
+validator.config.random.local addr_list:adnl.addressList = validator.config.Local;
+config.local udp_ports:(vector int) tcp_ports:(vector int) local_ids:(vector id.config.local) dht:(vector dht.config.Local) public_overlays:(vector overlay.config.Local) catchains:(vector catchain.config.local) dummy0:(vector dummyworkchain0.config.local) validators:(vector validator.config.Local) liteservers:(vector liteserver.config.local) = config.Local;
 
 dht.config.global static_nodes:dht.nodes k:int a:int = dht.config.Global;
 adnl.config.global static_nodes:adnl.nodes = adnl.config.Global;
-catchain.config.global tag:int256 nodes:(vector adnl.id.Full) = catchain.config.Global;
-liteclient.config.global id:adnl.id.Full ip:int port:int = liteserver.config.Global;
+catchain.config.global tag:int256 nodes:(vector PublicKey) = catchain.config.Global;
+liteclient.config.global id:PublicKey ip:int port:int = liteserver.config.Global;
 dummyworkchain0.config.global zero_state_hash:int256 = dummyworkchain0.config.Global;
 validator.config.global zero_state_root_hash:int256 zero_state_file_hash:int256 = validator.config.Global;
 config.global adnl:adnl.config.global dht:dht.config.global catchains:(vector catchain.config.global) dummy0:(vector dummyworkchain0.config.global)
@@ -469,6 +476,7 @@ liteServer.accountState id:tonNode.blockIdExt shardblk:tonNode.blockIdExt shard_
 liteServer.shardInfo id:tonNode.blockIdExt shardblk:tonNode.blockIdExt shard_proof:bytes shard_descr:bytes = liteServer.ShardInfo;
 liteServer.allShardsInfo id:tonNode.blockIdExt proof:bytes data:bytes = liteServer.AllShardsInfo;
 liteServer.transactionInfo id:tonNode.blockIdExt proof:bytes transaction:bytes = liteServer.TransactionInfo;
+liteServer.transactionList ids:(vector tonNode.blockIdExt) transactions:bytes = liteServer.TransactionList;
 
 liteServer.debug.verbosity value:int = liteServer.debug.Verbosity;
 
@@ -484,6 +492,7 @@ liteServer.getAccountState id:tonNode.blockIdExt account:liteServer.accountId = 
 liteServer.getShardInfo id:tonNode.blockIdExt workchain:int shard:long exact:Bool = liteServer.ShardInfo;
 liteServer.getAllShardsInfo id:tonNode.blockIdExt = liteServer.AllShardsInfo;
 liteServer.getOneTransaction id:tonNode.blockIdExt account:liteServer.accountId lt:long = liteServer.TransactionInfo;
+liteServer.getTransactions count:# account:liteServer.accountId lt:long hash:int256 = liteServer.TransactionList; 
 
 liteServer.debug.setVerbosity verbosity:liteServer.debug.verbosity = liteServer.debug.Verbosity;
 

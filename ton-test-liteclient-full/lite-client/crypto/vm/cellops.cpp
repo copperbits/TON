@@ -346,13 +346,13 @@ int exec_store_int_common(Stack& stack, unsigned bits, unsigned args) {
     }
     throw VmError{Excno::cell_ov};
   }
-  if (!(*x)->fits_bits(bits, sgnd)) {
+  if (!x->fits_bits(bits, sgnd)) {
     if (args & 4) {
       return store_int_common_fail(1, stack, std::move(builder), std::move(x), args);
     }
     throw VmError{Excno::range_chk};
   }
-  builder.write().store_bigint256(**x, bits, sgnd);
+  builder.write().store_bigint256(*x, bits, sgnd);
   stack.push_builder(std::move(builder));
   if (args & 4) {
     stack.push_smallint(0);
@@ -642,11 +642,11 @@ int exec_store_le_int(VmState* st, unsigned args) {
   auto builder = stack.pop_builder();
   auto x = stack.pop_int();
   check_space(*builder, bits);
-  if (!(sgnd ? (*x)->signed_fits_bits(bits) : (*x)->unsigned_fits_bits(bits))) {
+  if (!(sgnd ? x->signed_fits_bits(bits) : x->unsigned_fits_bits(bits))) {
     throw VmError{Excno::range_chk};
   }
   unsigned char buff[8];
-  st->ensure_throw((*x)->export_bytes_lsb(buff, bits >> 3, sgnd));
+  st->ensure_throw(x->export_bytes_lsb(buff, bits >> 3, sgnd));
   builder.write().store_bytes(buff, bits >> 3);
   stack.push_builder(std::move(builder));
   return 0;
@@ -1246,7 +1246,7 @@ int exec_load_le_int(VmState* st, unsigned args) {
   unsigned char buff[8];
   st->ensure_throw(cs->prefetch_bytes(buff, len));
   td::RefInt256 x{true};
-  st->ensure_throw(x.unique_write()->import_bytes_lsb(buff, len, sgnd));
+  st->ensure_throw(x.unique_write().import_bytes_lsb(buff, len, sgnd));
   stack.push_int(std::move(x));
   if (!(args & 4)) {
     st->ensure_throw(cs.write().advance(len << 3));

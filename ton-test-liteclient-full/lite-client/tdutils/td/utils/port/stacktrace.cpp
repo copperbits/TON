@@ -1,7 +1,7 @@
 #include "td/utils/port/stacktrace.h"
 #include "td/utils/port/signals.h"
 
-#if !TD_WINDOWS
+#if !TD_WINDOWS && !TD_ANDROID && !TD_FREEBSD
 #include <execinfo.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -43,6 +43,15 @@ void print_backtrace_gdb(void) {
       td::signal_safe_write("Can't set dumpable\n");
       return;
     }
+#if defined(PR_SET_PTRACER)
+    // We can't use td::EventFd because we are in a signal handler
+    int fds[2];
+    bool need_set_ptracer = true;
+    if (pipe(fds) < 0) {
+      need_set_ptracer = false;
+      td::signal_safe_write("Can't create a pipe\n");
+    }
+#endif
 #endif
 
     int child_pid = fork();
@@ -51,11 +60,27 @@ void print_backtrace_gdb(void) {
       return;
     }
     if (!child_pid) {
+#if TD_LINUX && defined(PR_SET_PTRACER)
+      if (need_set_ptracer) {
+        char c;
+        read(fds[0], &c, 1);
+      }
+#endif
       dup2(2, 1);  // redirect output to stderr
       execlp("gdb", "gdb", "--batch", "-n", "-ex", "thread", "-ex", "thread apply all bt full", name_buf, pid_buf_begin,
              NULL);
       return;
     } else {
+#if TD_LINUX && defined(PR_SET_PTRACER)
+      if (need_set_ptracer) {
+        if (prctl(PR_SET_PTRACER, child_pid, 0, 0, 0) < 0) {
+          td::signal_safe_write("Can't set ptracer\n");
+        }
+        if (write(fds[1], "a", 1) != 1) {
+          td::signal_safe_write("Can't write to pipe\n");
+        }
+      }
+#endif
       waitpid(child_pid, nullptr, 0);
     }
   } else {
@@ -66,7 +91,7 @@ void print_backtrace_gdb(void) {
 }  // namespace
 
 void Stacktrace::print_to_stderr(const PrintOptions &options) {
-  //print_backtrace();
+  print_backtrace();
   if (options.use_gdb) {
     print_backtrace_gdb();
   }

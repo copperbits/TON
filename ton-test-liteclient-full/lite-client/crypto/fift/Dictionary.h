@@ -72,6 +72,9 @@ class WordList : public WordDef {
     return &list;
   }
   WordList& append(const std::vector<Ref<WordDef>>& other);
+  WordList* make_copy() const override {
+    return new WordList(list);
+  }
 };
 
 class WordRef {

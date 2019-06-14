@@ -1,5 +1,6 @@
+#include "test-lite-client.h"
 #include "adnl/adnl-ext-client.h"
-#include "adnl/tl-utils.hpp"
+#include "tl-utils/tl-utils.hpp"
 #include "auto/tl/ton_api_json.h"
 #include "td/utils/OptionsParser.h"
 #include "td/utils/Time.h"
@@ -8,6 +9,8 @@
 #include "td/utils/Random.h"
 #include "td/utils/crypto.h"
 #include "td/utils/port/signals.h"
+#include "td/utils/port/stacktrace.h"
+#include "td/utils/port/StdStreams.h"
 #include "td/utils/port/FileFd.h"
 #include "terminal/terminal.h"
 #include "ton/ton-tl.hpp"
@@ -39,135 +42,6 @@ std::ostream& operator<<(std::ostream& stream, const td::UInt<size>& x) {
 
   return stream;
 }
-
-class TestNode : public td::actor::Actor {
- private:
-  std::string local_config_ = "ton-local.config";
-  std::string global_config_ = "ton-global.config";
-
-  td::actor::ActorOwn<ton::AdnlExtClient> client_;
-  td::actor::ActorOwn<td::TerminalIO> io_;
-
-  bool readline_enabled_ = true;
-  td::int32 liteserver_idx_ = -1;
-
-  bool ready_ = false;
-  bool inited_ = false;
-  std::string db_root_;
-
-  int server_time_ = 0;
-  int server_time_got_at_ = 0;
-
-  ton::ZeroStateIdExt zstate_id_;
-  ton::BlockIdExt mc_last_id_;
-
-  ton::BlockIdExt last_block_id_, last_state_id_;
-  td::BufferSlice last_block_data_, last_state_data_;
-
-  std::string line_;
-  const char *parse_ptr_, *parse_end_;
-  td::Status error_;
-
-  std::vector<ton::BlockIdExt> known_blk_ids_;
-  std::size_t shown_blk_ids_ = 0;
-
-  std::unique_ptr<ton::AdnlExtClient::Callback> make_callback();
-
-  void run_init_queries();
-  bool get_server_time();
-  bool get_server_mc_block_id();
-  void got_server_mc_block_id(ton::BlockIdExt blkid, ton::ZeroStateIdExt zstateid);
-  bool request_block(ton::BlockIdExt blkid);
-  bool request_state(ton::BlockIdExt blkid);
-  void got_mc_block(ton::BlockIdExt blkid, td::BufferSlice data);
-  void got_mc_state(ton::BlockIdExt blkid, ton::RootHash root_hash, ton::FileHash file_hash, td::BufferSlice data);
-  td::Status send_set_verbosity(std::string verbosity);
-  td::Status send_ext_msg_from_filename(std::string filename);
-  td::Status save_db_file(ton::FileHash file_hash, td::BufferSlice data);
-  bool get_account_state(ton::WorkchainId workchain, ton::StdSmcAddress addr, ton::BlockIdExt ref_blkid);
-  void got_account_state(ton::BlockIdExt ref_blk, ton::BlockIdExt blk, ton::BlockIdExt shard_blk,
-                         td::BufferSlice shard_proof, td::BufferSlice proof, td::BufferSlice state,
-                         ton::WorkchainId workchain, ton::StdSmcAddress addr);
-  bool get_all_shards(bool use_last = true, ton::BlockIdExt blkid = {});
-  void got_all_shards(ton::BlockIdExt blk, td::BufferSlice proof, td::BufferSlice data);
-  bool get_block(ton::BlockIdExt blk, bool dump = false);
-  void got_block(ton::BlockIdExt blkid, td::BufferSlice data, bool dump);
-  bool get_state(ton::BlockIdExt blk, bool dump = false);
-  void got_state(ton::BlockIdExt blkid, ton::RootHash root_hash, ton::FileHash file_hash, td::BufferSlice data,
-                 bool dump);
-  bool get_block_header(ton::BlockIdExt blk, int mode);
-  void got_block_header(ton::BlockIdExt blkid, td::BufferSlice data, int mode);
-  bool show_block_header(ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode);
-  bool show_state_header(ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode);
-  bool get_one_transaction(ton::BlockIdExt blkid, ton::WorkchainId workchain, ton::StdSmcAddress addr,
-                           ton::LogicalTime lt, bool dump = false);
-  void got_one_transaction(ton::BlockIdExt req_blkid, ton::BlockIdExt blkid, td::BufferSlice proof,
-                           td::BufferSlice transaction, ton::WorkchainId workchain, ton::StdSmcAddress addr,
-                           ton::LogicalTime trans_lt, bool dump);
-
-  bool do_parse_line();
-  bool show_help(std::string command);
-  std::string get_word(char delim = ' ');
-  int skipspc();
-  std::string get_line_tail(bool remove_spaces = true) const;
-  bool eoln() const;
-  bool seekeoln();
-  bool set_error(td::Status error);
-  bool set_error(std::string err_msg);
-  void show_context() const;
-  bool parse_account_addr(ton::WorkchainId& wc, ton::StdSmcAddress& addr);
-  static int parse_hex_digit(int c);
-  static bool parse_hash(const char* str, ton::Bits256& hash);
-  static bool parse_uint64(std::string word, td::uint64& val);
-  bool parse_lt(ton::LogicalTime& lt);
-  bool parse_block_id_ext(ton::BlockIdExt& blkid, bool allow_incomplete = false);
-  bool parse_block_id_ext(std::string blk_id_string, ton::BlockIdExt& blkid, bool allow_incomplete = false) const;
-  bool register_blkid(const ton::BlockIdExt& blkid);
-  bool show_new_blkids(bool all = false);
-  bool complete_blkid(ton::BlockId partial_blkid, ton::BlockIdExt& complete_blkid) const;
-
- public:
-  void conn_ready() {
-    LOG(ERROR) << "conn ready";
-    ready_ = true;
-    if (!inited_) {
-      run_init_queries();
-    }
-  }
-  void conn_closed() {
-    ready_ = false;
-  }
-  void set_local_config(std::string str) {
-    local_config_ = str;
-  }
-  void set_global_config(std::string str) {
-    global_config_ = str;
-  }
-  void set_db_root(std::string db_root) {
-    db_root_ = db_root;
-  }
-  void set_readline_enabled(bool value) {
-    readline_enabled_ = value;
-  }
-  void set_liteserver_idx(td::int32 idx) {
-    liteserver_idx_ = idx;
-  }
-
-  void start_up() override {
-  }
-  void tear_down() override {
-    // FIXME: do not work in windows
-    //td::actor::SchedulerContext::get()->stop();
-  }
-
-  bool envelope_send_query(td::BufferSlice query, td::Promise<td::BufferSlice> promise);
-  void parse_line(td::BufferSlice data);
-
-  TestNode() {
-  }
-
-  void run();
-};
 
 std::unique_ptr<ton::AdnlExtClient::Callback> TestNode::make_callback() {
   class Callback : public ton::AdnlExtClient::Callback {
@@ -281,6 +155,12 @@ bool TestNode::complete_blkid(ton::BlockId partial_blkid, ton::BlockIdExt& compl
       complete_blkid = known_blk_ids_[n];
       return true;
     }
+  }
+  if (partial_blkid.is_masterchain() && partial_blkid.seqno == ~0U) {
+    complete_blkid.id = ton::BlockId{ton::masterchainId, ton::shardIdAll, ~0U};
+    complete_blkid.root_hash.set_zero();
+    complete_blkid.file_hash.set_zero();
+    return true;
   }
   return false;
 }
@@ -617,6 +497,11 @@ bool TestNode::parse_block_id_ext(ton::BlockIdExt& blk, bool allow_incomplete) {
   return parse_block_id_ext(get_word(), blk, allow_incomplete) || set_error("cannot parse BlockIdExt");
 }
 
+bool TestNode::parse_hash(ton::Bits256& hash) {
+  auto word = get_word();
+  return (!word.empty() && parse_hash(word.c_str(), hash)) || set_error("cannot parse hash");
+}
+
 bool TestNode::set_error(std::string err_msg) {
   return set_error(td::Status::Error(-1, err_msg));
 }
@@ -664,6 +549,9 @@ bool TestNode::show_help(std::string command) {
          "getstate <block-id-ext>\tDownloads state corresponding to specified block\n"
          "dumpstate <block-id-ext>\tDownloads and dumps state corresponding to specified block\n"
          "dumptrans <block-id-ext> <account-id> <trans-lt>\tDumps one transaction of specified account\n"
+         "lasttrans[dump] <account-id> <trans-lt> <trans-hash> [<count>]\tShows or dumps specified transaction and "
+         "several preceding "
+         "ones\n"
          "known\tShows the list of all known block ids\n"
          "privkey <filename>\tLoads a private key from file\n"
          "help [<command>]\tThis help\n"
@@ -676,6 +564,7 @@ bool TestNode::do_parse_line() {
   ton::StdSmcAddress addr;
   ton::BlockIdExt blkid;
   ton::LogicalTime lt;
+  ton::Bits256 hash;
   std::string word = get_word();
   skipspc();
   if (word == "time") {
@@ -705,6 +594,9 @@ bool TestNode::do_parse_line() {
   } else if (word == "dumptrans") {
     return parse_block_id_ext(blkid) && parse_account_addr(workchain, addr) && parse_lt(lt) && seekeoln() &&
            get_one_transaction(blkid, workchain, addr, lt, true);
+  } else if (word == "lasttrans" || word == "lasttransdump") {
+    return parse_account_addr(workchain, addr) && parse_lt(lt) && parse_hash(hash) && seekeoln() &&
+           get_last_transactions(workchain, addr, lt, hash, 10, word == "lasttransdump");
   } else if (word == "known") {
     return eoln() && show_new_blkids(true);
   } else if (word == "quit" && eoln()) {
@@ -847,6 +739,37 @@ bool TestNode::get_one_transaction(ton::BlockIdExt blkid, ton::WorkchainId workc
       });
 }
 
+bool TestNode::get_last_transactions(ton::WorkchainId workchain, ton::StdSmcAddress addr, ton::LogicalTime lt,
+                                     ton::Bits256 hash, unsigned count, bool dump) {
+  if (!(ready_ && !client_.empty())) {
+    return set_error("server connection not ready");
+  }
+  auto a = ton::create_tl_object<ton::ton_api::liteServer_accountId>(workchain, ton::Bits256_2_UInt256(addr));
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_getTransactions>(
+                                        count, std::move(a), lt, ton::Bits256_2_UInt256(hash)),
+                                    true);
+  LOG(INFO) << "requesting " << count << " last transactions from " << lt << ":" << hash.to_hex() << " of " << workchain
+            << ":" << addr.to_hex();
+  return envelope_send_query(
+      std::move(b), [ Self = actor_id(this), workchain, addr, lt, hash, count, dump ](td::Result<td::BufferSlice> R) {
+        if (R.is_error()) {
+          return;
+        }
+        auto F = ton::fetch_tl_object<ton::ton_api::liteServer_transactionList>(R.move_as_ok(), true);
+        if (F.is_error()) {
+          LOG(ERROR) << "cannot parse answer to liteServer.getTransactions";
+        } else {
+          auto f = F.move_as_ok();
+          std::vector<ton::BlockIdExt> blkids;
+          for (auto& id : f->ids_) {
+            blkids.push_back(ton::create_block_id(std::move(id)));
+          }
+          td::actor::send_closure_later(Self, &TestNode::got_last_transactions, std::move(blkids),
+                                        std::move(f->transactions_), workchain, addr, lt, hash, count, dump);
+        }
+      });
+}
+
 td::Status check_block_header_proof(Ref<vm::Cell> root, ton::BlockIdExt blkid,
                                     ton::Bits256* store_shard_hash_to = nullptr, bool check_state_hash = false) {
   ton::RootHash vhash{root->get_hash().bits()};
@@ -903,7 +826,7 @@ void TestNode::got_account_state(ton::BlockIdExt ref_blk, ton::BlockIdExt blk, t
     root = R.move_as_ok();
     CHECK(root.not_null());
   }
-  if (blk != ref_blk) {
+  if (blk != ref_blk && ref_blk.id.seqno != ~0U) {
     LOG(ERROR) << "obtained getAccountState() for a different reference block " << blk.to_str()
                << " instead of requested " << ref_blk.to_str();
     return;
@@ -1082,6 +1005,54 @@ void TestNode::got_one_transaction(ton::BlockIdExt req_blkid, ton::BlockIdExt bl
     root = R.move_as_ok();
     CHECK(root.not_null());
   }
+  auto P = vm::std_boc_deserialize(std::move(proof));
+  if (P.is_error()) {
+    LOG(ERROR) << "cannot deserialize block transaction proof";
+    return;
+  }
+  auto proof_root = P.move_as_ok();
+  try {
+    auto block_root = vm::MerkleProof::virtualize(std::move(proof_root), 1);
+    if (block_root.is_null()) {
+      LOG(ERROR) << "transaction block proof is invalid";
+      return;
+    }
+    auto res1 = check_block_header_proof(block_root, blkid);
+    if (res1.is_error()) {
+      LOG(ERROR) << "error in transaction block header proof : " << res1.move_as_error().to_string();
+      return;
+    }
+    auto trans_root_res = block::get_block_transaction_try(std::move(block_root), workchain, addr, trans_lt);
+    if (trans_root_res.is_error()) {
+      LOG(ERROR) << trans_root_res.move_as_error().message();
+      return;
+    }
+    auto trans_root = trans_root_res.move_as_ok();
+    if (trans_root.is_null() && root.not_null()) {
+      LOG(ERROR) << "error checking transaction proof: proof claims there is no such transaction, but we have got "
+                    "transaction data with hash "
+                 << root->get_hash().bits().to_hex(256);
+      return;
+    }
+    if (trans_root.not_null() && root.is_null()) {
+      LOG(ERROR) << "error checking transaction proof: proof claims there is such a transaction with hash "
+                 << trans_root->get_hash().bits().to_hex(256)
+                 << ", but we have got no "
+                    "transaction data";
+      return;
+    }
+    if (trans_root.not_null() && trans_root->get_hash().bits().compare(root->get_hash().bits(), 256)) {
+      LOG(ERROR) << "transaction hash mismatch: Merkle proof expects " << trans_root->get_hash().bits().to_hex(256)
+                 << " but received data has " << root->get_hash().bits().to_hex(256);
+      return;
+    }
+  } catch (vm::VmError err) {
+    LOG(ERROR) << "error while traversing block transaction proof : " << err.get_msg();
+    return;
+  } catch (vm::VmVirtError err) {
+    LOG(ERROR) << "virtualization error while traversing block transaction proof : " << err.get_msg();
+    return;
+  }
   auto out = td::TerminalIO::out();
   if (root.is_null()) {
     out << "transaction not found" << std::endl;
@@ -1091,6 +1062,186 @@ void TestNode::got_one_transaction(ton::BlockIdExt req_blkid, ton::BlockIdExt bl
     block::gen::t_Transaction.print_ref(outp, root);
     vm::load_cell_slice(root).print_rec(outp);
     out << outp.str();
+  }
+}
+
+bool unpack_addr(std::ostream& os, Ref<vm::CellSlice> csr) {
+  ton::WorkchainId wc;
+  ton::StdSmcAddress addr;
+  if (!block::tlb::t_MsgAddressInt.extract_std_address(std::move(csr), wc, addr)) {
+    os << "<cannot unpack address>";
+    return false;
+  }
+  os << wc << ":" << addr.to_hex();
+  return true;
+}
+
+bool unpack_message(std::ostream& os, Ref<vm::Cell> msg, int mode) {
+  if (msg.is_null()) {
+    os << "<message not found>";
+    return true;
+  }
+  vm::CellSlice cs{vm::NoVmOrd(), msg};
+  block::gen::CommonMsgInfo info;
+  Ref<vm::CellSlice> src, dest;
+  switch (block::gen::t_CommonMsgInfo.get_tag(cs)) {
+    case block::gen::CommonMsgInfo::ext_in_msg_info: {
+      block::gen::CommonMsgInfo::Record_ext_in_msg_info info;
+      if (!tlb::unpack(cs, info)) {
+        LOG(DEBUG) << "cannot unpack inbound external message";
+        return false;
+      }
+      os << "EXT-IN-MSG";
+      if (!(mode & 2)) {
+        os << " TO: ";
+        if (!unpack_addr(os, std::move(info.dest))) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case block::gen::CommonMsgInfo::ext_out_msg_info: {
+      block::gen::CommonMsgInfo::Record_ext_out_msg_info info;
+      if (!tlb::unpack(cs, info)) {
+        LOG(DEBUG) << "cannot unpack outbound external message";
+        return false;
+      }
+      os << "EXT-OUT-MSG";
+      if (!(mode & 1)) {
+        os << " FROM: ";
+        if (!unpack_addr(os, std::move(info.src))) {
+          return false;
+        }
+      }
+      os << " LT:" << info.created_lt << " UTIME:" << info.created_at;
+      return true;
+    }
+    case block::gen::CommonMsgInfo::int_msg_info: {
+      block::gen::CommonMsgInfo::Record_int_msg_info info;
+      if (!tlb::unpack(cs, info)) {
+        LOG(DEBUG) << "cannot unpack internal message";
+        return false;
+      }
+      os << "INT-MSG";
+      if (!(mode & 1)) {
+        os << " FROM: ";
+        if (!unpack_addr(os, std::move(info.src))) {
+          return false;
+        }
+      }
+      if (!(mode & 2)) {
+        os << " TO: ";
+        if (!unpack_addr(os, std::move(info.dest))) {
+          return false;
+        }
+      }
+      os << " LT:" << info.created_lt << " UTIME:" << info.created_at;
+      td::RefInt256 value;
+      Ref<vm::Cell> extra;
+      if (!block::unpack_CurrencyCollection(info.value, value, extra)) {
+        LOG(ERROR) << "cannot unpack message value";
+        return false;
+      }
+      os << " VALUE:" << value;
+      if (extra.not_null()) {
+        os << "+extra";
+      }
+      return true;
+    }
+    default:
+      LOG(ERROR) << "cannot unpack message";
+      return false;
+  }
+}
+
+std::string message_info_str(Ref<vm::Cell> msg, int mode) {
+  std::ostringstream os;
+  if (!unpack_message(os, msg, mode)) {
+    return "<cannot unpack message>";
+  } else {
+    return os.str();
+  }
+}
+
+void TestNode::got_last_transactions(std::vector<ton::BlockIdExt> blkids, td::BufferSlice transactions_boc,
+                                     ton::WorkchainId workchain, ton::StdSmcAddress addr, ton::LogicalTime lt,
+                                     ton::Bits256 hash, unsigned count, bool dump) {
+  LOG(INFO) << "got up to " << count << " transactions for " << workchain << ":" << addr.to_hex()
+            << " from last transaction " << lt << ":" << hash.to_hex();
+  auto R = vm::std_boc_deserialize_multi(std::move(transactions_boc));
+  if (R.is_error()) {
+    LOG(ERROR) << "cannot deserialize transactions BoC";
+    return;
+  }
+  auto list = R.move_as_ok();
+  auto n = list.size();
+  if (n > count) {
+    LOG(ERROR) << "obtained " << n << " transaction, but only " << count << " have been requested";
+    return;
+  }
+  if (n != blkids.size()) {
+    LOG(ERROR) << "transaction list size " << n << " must be equal to the size of block id list " << blkids.size();
+    return;
+  }
+  auto out = td::TerminalIO::out();
+  unsigned c = 0;
+  for (auto& root : list) {
+    const auto& blkid = blkids[c++];
+    if (root.is_null()) {
+      out << "transaction #" << c << " from block " << blkid.to_str() << " not found" << std::endl;
+      LOG(ERROR) << "transactions are expected to be non-empty";
+      return;
+    }
+    if (hash != root->get_hash().bits()) {
+      LOG(ERROR) << "transaction hash mismatch: expected " << hash.to_hex() << ", found "
+                 << root->get_hash().bits().to_hex(256);
+      return;
+    }
+    out << "transaction #" << c << " from block " << blkid.to_str() << (dump ? " is " : "\n");
+    if (dump) {
+      std::ostringstream outp;
+      block::gen::t_Transaction.print_ref(outp, root);
+      vm::load_cell_slice(root).print_rec(outp);
+      out << outp.str();
+    }
+    block::gen::Transaction::Record trans;
+    if (!tlb::unpack_cell(root, trans)) {
+      LOG(ERROR) << "cannot unpack transaction #" << c;
+      return;
+    }
+    if (trans.lt != lt) {
+      LOG(ERROR) << "transaction lt mismatch: expected " << lt << ", found " << trans.lt;
+      return;
+    }
+    lt = trans.prev_trans_lt;
+    hash = trans.prev_trans_hash;
+    out << "  time=" << trans.now << " outmsg_cnt=" << trans.outmsg_cnt << std::endl;
+    auto in_msg = trans.in_msg->prefetch_ref();
+    if (in_msg.is_null()) {
+      out << "  (no inbound message)" << std::endl;
+    } else {
+      out << "  inbound message: " << message_info_str(in_msg, 2 * 0) << std::endl;
+      if (dump) {
+        out << "    " << block::gen::t_Message_Any.as_string_ref(in_msg, 4);  // indentation = 4 spaces
+      }
+    }
+    vm::Dictionary dict{trans.out_msgs, 15};
+    for (int x = 0; x < trans.outmsg_cnt && x < 100; x++) {
+      auto out_msg = dict.lookup_ref(td::BitArray<15>{x});
+      out << "  outbound message #" << x << ": " << message_info_str(out_msg, 1 * 0) << std::endl;
+      if (dump) {
+        out << "    " << block::gen::t_Message_Any.as_string_ref(out_msg, 4);
+      }
+    }
+    register_blkid(blkid);  // unsafe?
+  }
+  if (lt > 0) {
+    out << "previous transaction has lt " << lt << " hash " << hash.to_hex() << std::endl;
+    if (c < count) {
+      LOG(WARNING) << "obtained less transactions than required";
+    }
+  } else {
+    out << "no preceding transactions (list complete)" << std::endl;
   }
 }
 
@@ -1448,36 +1599,14 @@ td::Result<td::UInt256> get_uint256(std::string str) {
   return res;
 }
 
-#if TD_DARWIN || TD_LINUX
-#include <execinfo.h>
-void unblock_stdin() {
-  int flags = fcntl(0, F_GETFL, 0);
-  if (flags >= 0) {
-    fcntl(0, F_SETFL, flags & ~O_NONBLOCK);
-    std::cerr << "stdin unblocked ok: " << flags << " -> " << (flags & ~O_NONBLOCK) << std::endl;
-  }
-}
-
-void print_backtrace(int sig) {
-  const int max_frames = 128;
-  void* frames[max_frames];
-  int nframes = backtrace(frames, max_frames);
-  backtrace_symbols_fd(frames, nframes, 2);
-  unblock_stdin();
-  exit(EXIT_FAILURE);
-}
-#endif
-
 int main(int argc, char* argv[]) {
-#if TD_DARWIN || TD_LINUX
-  atexit(&unblock_stdin);
-#endif
   SET_VERBOSITY_LEVEL(verbosity_INFO);
+  td::set_default_failure_signal_handler();
 
   td::actor::ActorOwn<TestNode> x;
 
   td::OptionsParser p;
-  p.set_description("test basic adnl functionality");
+  p.set_description("Test Lite Client for TON Blockchain");
   p.add_option('h', "help", "prints_help", [&]() {
     char b[10240];
     td::StringBuilder sb(td::MutableSlice{b, 10000});
@@ -1537,8 +1666,6 @@ int main(int argc, char* argv[]) {
     dup2(FileLog.get_native_fd().fd(), 2);
     return td::Status::OK();
   });
-  td::set_signal_handler(td::SignalType::Abort, print_backtrace).ensure();
-  td::set_signal_handler(td::SignalType::Error, print_backtrace).ensure();
 #endif
 
   td::actor::Scheduler scheduler({2});

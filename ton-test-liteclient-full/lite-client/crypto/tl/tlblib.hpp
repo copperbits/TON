@@ -125,7 +125,7 @@ class TLB {
     return store_integer_value(cb, td::BigInt256{value});
   }
   virtual bool store_integer_ref(vm::CellBuilder& cb, td::RefInt256 value) const {
-    return value.not_null() && store_integer_value(cb, **value);
+    return value.not_null() && store_integer_value(cb, *value);
   }
   virtual bool add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const {
     td::RefInt256 x = as_integer_skip(cs1), y = as_integer_skip(cs2);
@@ -159,6 +159,12 @@ class TLB {
     return print(os, *cs_ref, indent);
   }
   bool print_ref(std::ostream& os, Ref<vm::Cell> cell_ref, int indent = 0) const;
+  std::string as_string_skip(vm::CellSlice& cs, int indent = 0) const;
+  std::string as_string(const vm::CellSlice& cs, int indent = 0) const;
+  std::string as_string(Ref<vm::CellSlice> cs_ref, int indent = 0) const {
+    return cs_ref.not_null() ? as_string(*cs_ref, indent) : "<null>";
+  }
+  std::string as_string_ref(Ref<vm::Cell> cell_ref, int indent = 0) const;
 
  protected:
   bool validate_ref_internal(Ref<vm::Cell> cell_ref) const;
