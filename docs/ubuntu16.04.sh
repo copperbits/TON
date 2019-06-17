@@ -1,6 +1,6 @@
 cd ~
 # Install dependencies
-apt-get install cmake openssl gperf zlib1g libssl-dev build-essential xz-utils curl
+apt-get install cmake openssl gperf zlib1g zlib1g-dev libssl-dev build-essential xz-utils curl
 # install clang8
 curl -SL http://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz | tar -xJC .
 mv clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-16.04 clang_8.0.0
