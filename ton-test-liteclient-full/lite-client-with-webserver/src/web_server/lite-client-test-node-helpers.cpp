@@ -58,15 +58,13 @@ bool TestNode::envelope_send_web(td::BufferSlice query,
                                  td::Promise<td::BufferSlice> promise,
                                  std::shared_ptr<HttpServer::Response> response) {
   if (!ready_ || client_.empty()) {
-    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                      "failed to send query to server: not ready");
+    web_error_response(response, "failed to send query to server: not ready");
     return false;
   }
   auto P = td::PromiseCreator::lambda([promise = std::move(promise), response](td::Result<td::BufferSlice> R) mutable {
     if (R.is_error()) {
       auto err = R.move_as_error();
-      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                        "failed query");
+      web_error_response(response, "failed query");
       promise.set_error(std::move(err));
       return;
     }
@@ -75,8 +73,7 @@ bool TestNode::envelope_send_web(td::BufferSlice query,
     if (F.is_ok()) {
       auto f = F.move_as_ok();
       auto err = td::Status::Error(f->code_, f->message_);
-      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
-                        "received error");
+      web_error_response(response, "received error");
       promise.set_error(std::move(err));
       return;
     }

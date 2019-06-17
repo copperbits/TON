@@ -162,6 +162,6 @@ add_subdirectory(lite-client/adnl)
 
 add_subdirectory(lite-client/crypto)
 
-add_executable (test-lite-client-with-webserver test-webserver/test-lite-client.cpp)
+add_executable (test-lite-client-with-webserver src/lite-client.cpp)
 target_link_libraries(test-lite-client-with-webserver tdutils tdactor adnllite tl_api 
   ton_crypto ton_block terminal)

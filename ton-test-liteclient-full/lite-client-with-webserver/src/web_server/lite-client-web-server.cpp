@@ -1,3 +1,28 @@
+void TestNode::web_error_response(std::shared_ptr<HttpServer::Response> response, std::string msg) {
+  pt::ptree root;
+  std::ostringstream oss;
+  root.put("error", msg);
+  pt::write_json(oss, root);
+  response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                    oss.str());
+}
+
+void TestNode::web_success_response(std::shared_ptr<HttpServer::Response> response, std::string msg) {
+  pt::ptree root;
+  std::ostringstream oss;
+  root.put("result", msg);
+  pt::write_json(oss, root);
+  response -> write(oss.str());
+}
+
+void TestNode::web_success_response(std::shared_ptr<HttpServer::Response> response, pt::ptree result) {
+  pt::ptree root;
+  std::ostringstream oss;
+  root.put_child("result", result);
+  pt::write_json(oss, root);
+  response -> write(oss.str());
+}
+
 void TestNode::run_web_server(td::actor::Scheduler* scheduler, td::actor::ActorOwn<TestNode>* x){
   HttpServer server;
   server.config.port = 8000;

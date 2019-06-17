@@ -1,8 +1,8 @@
 void TestNode::get_block_web(std::string blkid_str, std::shared_ptr<HttpServer::Response> response, bool dump) {
     ton::BlockIdExt blkid;
     if(!TestNode::parse_block_id_ext(blkid_str, blkid, true))
-        {  response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
-                           "{\"error\":\"cannot parse block_id\"}");
+        {
+          web_error_response(response, "cannot parse block_id");
         }
 
   auto b = ton::serialize_tl_object(
@@ -10,23 +10,20 @@ void TestNode::get_block_web(std::string blkid_str, std::shared_ptr<HttpServer::
   envelope_send_query(
       std::move(b), [ Self = actor_id(this), blkid, dump, response](td::Result<td::BufferSlice> res)->void {
         if (res.is_error()) {
-          response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
-                           "{\"error\":\"cannot obtain block " + blkid.to_str() + \
-                             " from server : " + res.move_as_error().to_string()+"\"}");
+          web_error_response(response, "cannot obtain block " + blkid.to_str() + \
+                                       " from server : " + res.move_as_error().to_string());
           return;
         } else {
           auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockData>(res.move_as_ok(), true);
           if (F.is_error()) {
-            response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
-                              "{\"error\":\"cannot parse answer to liteServer.getBlock : " +\
-                               res.move_as_error().to_string()+"\"}");
+            web_error_response(response, "cannot parse answer to liteServer.getBlock : " +\
+                               res.move_as_error().to_string());
           } else {
             auto f = F.move_as_ok();
             auto blk_id = ton::create_block_id(f->id_);
             if (blk_id != blkid) {
-              response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
-                                "{\"error\":\"block id mismatch: expected data for block " + blkid.to_str() +\
-                                 ", obtained for " + blk_id.to_str()+"\"}");
+              web_error_response(response, "block id mismatch: expected data for block " + blkid.to_str() +\
+                                           ", obtained for " + blk_id.to_str());
             }
             td::actor::send_closure_later(Self, &TestNode::got_block_web, blk_id, std::move(f->data_), dump, response);
           }
@@ -40,32 +37,27 @@ void TestNode::got_block_web(ton::BlockIdExt blkid, td::BufferSlice data, bool d
   ton::FileHash fhash;
   td::sha256(data.as_slice(), fhash.as_slice());
   if (fhash != blkid.file_hash) {
-    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
-                      "{\"error\":\"file hash mismatch for block " + blkid.to_str() +\
-                      ": expected " + blkid.file_hash.to_hex() + ", computed " + fhash.to_hex()+"\"}");
+    web_error_response(response, "file hash mismatch for block " + blkid.to_str() +\
+                                 ": expected " + blkid.file_hash.to_hex() + ", computed " + fhash.to_hex());
     return;
   }
   if (!db_root_.empty()) {
     auto res = save_db_file(fhash, data.clone());
     if (res.is_error()) {
-      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
-                        "{\"error\":\"error saving block file: " + res.to_string() + "\"}");
+      web_error_response(response, "error saving block file: " + res.to_string());
     }
   }
   if (dump) {
     auto res = vm::std_boc_deserialize(data.clone());
     if (res.is_error()) {
-      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
-                        "{\"error\":\"cannot deserialize block data " + res.move_as_error().to_string() + "\"}");
+      web_error_response(response, "cannot deserialize block data " + res.move_as_error().to_string());
       return;
     }
     auto root = res.move_as_ok();
     ton::RootHash rhash{root->get_hash().bits()};
     if (rhash != blkid.root_hash) {
-      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
-                        "{\"error\":\"block root hash mismatch: data has " + rhash.to_hex() +\
-                        " , expected " + blkid.root_hash.to_hex() + "\"}");
-
+      web_error_response(response, "block root hash mismatch: data has " + rhash.to_hex() +\
+                                   " , expected " + blkid.root_hash.to_hex());
       return;
     }
     //auto out = td::TerminalIO::out();
@@ -74,21 +66,26 @@ void TestNode::got_block_web(ton::BlockIdExt blkid, td::BufferSlice data, bool d
     block::gen::t_Block.print_ref(block_data, root);
     vm::load_cell_slice(root).print_rec(vm_data);
     give_block_header_description(header_data, blkid, std::move(root), 0xffff);
-    response -> write("{\"result\": {\"block\":\""+block_data.str()+
-                               "\", \"vm\":\""+vm_data.str()+
-                               "\", \"header\":\""+header_data.str()+"\"}}");
+
+
+    pt::ptree result;
+    result.put("block", block_data.str());
+    result.put("vm", vm_data.str());
+    result.put("header", header_data.str());
+
+    web_success_response(response, result);
   } else {
     auto res = lazy_boc_deserialize(data.clone());
     if (res.is_error()) {
-      LOG(ERROR) << "cannot lazily deserialize block data : " << res.move_as_error().to_string();
+      web_error_response(response, "cannot lazily deserialize block data : " + res.move_as_error().to_string());
       return;
     }
     auto pair = res.move_as_ok();
     auto root = std::move(pair.first);
     ton::RootHash rhash{root->get_hash().bits()};
     if (rhash != blkid.root_hash) {
-      LOG(ERROR) << "block root hash mismatch: data has " << rhash.to_hex() << " , expected "
-                 << blkid.root_hash.to_hex();
+      web_error_response(response, "block root hash mismatch: data has " + rhash.to_hex() +\
+                                   " , expected " + blkid.root_hash.to_hex());
       return;
     }
     show_block_header(blkid, std::move(root), 0xffff);

@@ -6,6 +6,12 @@
 
 #include "server_http.hpp"
 
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+
+// Short alias for this namespace
+namespace pt = boost::property_tree;
+
 using td::Ref;
 
 using HttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
@@ -168,6 +174,9 @@ class TestNode : public td::actor::Actor {
 
   // Web Server Methods
   static void run_web_server(td::actor::Scheduler* scheduler, td::actor::ActorOwn<TestNode>* x);
+  static void web_error_response(std::shared_ptr<HttpServer::Response> response, std::string msg);
+  static void web_success_response(std::shared_ptr<HttpServer::Response> response, std::string msg);
+  static void web_success_response(std::shared_ptr<HttpServer::Response> response, pt::ptree root);
 
   void web_last(){
     get_server_mc_block_id_silent();
