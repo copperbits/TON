@@ -21,9 +21,9 @@ This is open development community and **enthusiasts research place**. We will p
 <!-- tocstop -->
 
 ## About source and github repositories
-http://test.ton.org/downloads.html - is the "official"* ton client tarball
-https://github.com/copperbits/TON - community version with added features but sometimes outdated code and releases
-https://github.com/poma/ton-lite-client - unchanged up to date version of tarball but on github. Also fresh binaries and docker container
+- http://test.ton.org/downloads.html - is the "official"* ton client tarball
+- https://github.com/copperbits/TON - community version with added features but sometimes outdated code and releases
+- https://github.com/poma/ton-lite-client - unchanged up to date version of tarball but on github. Also fresh binaries and docker container
 
 \*There is no official statement that ton.org is related to TON network. But this is only one real source of information and code at this moment.
 
@@ -59,6 +59,8 @@ Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a co
 - 💸 Made a UI friendly [faucet for TON](https://faucet.copperbits.io/)
 - 🔁 [Mirror with updates it builds binaries and docker container on any changes in source code](https://github.com/poma/ton-lite-client) updates any 5 minutes (former TON-mirror)
 - 📣 Telegram bot post message about updates [here](https://t.me/ton_research) and [here](https://t.me/TrackingTONupdates) - with any new commits into original repo
+- ✨ [Webserver](/docs/WEB_SERVER.md) wich realizes a web client for TON
+- 🌐 [Public node](https://explorer.test.ton.cryptoprocessing.io/api) of [web client for TON](/docs/WEB_SERVER.md)
 
 👉 _pull request and suggestions are **[very welcome](https://github.com/copperbits/TON/issues/new)**!_
 
