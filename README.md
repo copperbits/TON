@@ -51,19 +51,19 @@ Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a co
 
 ## What we already did:
 - 📖 Documentations:
- - 🐧 Added build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/ubuntu16.04.sh)
- - 📩 Explain in [video on YouTube](https://www.youtube.com/watch?v=J7K2nq5lf7I) and [text on GitHub](/docs/Mac_tutorial.md), how to start Lite Client on macOS and send transactions to TON network
- - 🇨🇳 Wrote an [article](https://mp.weixin.qq.com/s/WLlD088acBDfjUM4bCEd0A) about the TON in Chinese and began to translate [TON whitepaper into Сhinese](https://drive.google.com/file/d/1acH4j7zY_XhsOUGsup4byssMXlp5000O/view) (by toozWu)
+  - 🐧 Added build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/ubuntu16.04.sh)
+  - 📩 Explain in [video on YouTube](https://www.youtube.com/watch?v=J7K2nq5lf7I) and [text on GitHub](/docs/Mac_tutorial.md), how to start Lite Client on macOS and send transactions to TON network
+  - 🇨🇳 Wrote an [article](https://mp.weixin.qq.com/s/WLlD088acBDfjUM4bCEd0A) about the TON in Chinese and began to translate [TON whitepaper into Сhinese](https://drive.google.com/file/d/1acH4j7zY_XhsOUGsup4byssMXlp5000O/view) (by toozWu)
 
 - Helpful sources:
- - 🏗 Build lite client node: [Latest release](https://github.com/copperbits/TON/releases/latest)
- - 🐳 Packaged lite client into [Docker](https://github.com/copperbits/TON#docker)  container
- - 👓 Launched a [beta explorer](https://explorer.test.ton.cryptoprocessing.io/) for test network
- - 💸 Made a UI friendly [faucet for TON](https://faucet.copperbits.io/)
- - 🔁 Created [mirror with updates it builds binaries and docker container on any changes in source code](https://github.com/poma/ton-lite-client) updates any 5 minutes (former TON-mirror)
- - 📣 Created Telegram bot post message about updates [here](https://t.me/ton_research) and [here](https://t.me/TrackingTONupdates) - with any new commits into original repo
- - ✨ Created [Webserver](/docs/WEB_SERVER.md) which realizes a web client for TON
- - 🌐 [Public node](https://explorer.test.ton.cryptoprocessing.io/api) of [web client for TON](/docs/WEB_SERVER.md)
+  - 🏗 Build lite client node: [Latest release](https://github.com/copperbits/TON/releases/latest)
+  - 🐳 Packaged lite client into [Docker](https://github.com/copperbits/TON#docker)  container
+  - 👓 Launched a [beta explorer](https://explorer.test.ton.cryptoprocessing.io/) for test network
+  - 💸 Made a UI friendly [faucet for TON](https://faucet.copperbits.io/)
+  - 🔁 Created [mirror with updates it builds binaries and docker container on any changes in source code](https://github.com/poma/ton-lite-client) updates any 5 minutes (former TON-mirror)
+  - 📣 Created Telegram bot post message about updates [here](https://t.me/ton_research) and [here](https://t.me/TrackingTONupdates) - with any new commits into original repo
+  - ✨ Created [Webserver](/docs/WEB_SERVER.md) which realizes a web client for TON
+  - 🌐 [Public node](https://explorer.test.ton.cryptoprocessing.io/api) of [web client for TON](/docs/WEB_SERVER.md)
 
 - 🎓 Now we are writing video tutorials, writing manuals / FAQ / HOWTO how to use TON.
 
