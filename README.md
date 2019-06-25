@@ -132,10 +132,10 @@ You will find here [original readme](/docs/README.md), with additions of communi
 
 ## Contributing
 
-All this information shipped by [copperbits team](https://t.me/ton_research) and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
+All this information shipped by [copperbits team](tg://resolve?domain=ton_research) and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
 
 
-- **Questions?** Feel free to [open an issue](https://github.com/copperbits/TON/issues/new). Or ask us on [Telegam public group](https://t.me/ton_research)
+- **Questions?** Feel free to [open an issue](https://github.com/copperbits/TON/issues/new). Or ask us on [Telegam public group](tg://resolve?domain=ton_research)
 - If you find **bugs, got suggestions**, or even feature requests: [open an issue](https://github.com/copperbits/TON/issues/new) :octocat:
 - Star [GitHub repo](https://github.com/copperbits/TON/) to **support this project** :+1:
 - **Want to share something?** Feel free to add related stuff to [awesome-ton](https://github.com/copperbits/awesome-ton) repo
@@ -145,4 +145,4 @@ All this information shipped by [copperbits team](https://t.me/ton_research) and
 
 ## Contact us
 
-Here is [Telegam public group](https://t.me/ton_research) -  feel free to **ask any questions and proposals** there :+1:
+Here is [Telegam public group](tg://resolve?domain=ton_research) -  feel free to **ask any questions and proposals** there :+1:
