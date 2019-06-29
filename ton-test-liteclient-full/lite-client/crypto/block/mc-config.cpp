@@ -86,8 +86,9 @@ td::Status Config::unpack() {
   if (!root_info.custom->size_refs()) {
     return td::Status::Error("state does not have a `custom` field with masterchain configuration");
   }
-  if ((mode & needLibraries) && root_info.r1.libraries->size_refs()) {
-    lib_root = root_info.r1.libraries->prefetch_ref();
+  if (mode & needLibraries) {
+    lib_root_ = root_info.r1.libraries->prefetch_ref();
+    libraries_dict_ = std::make_unique<vm::Dictionary>(lib_root_, 256);
   }
   if (mode & needAccountsRoot) {
     accounts_root = root_info.accounts;
@@ -279,6 +280,21 @@ Ref<vm::Cell> Config::get_config_param(int idx) const {
   return config_dict->lookup_ref(td::BitArray<32>{idx});
 }
 
+td::Result<std::unique_ptr<BlockLimits>> Config::get_block_limits(bool is_masterchain) const {
+  int param = (is_masterchain ? 22 : 23);
+  auto cell = get_config_param(param);
+  if (cell.is_null()) {
+    return td::Status::Error(PSTRING() << "configuration parameter " << param << " with block limits is absent");
+  }
+  auto cs = vm::load_cell_slice(std::move(cell));
+  auto ptr = std::make_unique<BlockLimits>();
+  if (!ptr->deserialize(cs) || cs.size_ext()) {
+    return td::Status::Error(PSTRING() << "cannot deserialize BlockLimits obtained from configuration parameter "
+                                       << param);
+  }
+  return std::move(ptr);
+}
+
 td::Result<std::vector<StoragePrices>> Config::get_storage_prices() const {
   auto cell = get_config_param(18);
   std::vector<StoragePrices> res;
@@ -341,7 +357,7 @@ Ref<McShardHash> McShardHash::unpack(vm::CellSlice& cs, ton::ShardIdFull id) {
       }
       break;
     case gen::FutureSplitMerge::fsm_merge:
-      if (!gen::t_FutureSplitMerge.unpack_fsm_merge(descr.split_merge_at.write(), sh.fsm_utime_, sh.fsm_interval_)) {
+      if (gen::t_FutureSplitMerge.unpack_fsm_merge(descr.split_merge_at.write(), sh.fsm_utime_, sh.fsm_interval_)) {
         sh.fsm_ = FsmState::fsm_merge;
         return res;
       }
@@ -947,13 +963,14 @@ td::Result<bool> ShardConfig::update_shard_block_info(Ref<McShardHash> new_info,
   if (ancestor.not_null() && ancestor->fsm_ != McShardHash::FsmState::fsm_none) {
     new_info.write().set_fsm(ancestor->fsm_, ancestor->fsm_utime_, ancestor->fsm_interval_);
   }
+  auto blk = new_info->blk_;
   bool ok = do_update_shard_info(std::move(new_info));
   if (!ok) {
     return td::Status::Error(
         -666,
         std::string{
             "unknown serialization error for (BinTree ShardDescr) while updating shard configuration to include "} +
-            new_info->blk_.to_str());
+            blk.to_str());
   } else {
     return true;
   }
@@ -975,13 +992,14 @@ td::Result<bool> ShardConfig::update_shard_block_info2(Ref<McShardHash> new_info
   if (new_info1->blk_.id.shard > new_info2->blk_.id.shard) {
     std::swap(new_info1, new_info2);
   }
+  auto blk1 = new_info1->blk_, blk2 = new_info2->blk_;
   bool ok = do_update_shard_info2(std::move(new_info1), std::move(new_info2));
   if (!ok) {
     return td::Status::Error(
         -666,
         std::string{
             "unknown serialization error for (BinTree ShardDescr) while updating shard configuration to include "} +
-            new_info1->blk_.to_str() + " and " + new_info2->blk_.to_str());
+            blk1.to_str() + " and " + blk2.to_str());
   } else {
     return true;
   }
@@ -1025,7 +1043,7 @@ static bool btree_set(Ref<vm::Cell>& root, ton::ShardId shard, Ref<vm::Cell> val
     return true;
   }
   auto cs = vm::load_cell_slice(std::move(root));
-  if (cs.size_ext() != 0x20001 || cs.prefetch_ulong(1)) {
+  if (cs.size_ext() != 0x20001 || cs.prefetch_ulong(1) != 1) {
     return false;  // branch does not exist
   }
   Ref<vm::Cell> left = cs.prefetch_ref(0), right = cs.prefetch_ref(1);
@@ -1313,6 +1331,23 @@ bool Config::check_old_mc_block_id(const ton::BlockIdExt& blkid, bool strict) co
   return (!strict && block_id.is_valid() && blkid.id.seqno == block_id.id.seqno)
              ? blkid == block_id
              : block::check_old_mc_block_id(prev_blocks_dict_.get(), blkid);
+}
+
+Ref<vm::Cell> Config::lookup_library(td::ConstBitPtr root_hash) const {
+  if (!libraries_dict_) {
+    return {};
+  }
+  auto csr = libraries_dict_->lookup(root_hash, 256);
+  if (csr.is_null() || csr->prefetch_ulong(8) != 0 || !csr->have_refs()) {  // shared_lib_descr$00 lib:^Cell
+    return {};
+  }
+  auto lib = csr->prefetch_ref();
+  if (lib->get_hash().bits().compare(root_hash, 256)) {
+    LOG(ERROR) << "public library hash mismatch: expected " << root_hash.to_hex(256) << " , found "
+               << lib->get_hash().bits().to_hex(256);
+    return {};
+  }
+  return lib;
 }
 
 }  // namespace block

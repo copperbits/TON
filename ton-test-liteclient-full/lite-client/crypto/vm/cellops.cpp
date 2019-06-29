@@ -352,7 +352,7 @@ int exec_store_int_common(Stack& stack, unsigned bits, unsigned args) {
     }
     throw VmError{Excno::range_chk};
   }
-  builder.write().store_bigint256(*x, bits, sgnd);
+  builder.write().store_int256(*x, bits, sgnd);
   stack.push_builder(std::move(builder));
   if (args & 4) {
     stack.push_smallint(0);

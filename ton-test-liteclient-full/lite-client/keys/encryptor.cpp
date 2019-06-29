@@ -50,12 +50,20 @@ td::Result<td::BufferSlice> EncryptorEd25519::encrypt(td::Slice data) {
   td::sha256(data, digest);
 
   td::UInt256 key;
-  std::memcpy(key.raw, td::Slice(shared_secret).ubegin(), 16);
-  std::memcpy(key.raw + 16, digest.ubegin() + 16, 16);
+  {
+    auto S = key.as_slice();
+    S.copy_from(td::Slice(shared_secret).truncate(16));
+    S.remove_prefix(16);
+    S.copy_from(digest.copy().remove_prefix(16).truncate(16));
+  }
 
   td::UInt128 iv;
-  std::memcpy(iv.raw, digest.ubegin(), 4);
-  std::memcpy(iv.raw + 4, td::Slice(shared_secret).ubegin() + 20, 12);
+  {
+    auto S = iv.as_slice();
+    S.copy_from(digest.copy().truncate(4));
+    S.remove_prefix(4);
+    S.copy_from(td::Slice(shared_secret).remove_prefix(20).truncate(12));
+  }
 
   td::AesCtrState ctr;
   ctr.init(key, iv);
@@ -120,12 +128,12 @@ td::Result<td::BufferSlice> EncryptorAES::encrypt(td::Slice data) {
   td::sha256(data, digest);
 
   td::UInt256 key;
-  std::memcpy(key.raw, shared_secret_.raw, 16);
+  std::memcpy(key.raw, shared_secret_.as_slice().ubegin(), 16);
   std::memcpy(key.raw + 16, digest.ubegin() + 16, 16);
 
   td::UInt128 iv;
   std::memcpy(iv.raw, digest.ubegin(), 4);
-  std::memcpy(iv.raw + 4, shared_secret_.raw + 20, 12);
+  std::memcpy(iv.raw + 4, shared_secret_.as_slice().ubegin() + 20, 12);
 
   td::AesCtrState ctr;
   ctr.init(key, iv);
@@ -143,12 +151,12 @@ td::Result<td::BufferSlice> DecryptorAES::decrypt(td::Slice data) {
   data.remove_prefix(32);
 
   td::UInt256 key;
-  std::memcpy(key.raw, shared_secret_.raw, 16);
+  std::memcpy(key.raw, shared_secret_.as_slice().ubegin(), 16);
   std::memcpy(key.raw + 16, digest.ubegin() + 16, 16);
 
   td::UInt128 iv;
   std::memcpy(iv.raw, digest.ubegin(), 4);
-  std::memcpy(iv.raw + 4, shared_secret_.raw + 20, 12);
+  std::memcpy(iv.raw + 4, shared_secret_.as_slice().ubegin() + 20, 12);
 
   td::BufferSlice res(data.size());
 

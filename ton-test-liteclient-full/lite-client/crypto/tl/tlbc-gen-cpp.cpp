@@ -2560,7 +2560,7 @@ void CppTypeCode::output_store_field(std::ostream& os, std::string field_var, co
       return;
     case ct_integer:
       assert(i);
-      os << "cb.store_bigint256_bool(" << field_var << ", ";
+      os << "cb.store_int256_bool(" << field_var << ", ";
       output_cpp_sizeof_expr(os, expr, 0);
       os << (i > 0 ? ", false)" : ")");
       return;

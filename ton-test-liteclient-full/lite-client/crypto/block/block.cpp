@@ -6,6 +6,7 @@
 #include "td/utils/crypto.h"
 
 namespace block {
+using namespace std::literals::string_literals;
 
 using CombineError = vm::CombineError;
 
@@ -305,6 +306,7 @@ MsgProcessedUptoCollection::MsgProcessedUptoCollection(ton::ShardIdFull _owner, 
     z.shard = key.get_uint(64);
     z.mc_seqno = (unsigned)((key + 64).get_uint(32));
     z.last_inmsg_lt = value.write().fetch_ulong(64);
+    // std::cerr << "ProcessedUpto shard " << std::hex << z.shard << std::dec << std::endl;
     return value.write().fetch_bits_to(z.last_inmsg_hash) && z.shard && ton::shard_contains(owner.shard, z.shard);
   });
 }
@@ -329,7 +331,7 @@ bool MsgProcessedUpto::contains(ton::ShardId other_shard, ton::LogicalTime other
 
 bool MsgProcessedUptoCollection::insert(ton::LogicalTime last_proc_lt, td::ConstBitPtr last_proc_hash,
                                         ton::BlockSeqno mc_seqno) {
-  if (!last_proc_lt || last_proc_lt == std::numeric_limits<td::uint64>::max()) {
+  if (!last_proc_lt) {
     return false;
   }
   for (const auto& z : list) {
@@ -339,6 +341,10 @@ bool MsgProcessedUptoCollection::insert(ton::LogicalTime last_proc_lt, td::Const
   }
   list.emplace_back(owner.shard, mc_seqno, last_proc_lt, last_proc_hash);
   return true;
+}
+
+bool MsgProcessedUptoCollection::insert_infty(ton::BlockSeqno mc_seqno) {
+  return insert(~0ULL, td::Bits256::ones().bits(), mc_seqno);
 }
 
 ton::BlockSeqno MsgProcessedUptoCollection::min_mc_seqno() const {
@@ -390,6 +396,39 @@ bool MsgProcessedUptoCollection::pack(vm::CellBuilder& cb) {
     }
   }
   return std::move(dict).append_dict_to_bool(cb);
+}
+
+bool MsgProcessedUptoCollection::split(ton::ShardIdFull new_owner) {
+  if (!ton::shard_is_ancestor(owner, new_owner)) {
+    return false;
+  }
+  if (owner == new_owner) {
+    return true;
+  }
+  std::size_t n = list.size(), i, j = 0;
+  for (i = 0; i < n; i++) {
+    if (ton::shard_intersects(list[i].shard, new_owner.shard)) {
+      list[i].shard = ton::shard_intersection(list[i].shard, new_owner.shard);
+      if (j < i) {
+        list[j] = std::move(list[i]);
+      }
+      j++;
+    }
+  }
+  list.resize(j);
+  owner = new_owner;
+  return compactify();
+}
+
+bool MsgProcessedUptoCollection::combine_with(const MsgProcessedUptoCollection& other) {
+  if (!(other.owner == owner || ton::shard_is_sibling(other.owner, owner))) {
+    return false;
+  }
+  list.insert(list.end(), other.list.begin(), other.list.end());
+  if (owner != other.owner) {
+    owner = ton::shard_parent(owner);
+  }
+  return compactify();
 }
 
 bool MsgProcessedUpto::already_processed(const EnqueuedMsgDescr& msg) const {
@@ -451,6 +490,86 @@ bool EnqueuedMsgDescr::check_key(td::ConstBitPtr key) const {
          hash_ == key + 96;
 }
 
+bool ParamLimits::deserialize(vm::CellSlice& cs) {
+  return cs.fetch_ulong(8) == 0xc3            // param_limits#c3
+         && cs.fetch_uint_to(32, limits_[0])  // underload:uint32
+         && cs.fetch_uint_to(32, limits_[1])  // soft_limit:uint32
+         && cs.fetch_uint_to(32, limits_[3])  // hard_limit:uint32
+         && limits_[0] <= limits_[1]          // { underload <= soft_limit }
+         && limits_[1] <= limits_[3]          // { soft_limit <= hard_limit } = ParamLimits;
+         && compute_medium_limit();
+}
+
+bool BlockLimits::deserialize(vm::CellSlice& cs) {
+  return cs.fetch_ulong(8) == 0x5d     // block_limits#5d
+         && bytes.deserialize(cs)      // bytes:ParamLimits
+         && gas.deserialize(cs)        // gas:ParamLimits
+         && lt_delta.deserialize(cs);  // lt_delta:ParamLimits
+}
+
+int ParamLimits::classify(td::uint64 value) const {
+  int a = -1, b = limits_cnt;
+  while (b - a > 1) {
+    int c = (a + b) >> 1;
+    if (value >= limits_[c]) {
+      a = c;
+    } else {
+      b = c;
+    }
+  }
+  return a + 1;
+}
+
+bool ParamLimits::fits(unsigned cls, td::uint64 value) const {
+  return cls >= limits_cnt || value < limits_[cls];
+}
+
+int BlockLimits::classify_size(td::uint64 size) const {
+  return bytes.classify(size);
+}
+
+int BlockLimits::classify_gas(td::uint64 gas_value) const {
+  return gas.classify(gas_value);
+}
+
+int BlockLimits::classify_lt(ton::LogicalTime lt) const {
+  return lt_delta.classify(lt - start_lt);
+}
+
+int BlockLimits::classify(td::uint64 size, td::uint64 gas, ton::LogicalTime lt) const {
+  return std::max(std::max(classify_size(size), classify_gas(gas)), classify_lt(lt));
+}
+
+bool BlockLimits::fits(unsigned cls, td::uint64 size, td::uint64 gas_value, ton::LogicalTime lt) const {
+  return bytes.fits(cls, size) && gas.fits(cls, gas_value) && lt_delta.fits(cls, lt - start_lt);
+}
+
+td::uint64 BlockLimitStatus::estimate_block_size(const vm::NewCellStorageStat::Stat* extra) const {
+  auto sum = st_stat.get_total_stat();
+  if (extra) {
+    sum += *extra;
+  }
+  return 2000 + (sum.bits >> 3) + sum.cells * 12 + sum.internal_refs * 3 + sum.external_refs * 40 + accounts * 200 +
+         transactions * 200 + (extra ? 200 : 0);
+}
+
+int BlockLimitStatus::classify() const {
+  return limits.classify(estimate_block_size(), gas_used, cur_lt);
+}
+
+bool BlockLimitStatus::fits(unsigned cls) const {
+  return cls >= ParamLimits::limits_cnt ||
+         (limits.gas.fits(cls, gas_used) && limits.lt_delta.fits(cls, cur_lt - limits.start_lt) &&
+          limits.bytes.fits(cls, estimate_block_size()));
+}
+
+bool BlockLimitStatus::would_fit(unsigned cls, ton::LogicalTime end_lt, td::uint64 more_gas,
+                                 const vm::NewCellStorageStat::Stat* extra) const {
+  return cls >= ParamLimits::limits_cnt || (limits.gas.fits(cls, gas_used + more_gas) &&
+                                            limits.lt_delta.fits(cls, std::max(cur_lt, end_lt) - limits.start_lt) &&
+                                            limits.bytes.fits(cls, estimate_block_size(extra)));
+}
+
 namespace tlb {
 
 using namespace ::tlb;
@@ -459,10 +578,10 @@ int MsgAddressExt::get_size(const vm::CellSlice& cs) const {
   switch (get_tag(cs)) {
     case addr_none:  // 00, addr_none
       return 2;
-    case addr_ext:  // 01, addr_ext
-      if (cs.have(10)) {
-        int len = cs.prefetch_long(10) & 0xff;
-        return 2 + 8 + len;
+    case addr_ext:  // 01, addr_extern
+      if (cs.have(2 + 9)) {
+        int len = cs.prefetch_long(2 + 9) & 0x1ff;
+        return 2 + 9 + len;
       }
   }
   return -1;
@@ -661,7 +780,7 @@ unsigned long long VarUInteger::as_uint(const vm::CellSlice& cs) const {
 bool VarUInteger::store_integer_value(vm::CellBuilder& cb, const td::BigInt256& value) const {
   int k = value.bit_size(false);
   return k <= (n - 1) * 8 && cb.store_long_bool((k + 7) >> 3, ln) &&
-         cb.store_bigint256_bool(value, (k + 7) & -8, false);
+         cb.store_int256_bool(value, (k + 7) & -8, false);
 }
 
 unsigned VarUInteger::precompute_integer_size(const td::BigInt256& value) const {
@@ -703,7 +822,7 @@ unsigned long long VarUIntegerPos::as_uint(const vm::CellSlice& cs) const {
 bool VarUIntegerPos::store_integer_value(vm::CellBuilder& cb, const td::BigInt256& value) const {
   int k = value.bit_size(false);
   return k <= (n - 1) * 8 && value.sgn() > 0 && cb.store_long_bool((k + 7) >> 3, ln) &&
-         cb.store_bigint256_bool(value, (k + 7) & -8, false);
+         cb.store_int256_bool(value, (k + 7) & -8, false);
 }
 
 const VarUIntegerPos t_VarUIntegerPos_16{16}, t_VarUIntegerPos_32{32};
@@ -736,7 +855,7 @@ long long VarInteger::as_int(const vm::CellSlice& cs) const {
 
 bool VarInteger::store_integer_value(vm::CellBuilder& cb, const td::BigInt256& value) const {
   int k = value.bit_size(true);
-  return k <= (n - 1) * 8 && cb.store_long_bool((k + 7) >> 3, ln) && cb.store_bigint256_bool(value, (k + 7) & -8, true);
+  return k <= (n - 1) * 8 && cb.store_long_bool((k + 7) >> 3, ln) && cb.store_int256_bool(value, (k + 7) & -8, true);
 }
 
 bool VarIntegerNz::skip(vm::CellSlice& cs) const {
@@ -763,7 +882,7 @@ long long VarIntegerNz::as_int(const vm::CellSlice& cs) const {
 bool VarIntegerNz::store_integer_value(vm::CellBuilder& cb, const td::BigInt256& value) const {
   int k = value.bit_size(true);
   return k <= (n - 1) * 8 && value.sgn() != 0 && cb.store_long_bool((k + 7) >> 3, ln) &&
-         cb.store_bigint256_bool(value, (k + 7) & -8, true);
+         cb.store_int256_bool(value, (k + 7) & -8, true);
 }
 
 bool Grams::validate_skip(vm::CellSlice& cs) const {
@@ -854,87 +973,77 @@ bool HashmapE::validate(const vm::CellSlice& cs) const {
 }
 
 bool HashmapE::add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const {
-  try {
-    int n = root_type.n;
-    vm::Dictionary dict1{cs1, n, true, true}, dict2{cs2, n, true, true};
-    const TLB& vt = root_type.value_type;
-    vm::Dictionary::simple_combine_func_t combine = [vt](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
-                                                         Ref<vm::CellSlice> cs2_ref) -> bool {
-      if (!vt.add_values(cb, cs1_ref.write(), cs2_ref.write())) {
-        throw CombineError{};
-      }
-      return true;
-    };
-    dict1.combine_with(dict2, combine);
-    dict2.reset();
-    return std::move(dict1).append_dict_to_bool(cb);
-  } catch (CombineError&) {
-    return false;
-  }
+  int n = root_type.n;
+  vm::Dictionary dict1{vm::DictAdvance(), cs1, n}, dict2{vm::DictAdvance(), cs2, n};
+  const TLB& vt = root_type.value_type;
+  vm::Dictionary::simple_combine_func_t combine = [vt](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
+                                                       Ref<vm::CellSlice> cs2_ref) -> bool {
+    if (!vt.add_values(cb, cs1_ref.write(), cs2_ref.write())) {
+      throw CombineError{};
+    }
+    return true;
+  };
+  return dict1.combine_with(dict2, combine) && std::move(dict1).append_dict_to_bool(cb);
 }
 
 bool HashmapE::add_values_ref(Ref<vm::Cell>& res, Ref<vm::Cell> arg1, Ref<vm::Cell> arg2) const {
-  try {
-    int n = root_type.n;
-    vm::Dictionary dict1{std::move(arg1), n, true}, dict2{std::move(arg2), n, true};
-    const TLB& vt = root_type.value_type;
-    vm::Dictionary::simple_combine_func_t combine = [vt](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
-                                                         Ref<vm::CellSlice> cs2_ref) -> bool {
-      if (!vt.add_values(cb, cs1_ref.write(), cs2_ref.write())) {
-        throw CombineError{};
-      }
-      return true;
-    };
-    dict1.combine_with(dict2, combine);
+  int n = root_type.n;
+  vm::Dictionary dict1{std::move(arg1), n}, dict2{std::move(arg2), n};
+  const TLB& vt = root_type.value_type;
+  vm::Dictionary::simple_combine_func_t combine = [vt](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
+                                                       Ref<vm::CellSlice> cs2_ref) -> bool {
+    if (!vt.add_values(cb, cs1_ref.write(), cs2_ref.write())) {
+      throw CombineError{};
+    }
+    return true;
+  };
+  if (dict1.combine_with(dict2, combine)) {
     dict2.reset();
     res = std::move(dict1).extract_root_cell();
     return true;
-  } catch (CombineError&) {
+  } else {
     res = Ref<vm::Cell>{};
     return false;
   }
 }
 
 int HashmapE::sub_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const {
-  try {
-    int n = root_type.n;
-    vm::Dictionary dict1{cs1, n, true, true}, dict2{cs2, n, true, true};
-    const TLB& vt = root_type.value_type;
-    vm::Dictionary::simple_combine_func_t combine = [vt](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
-                                                         Ref<vm::CellSlice> cs2_ref) -> bool {
-      int r = vt.sub_values(cb, cs1_ref.write(), cs2_ref.write());
-      if (r < 0) {
-        throw CombineError{};
-      }
-      return r;
-    };
-    dict1.combine_with(dict2, combine, 1);
-    dict2.reset();
-    bool not_empty = !dict1.is_empty();
-    return std::move(dict1).append_dict_to_bool(cb) ? not_empty : -1;
-  } catch (CombineError&) {
+  int n = root_type.n;
+  vm::Dictionary dict1{vm::DictAdvance(), cs1, n}, dict2{vm::DictAdvance(), cs2, n};
+  const TLB& vt = root_type.value_type;
+  vm::Dictionary::simple_combine_func_t combine = [vt](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
+                                                       Ref<vm::CellSlice> cs2_ref) -> bool {
+    int r = vt.sub_values(cb, cs1_ref.write(), cs2_ref.write());
+    if (r < 0) {
+      throw CombineError{};
+    }
+    return r;
+  };
+  if (!dict1.combine_with(dict2, combine, 1)) {
     return -1;
   }
+  dict2.reset();
+  bool not_empty = !dict1.is_empty();
+  return std::move(dict1).append_dict_to_bool(cb) ? not_empty : -1;
 }
 
 int HashmapE::sub_values_ref(Ref<vm::Cell>& res, Ref<vm::Cell> arg1, Ref<vm::Cell> arg2) const {
-  try {
-    int n = root_type.n;
-    vm::Dictionary dict1{std::move(arg1), n, true}, dict2{std::move(arg2), n, true};
-    const TLB& vt = root_type.value_type;
-    vm::Dictionary::simple_combine_func_t combine = [vt](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
-                                                         Ref<vm::CellSlice> cs2_ref) -> bool {
-      int r = vt.sub_values(cb, cs1_ref.write(), cs2_ref.write());
-      if (r < 0) {
-        throw CombineError{};
-      }
-      return r;
-    };
-    dict1.combine_with(dict2, combine, 1);
+  int n = root_type.n;
+  vm::Dictionary dict1{std::move(arg1), n}, dict2{std::move(arg2), n};
+  const TLB& vt = root_type.value_type;
+  vm::Dictionary::simple_combine_func_t combine = [vt](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
+                                                       Ref<vm::CellSlice> cs2_ref) -> bool {
+    int r = vt.sub_values(cb, cs1_ref.write(), cs2_ref.write());
+    if (r < 0) {
+      throw CombineError{};
+    }
+    return r;
+  };
+  if (dict1.combine_with(dict2, combine, 1)) {
     dict2.reset();
     res = std::move(dict1).extract_root_cell();
     return res.not_null();
-  } catch (CombineError&) {
+  } else {
     res = Ref<vm::Cell>{};
     return -1;
   }
@@ -2437,7 +2546,7 @@ bool check_one_config_param(Ref<vm::CellSlice> cs_ref, td::ConstBitPtr key, td::
   return ok;
 }
 
-const int mandatory_config_params[] = {18, 34};
+const int mandatory_config_params[] = {18, 20, 21, 22, 23, 24, 25, 28, 34};
 
 bool valid_config_data(Ref<vm::Cell> cell, const td::BitArray<256>& addr, bool catch_errors, bool relax_par0) {
   using namespace std::placeholders;
@@ -2514,6 +2623,10 @@ std::pair<int, int> perform_hypercube_routing(ton::AccountIdPrefixFull src, ton:
   if (!ton::shard_contains(cur, transit)) {
     return {-1, -1};
   }
+  if (transit.workchain == ton::masterchainId || dest.workchain == ton::masterchainId) {
+    // !!!FIXME next line commented for DEBUG
+    // return {0, 96};  // route messages to/from masterchain directly
+  }
   if (transit.workchain != dest.workchain) {
     return {used_dest_bits, 32};
   }
@@ -2532,15 +2645,16 @@ std::pair<int, int> perform_hypercube_routing(ton::AccountIdPrefixFull src, ton:
   return {28 + i, 32 + i};
 }
 
-bool unpack_block_prev_blk(Ref<vm::Cell> block_root, ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
-                           ton::BlockIdExt& mc_blkid, bool& after_split) {
-  return unpack_block_prev_blk_ext(std::move(block_root), id, prev, mc_blkid, after_split).is_ok();
+bool unpack_block_prev_blk(Ref<vm::Cell> block_root, const ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
+                           ton::BlockIdExt& mc_blkid, bool& after_split, ton::BlockIdExt* fetch_blkid) {
+  return unpack_block_prev_blk_ext(std::move(block_root), id, prev, mc_blkid, after_split, fetch_blkid).is_ok();
 }
 
-td::Status unpack_block_prev_blk_try(Ref<vm::Cell> block_root, ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
-                                     ton::BlockIdExt& mc_blkid, bool& after_split) {
+td::Status unpack_block_prev_blk_try(Ref<vm::Cell> block_root, const ton::BlockIdExt& id,
+                                     std::vector<ton::BlockIdExt>& prev, ton::BlockIdExt& mc_blkid, bool& after_split,
+                                     ton::BlockIdExt* fetch_blkid) {
   try {
-    return unpack_block_prev_blk_ext(std::move(block_root), id, prev, mc_blkid, after_split);
+    return unpack_block_prev_blk_ext(std::move(block_root), id, prev, mc_blkid, after_split, fetch_blkid);
   } catch (vm::VmError err) {
     return td::Status::Error(std::string{"error while processing Merkle proof: "} + err.get_msg());
   } catch (vm::VmVirtError err) {
@@ -2548,29 +2662,48 @@ td::Status unpack_block_prev_blk_try(Ref<vm::Cell> block_root, ton::BlockIdExt& 
   }
 }
 
-td::Status unpack_block_prev_blk_ext(Ref<vm::Cell> block_root, ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
-                                     ton::BlockIdExt& mc_blkid, bool& after_split) {
+td::Status unpack_block_prev_blk_ext(Ref<vm::Cell> block_root, const ton::BlockIdExt& id,
+                                     std::vector<ton::BlockIdExt>& prev, ton::BlockIdExt& mc_blkid, bool& after_split,
+                                     ton::BlockIdExt* fetch_blkid) {
   block::gen::Block::Record blk;
   block::gen::BlockInfo::Record info;
-  block::gen::BlkPrevInfo::Record prevref;
   block::gen::ExtBlkRef::Record mcref;  // _ ExtBlkRef = BlkMasterInfo;
   ton::ShardIdFull shard;
   if (!(tlb::unpack_cell(block_root, blk) && tlb::unpack_cell(blk.info, info) && !info.version &&
         block::tlb::t_ShardIdent.unpack(info.shard.write(), shard) && !info.vert_seq_no &&
-        tlb::type_unpack_cell(info.prev_ref, block::gen::BlkPrevInfo{info.after_merge}, prevref) &&
         (!info.not_master || tlb::unpack_cell(info.master_ref, mcref)))) {
     return td::Status::Error("cannot unpack block header");
   }
-  id.id = ton::BlockId{shard, (unsigned)info.seq_no};
-  id.root_hash = block_root->get_hash().bits();
-  id.file_hash.clear();
+  if (fetch_blkid) {
+    fetch_blkid->id = ton::BlockId{shard, (unsigned)info.seq_no};
+    fetch_blkid->root_hash = block_root->get_hash().bits();
+    fetch_blkid->file_hash.clear();
+  } else {
+    ton::BlockId hdr_id{shard, (unsigned)info.seq_no};
+    if (id.id != hdr_id) {
+      return td::Status::Error("block header contains block id "s + hdr_id.to_str() + ", expected " + id.id.to_str());
+    }
+    if (id.root_hash != block_root->get_hash().bits()) {
+      return td::Status::Error("block header has incorrect root hash "s + block_root->get_hash().bits().to_hex(256) +
+                               " instead of expected " + id.root_hash.to_hex());
+    }
+  }
   if (info.not_master != !shard.is_masterchain()) {
     return td::Status::Error("block has invalid not_master flag in its (Merkelized) header");
   }
   after_split = info.after_split;
   block::gen::ExtBlkRef::Record prev1, prev2;
-  if (!(tlb::csr_unpack(prevref.prev, prev1) && (!info.after_merge || tlb::csr_unpack(prevref.prev_alt, prev2)))) {
-    return td::Status::Error("cannot unpack previous block references from block header");
+  if (info.after_merge) {
+    auto cs = vm::load_cell_slice(std::move(info.prev_ref));
+    CHECK(cs.size_ext() == 0x20000);  // prev_blks_info$_ prev1:^ExtBlkRef prev2:^ExtBlkRef = BlkPrevInfo 1;
+    if (!(tlb::unpack_cell(cs.prefetch_ref(0), prev1) && tlb::unpack_cell(cs.prefetch_ref(1), prev2))) {
+      return td::Status::Error("cannot unpack two previous block references from block header");
+    }
+  } else {
+    // prev_blk_info$_ prev:ExtBlkRef = BlkPrevInfo 0;
+    if (!(tlb::unpack_cell(std::move(info.prev_ref), prev1))) {
+      return td::Status::Error("cannot unpack previous block reference from block header");
+    }
   }
   prev.clear();
   ton::BlockSeqno prev_seqno = prev1.seq_no;

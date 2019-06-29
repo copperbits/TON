@@ -23,7 +23,7 @@ class CellUsageTree : public std::enable_shared_from_this<CellUsageTree> {
     bool on_load() const;
     NodePtr create_child(unsigned ref_id) const;
     bool mark_path(CellUsageTree* master_tree) const;
-    bool is_from_tree(CellUsageTree* master_tree) const;
+    bool is_from_tree(const CellUsageTree* master_tree) const;
 
    private:
     std::weak_ptr<CellUsageTree> tree_weak_;

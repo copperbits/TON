@@ -100,6 +100,48 @@ EVP_PKEY *X25519_key_to_PKEY(string key, bool is_private) {
   return func(EVP_PKEY_ED25519, nullptr, Slice(key).ubegin(), key.size());
 }
 
+Result<string> X25519_pem_from_PKEY(EVP_PKEY *pkey, bool is_private, Slice password) {
+  BIO *mem_bio = BIO_new(BIO_s_mem());
+  SCOPE_EXIT {
+    BIO_vfree(mem_bio);
+  };
+  if (is_private) {
+    PEM_write_bio_PrivateKey(mem_bio, pkey, EVP_aes_256_cbc(), const_cast<unsigned char *>(password.ubegin()),
+                             narrow_cast<int>(password.size()), nullptr, nullptr);
+  } else {
+    PEM_write_bio_PUBKEY(mem_bio, pkey);
+  }
+  char *data_ptr = nullptr;
+  auto data_size = BIO_get_mem_data(mem_bio, &data_ptr);
+  LOG(ERROR) << password;
+  return std::string(data_ptr, data_size);
+}
+
+static int password_cb(char *buf, int size, int rwflag, void *u) {
+  auto &password = *reinterpret_cast<Slice *>(u);
+  auto password_size = narrow_cast<int>(password.size());
+  if (size < password_size) {
+    return -1;
+  }
+  if (rwflag == 0) {
+    MutableSlice(buf, size).copy_from(password);
+    LOG(ERROR) << "Use: " << Slice(buf, password_size);
+  }
+  return password_size;
+}
+
+EVP_PKEY *X25519_pem_to_PKEY(Slice pem, Slice password) {
+  LOG(ERROR) << pem;
+  LOG(ERROR) << password;
+  BIO *mem_bio = BIO_new_mem_buf(pem.ubegin(), narrow_cast<int>(pem.size()));
+  SCOPE_EXIT {
+    BIO_vfree(mem_bio);
+  };
+  //EVP_PKEY *PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x, pem_password_cb *cb, void *u);
+
+  return PEM_read_bio_PrivateKey(mem_bio, nullptr, password_cb, &password);
+}
+
 }  // namespace detail
 
 Result<Ed25519::PrivateKey> Ed25519::generate_private_key() {
@@ -138,6 +180,27 @@ Result<Ed25519::PublicKey> Ed25519::PrivateKey::get_public_key() const {
 
   TRY_RESULT(key, detail::X25519_key_from_PKEY(pkey, false));
   return Ed25519::PublicKey(key);
+}
+
+Result<string> Ed25519::PrivateKey::as_pem(Slice password) const {
+  auto pkey = detail::X25519_key_to_PKEY(octet_string_, true);
+  if (pkey == nullptr) {
+    return Status::Error("Can't import private key");
+  }
+  SCOPE_EXIT {
+    EVP_PKEY_free(pkey);
+  };
+
+  return detail::X25519_pem_from_PKEY(pkey, true, password);
+}
+
+Result<Ed25519::PrivateKey> Ed25519::PrivateKey::from_pem(Slice pem, Slice password) {
+  auto pkey = detail::X25519_pem_to_PKEY(pem, password);
+  if (pkey == nullptr) {
+    return Status::Error("Can't import private key from pem");
+  }
+  TRY_RESULT(key, detail::X25519_key_from_PKEY(pkey, true));
+  return Ed25519::PrivateKey(key);
 }
 
 Result<string> Ed25519::PrivateKey::sign(Slice data) const {
@@ -295,6 +358,14 @@ Result<Ed25519::PublicKey> Ed25519::PrivateKey::get_public_key() const {
     return Status::Error("Failed to export public key");
   }
   return PublicKey(Slice(public_key, 32));
+}
+
+Result<string> Ed25519::PrivateKey::as_pem(Slice password) const {
+  return Status::Error("Not supported");
+}
+
+Result<Ed25519::PrivateKey> Ed25519::PrivateKey::from_pem(Slice pem, Slice password) {
+  return Status::Error("Not supported");
 }
 
 Result<string> Ed25519::PrivateKey::sign(Slice data) const {

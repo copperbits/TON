@@ -3,6 +3,7 @@
 #include "vm/cells.h"
 #include "vm/cellslice.h"
 #include "vm/dict.h"
+#include "vm/boc.h"
 #include <ostream>
 #include "tl/tlblib.hpp"
 #include "td/utils/bits.h"
@@ -146,11 +147,100 @@ struct MsgProcessedUptoCollection {
     return valid;
   }
   bool insert(ton::LogicalTime last_proc_lt, td::ConstBitPtr last_proc_hash, ton::BlockSeqno mc_seqno);
+  bool insert_infty(ton::BlockSeqno mc_seqno);
   bool compactify();
   bool pack(vm::CellBuilder& cb);
   ton::BlockSeqno min_mc_seqno() const;
+  bool split(ton::ShardIdFull new_owner);
+  bool combine_with(const MsgProcessedUptoCollection& other);
   // NB: this is for checking whether we have already imported an internal message
   bool already_processed(const EnqueuedMsgDescr& msg) const;
+};
+
+struct ParamLimits {
+  enum { limits_cnt = 4 };
+  enum { cl_underload = 0, cl_normal = 1, cl_soft = 2, cl_medium = 3, cl_hard = 4 };
+  ParamLimits() = default;
+  ParamLimits(td::uint32 underload, td::uint32 soft_lim, td::uint32 hard_lim)
+      : limits_{underload, soft_lim, (soft_lim + hard_lim) / 2, hard_lim} {
+  }
+  td::uint32 underload() const {
+    return limits_[0];
+  }
+  td::uint32 soft() const {
+    return limits_[1];
+  }
+  td::uint32 hard() const {
+    return limits_[3];
+  }
+  bool compute_medium_limit() {
+    limits_[2] = soft() + ((hard() - soft()) >> 1);
+    return true;
+  }
+  bool deserialize(vm::CellSlice& cs);
+  int classify(td::uint64 value) const;
+  bool fits(unsigned cls, td::uint64 value) const;
+
+ private:
+  std::array<td::uint32, limits_cnt> limits_;
+};
+
+struct BlockLimits {
+  ParamLimits bytes, gas, lt_delta;
+  ton::LogicalTime start_lt{0};
+  const vm::CellUsageTree* usage_tree{nullptr};
+  bool deserialize(vm::CellSlice& cs);
+  int classify_size(td::uint64 size) const;
+  int classify_gas(td::uint64 gas) const;
+  int classify_lt(ton::LogicalTime lt) const;
+  int classify(td::uint64 size, td::uint64 gas, ton::LogicalTime lt) const;
+  bool fits(unsigned cls, td::uint64 size, td::uint64 gas, ton::LogicalTime lt) const;
+};
+
+struct BlockLimitStatus {
+  const BlockLimits& limits;
+  ton::LogicalTime cur_lt;
+  td::uint64 gas_used{};
+  vm::NewCellStorageStat st_stat;
+  unsigned accounts{}, transactions{};
+  BlockLimitStatus(const BlockLimits& limits_, ton::LogicalTime lt = 0)
+      : limits(limits_), cur_lt(std::max(limits_.start_lt, lt)) {
+  }
+  void reset() {
+    cur_lt = limits.start_lt;
+    st_stat.set_zero();
+    transactions = accounts = 0;
+    gas_used = 0;
+  }
+  td::uint64 estimate_block_size(const vm::NewCellStorageStat::Stat* extra = nullptr) const;
+  int classify() const;
+  bool fits(unsigned cls) const;
+  bool would_fit(unsigned cls, ton::LogicalTime end_lt, td::uint64 more_gas,
+                 const vm::NewCellStorageStat::Stat* extra = nullptr) const;
+  bool add_cell(Ref<vm::Cell> cell) {
+    st_stat.add_cell(std::move(cell));
+    return true;
+  }
+  bool add_proof(Ref<vm::Cell> cell) {
+    st_stat.add_proof(std::move(cell), limits.usage_tree);
+    return true;
+  }
+  bool update_lt(ton::LogicalTime lt) {
+    cur_lt = std::max(lt, cur_lt);
+    return true;
+  }
+  bool update_gas(td::uint64 more_gas) {
+    gas_used += more_gas;
+    return true;
+  }
+  bool add_transaction(unsigned cnt = 1) {
+    transactions += cnt;
+    return true;
+  }
+  bool add_account(unsigned cnt = 1) {
+    accounts += cnt;
+    return true;
+  }
 };
 
 namespace tlb {
@@ -1034,7 +1124,7 @@ struct BlockIdExt final : TLB_Complex {
 extern const BlockIdExt t_BlockIdExt;
 
 struct ShardState final : TLB_Complex {
-  enum { shard_state = (int)0x9023afdf };
+  enum { shard_state = (int)0x9023afdf, split_state = 0x5f327da5 };
   bool skip(vm::CellSlice& cs) const override;
   bool validate_skip(vm::CellSlice& cs) const override;
   int get_tag(const vm::CellSlice& cs) const override {
@@ -1120,12 +1210,14 @@ ton::AccountIdPrefixFull interpolate_addr(ton::AccountIdPrefixFull src, ton::Acc
 std::pair<int, int> perform_hypercube_routing(ton::AccountIdPrefixFull src, ton::AccountIdPrefixFull dest,
                                               ton::ShardIdFull cur, int used_dest_bits = 0);
 
-bool unpack_block_prev_blk(Ref<vm::Cell> block_root, ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
-                           ton::BlockIdExt& mc_blkid, bool& after_split);
-td::Status unpack_block_prev_blk_ext(Ref<vm::Cell> block_root, ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
-                                     ton::BlockIdExt& mc_blkid, bool& after_split);
-td::Status unpack_block_prev_blk_try(Ref<vm::Cell> block_root, ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
-                                     ton::BlockIdExt& mc_blkid, bool& after_split);
+bool unpack_block_prev_blk(Ref<vm::Cell> block_root, const ton::BlockIdExt& id, std::vector<ton::BlockIdExt>& prev,
+                           ton::BlockIdExt& mc_blkid, bool& after_split, ton::BlockIdExt* fetch_blkid = nullptr);
+td::Status unpack_block_prev_blk_ext(Ref<vm::Cell> block_root, const ton::BlockIdExt& id,
+                                     std::vector<ton::BlockIdExt>& prev, ton::BlockIdExt& mc_blkid, bool& after_split,
+                                     ton::BlockIdExt* fetch_blkid = nullptr);
+td::Status unpack_block_prev_blk_try(Ref<vm::Cell> block_root, const ton::BlockIdExt& id,
+                                     std::vector<ton::BlockIdExt>& prev, ton::BlockIdExt& mc_blkid, bool& after_split,
+                                     ton::BlockIdExt* fetch_blkid = nullptr);
 
 std::unique_ptr<vm::Dictionary> get_prev_blocks_dict(Ref<vm::Cell> state_root);
 bool get_old_mc_block_id(vm::Dictionary* prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,

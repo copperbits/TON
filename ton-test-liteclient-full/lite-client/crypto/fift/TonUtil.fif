@@ -31,6 +31,34 @@
   1 and 0= 
 } : parse-smc-addr
 
+// ( wc addr -- )  Show address in <workchain>:<account> form
+{ swap ._ .":" x. } : .addr
+// ( wc addr flags -- )  Show address in base64url form
+{ smca>$ type } : .Addr
+// ( wc addr fname -- )  Save address to file in 36-byte format
+{ -rot 256 u>B swap 32 i>B B+ swap B>file } : save-address
+// ( wc addr fname -- )  Save address and print message
+{ dup ."(Saving address to file " type .")" cr save-address
+} : save-address-verbose
+
+// ( fname -- wc addr )  Load address from file
+{ file>B 32 B| 
+  dup Blen { 32 B>i@ } { drop Basechain } cond
+  swap 256 B>u@
+} : load-address
+// ( fname -- wc addr )  Load address from file and print message
+{ dup ."(Loading address from file " type .")" cr load-address
+} : load-address-verbose
+// Parse string as address or load address from file (if string is prefixed by @)
+// ( S default-bounce -- workchain addr bounce? )
+{ over $len 0= abort"empty smart-contract address"
+  swap dup 1 $| swap "@" $=
+  { nip load-address rot } { drop nip parse-smc-addr } cond
+} : parse-load-address
+
+// ( b wc addr -- b' )  Serializes address into Builder b
+{ -rot 8 i, swap 256 u, } : addr, 
+
 // Gram utilities
 1000000000 constant Gram
 { Gram swap */r } : Gram*/

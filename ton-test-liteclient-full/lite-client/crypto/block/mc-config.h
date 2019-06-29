@@ -120,6 +120,7 @@ struct McShardHash : public ton::validator::McShardHash {
   ton::UnixTime fsm_interval_{0};
   ton::BlockSeqno min_ref_mc_seqno_{-1U};
   FsmState fsm_{FsmState::fsm_none};
+  bool disabled_{false};
   bool before_split_{false}, before_merge_{false}, want_split_{false}, want_merge_{false};
   bool nx_cc_updated_{false};
   ton::CatchainSeqno next_catchain_seqno_{-1U};
@@ -191,6 +192,12 @@ struct McShardHash : public ton::validator::McShardHash {
   bool before_merge() const override final {
     return before_merge_;
   }
+  bool is_disabled() const {
+    return disabled_;
+  }
+  void disable() {
+    disabled_ = true;
+  }
   ton::BlockSeqno seqno() const {
     return blk_.id.seqno;
   }
@@ -239,7 +246,7 @@ struct StoragePrices {
   td::uint64 cell_price{0};
   td::uint64 mc_bit_price{0};
   td::uint64 mc_cell_price{0};
-  StoragePrices();
+  StoragePrices() = default;
   StoragePrices(ton::UnixTime _valid_since, td::uint64 _bprice, td::uint64 _cprice, td::uint64 _mc_bprice,
                 td::uint64 _mc_cprice)
       : valid_since(_valid_since)
@@ -379,7 +386,7 @@ class Config : public ShardConfig {
 
  private:
   Ref<vm::Cell> state_root;
-  Ref<vm::Cell> lib_root;
+  Ref<vm::Cell> lib_root_;
   Ref<vm::Cell> state_extra_root;
   Ref<vm::CellSlice> accounts_root;
   Ref<vm::Cell> shard_hashes;
@@ -393,6 +400,7 @@ class Config : public ShardConfig {
   std::unique_ptr<vm::AugmentedDictionary> accounts_dict;
   std::unique_ptr<vm::Dictionary> prev_blocks_dict_;
   std::unique_ptr<vm::Dictionary> workchains_dict_;
+  std::unique_ptr<vm::Dictionary> libraries_dict_;
   WorkchainSet workchains_;
 
  public:
@@ -419,6 +427,10 @@ class Config : public ShardConfig {
   static CatchainValidatorsConfig unpack_catchain_validators_config(Ref<vm::Cell> cell);
   CatchainValidatorsConfig get_catchain_validators_config() const;
   static std::unique_ptr<vm::Dictionary> extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root);
+  td::Result<std::unique_ptr<BlockLimits>> get_block_limits(bool is_masterchain = false) const;
+  auto get_mc_block_limits() const {
+    return get_block_limits(true);
+  }
   bool set_block_id_ext(const ton::BlockIdExt& block_id_ext);
   ton::ZeroStateIdExt get_zerostate_id() const {
     return zerostate_id_;
@@ -434,6 +446,10 @@ class Config : public ShardConfig {
   int get_global_blockchain_id() const {
     return global_id_;
   }
+  Ref<vm::Cell> lookup_library(const ton::Bits256& root_hash) const {
+    return lookup_library(root_hash.bits());
+  }
+  Ref<vm::Cell> lookup_library(td::ConstBitPtr root_hash) const;
   bool get_old_mc_block_id(ton::BlockSeqno seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt = nullptr) const;
   bool check_old_mc_block_id(const ton::BlockIdExt& blkid, bool strict = false) const;
   ton::CatchainSeqno get_shard_cc_seqno(ton::ShardIdFull shard) const;

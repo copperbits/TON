@@ -36,6 +36,10 @@ class Ed25519 {
 
     Result<string> sign(Slice data) const;
 
+    Result<string> as_pem(Slice password) const;
+
+    static Result<PrivateKey> from_pem(Slice pem, Slice password);
+
    private:
     string octet_string_;
   };

@@ -1032,15 +1032,30 @@ bool CellStorageStat::add_used_storage(Ref<vm::Cell> cell, bool kill_dup, bool s
 void NewCellStorageStat::add_cell(Ref<Cell> cell) {
   dfs(std::move(cell), true, false);
 }
-void NewCellStorageStat::add_proof(Ref<Cell> cell, CellUsageTree* usage_tree) {
+void NewCellStorageStat::add_proof(Ref<Cell> cell, const CellUsageTree* usage_tree) {
   CHECK(usage_tree);
   usage_tree_ = usage_tree;
   dfs(std::move(cell), false, true);
 }
-void NewCellStorageStat::add_cell_and_proof(Ref<Cell> cell, CellUsageTree* usage_tree) {
+void NewCellStorageStat::add_cell_and_proof(Ref<Cell> cell, const CellUsageTree* usage_tree) {
   CHECK(usage_tree);
   usage_tree_ = usage_tree;
   dfs(std::move(cell), true, true);
+}
+
+NewCellStorageStat::Stat NewCellStorageStat::tentative_add_cell(Ref<Cell> cell) const {
+  NewCellStorageStat stat;
+  stat.parent_ = this;
+  stat.add_cell(std::move(cell));
+  return stat.get_stat();
+}
+
+NewCellStorageStat::Stat NewCellStorageStat::tentative_add_proof(Ref<Cell> cell,
+                                                                 const CellUsageTree* usage_tree) const {
+  NewCellStorageStat stat;
+  stat.parent_ = this;
+  stat.add_proof(std::move(cell), usage_tree);
+  return stat.get_proof_stat();
 }
 
 void NewCellStorageStat::dfs(Ref<Cell> cell, bool need_stat, bool need_proof_stat) {
@@ -1050,7 +1065,7 @@ void NewCellStorageStat::dfs(Ref<Cell> cell, bool need_stat, bool need_proof_sta
   }
   if (need_stat) {
     stat_.internal_refs++;
-    if (!seen_.insert(cell->get_hash()).second) {
+    if ((parent_ && parent_->seen_.count(cell->get_hash()) != 0) || !seen_.insert(cell->get_hash()).second) {
       need_stat = false;
     } else {
       stat_.cells++;
@@ -1064,7 +1079,8 @@ void NewCellStorageStat::dfs(Ref<Cell> cell, bool need_stat, bool need_proof_sta
       need_proof_stat = false;
     } else {
       proof_stat_.internal_refs++;
-      if (!proof_seen_.insert(cell->get_hash()).second) {
+      if ((parent_ && parent_->proof_seen_.count(cell->get_hash()) != 0) ||
+          !proof_seen_.insert(cell->get_hash()).second) {
         need_proof_stat = false;
       } else {
         proof_stat_.cells++;

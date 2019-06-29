@@ -157,7 +157,7 @@ void gen_tl_constructor_from_string(StringBuilder &sb, Slice name, const Vec &ve
   sb << "\n  };\n";
   sb << "  auto it = m.find(str);\n";
   sb << "  if (it == m.end()) {\n"
-     << "    return Status::Error(\"Unknown class\");\n"
+     << "    return Status::Error(str + \"Unknown class\");\n"
      << "  }\n"
      << "  return it->second;\n";
   sb << "}\n";
@@ -207,6 +207,8 @@ void gen_json_converter_file(const tl::simple::Schema &schema, const std::string
 
     sb << "#include \"td/utils/JsonBuilder.h\"\n";
     sb << "#include \"td/utils/Status.h\"\n\n";
+
+    sb << "#include \"crypto/common/bitstring.h\"\n";
   } else {
     sb << "#include \"" << file_name_base << ".h\"\n\n";
 

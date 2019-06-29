@@ -14,6 +14,48 @@ bool Continuation::has_c0() const {
   return cont_data && cont_data->save.c[0].not_null();
 }
 
+StackEntry ControlRegs::get(unsigned idx) const {
+  if (idx < creg_num) {
+    return get_c(idx);
+  } else if (idx >= dreg_idx && idx < dreg_idx + dreg_num) {
+    return get_d(idx);
+  } else if (idx == 7) {
+    return c7;
+  } else {
+    return {};
+  }
+}
+
+bool ControlRegs::set(unsigned idx, StackEntry value) {
+  if (idx < creg_num) {
+    auto v = std::move(value).as_cont();
+    return v.not_null() && set_c(idx, std::move(v));
+  } else if (idx >= dreg_idx && idx < dreg_idx + dreg_num) {
+    auto v = std::move(value).as_cell();
+    return v.not_null() && set_d(idx, std::move(v));
+  } else if (idx == 7) {
+    auto v = std::move(value).as_tuple();
+    return v.not_null() && set_c7(std::move(v));
+  } else {
+    return false;
+  }
+}
+
+bool ControlRegs::define(unsigned idx, StackEntry value) {
+  if (idx < creg_num) {
+    auto v = std::move(value).as_cont();
+    return v.not_null() && define_c(idx, std::move(v));
+  } else if (idx >= dreg_idx && idx < dreg_idx + dreg_num) {
+    auto v = std::move(value).as_cell();
+    return v.not_null() && define_d(idx, std::move(v));
+  } else if (idx == 7) {
+    auto v = std::move(value).as_tuple();
+    return v.not_null() && define_c7(std::move(v));
+  } else {
+    return false;
+  }
+}
+
 ControlRegs& ControlRegs::operator^=(const ControlRegs& save) {
   for (int i = 0; i < creg_num; i++) {
     c[i] ^= save.c[i];
@@ -21,6 +63,7 @@ ControlRegs& ControlRegs::operator^=(const ControlRegs& save) {
   for (int i = 0; i < dreg_num; i++) {
     d[i] ^= save.d[i];
   }
+  c7 ^= save.c7;
   return *this;
 }
 
@@ -31,6 +74,7 @@ ControlRegs& ControlRegs::operator^=(ControlRegs&& save) {
   for (int i = 0; i < dreg_num; i++) {
     d[i] ^= std::move(save.d[i]);
   }
+  c7 ^= std::move(save.c7);
   return *this;
 }
 
@@ -41,6 +85,7 @@ ControlRegs& ControlRegs::operator&=(const ControlRegs& save) {
   for (int i = 0; i < dreg_num; i++) {
     d[i] &= save.d[i].is_null();
   }
+  c7 &= save.c7.is_null();
   return *this;
 }
 
@@ -261,13 +306,16 @@ void VmState::init_cregs(bool same_c3, bool push_0) {
   } else {
     cr.set_c3(Ref<ExcQuitCont>{true});
   }
-  if (cr.d[0].is_null() || cr.d[1].is_null() || cr.d[2].is_null()) {
+  if (cr.d[0].is_null() || cr.d[1].is_null()) {
     auto empty_cell = CellBuilder{}.finalize();
     for (int i = 0; i < ControlRegs::dreg_num; i++) {
       if (cr.d[i].is_null()) {
         cr.d[i] = empty_cell;
       }
     }
+  }
+  if (cr.c7.is_null()) {
+    cr.set_c7(Ref<Tuple>{true});
   }
 }
 
@@ -640,8 +688,16 @@ int VmState::run() {
   do {
     // LOG(INFO) << "[BS] data cells: " << DataCell::get_total_data_cells();
     try {
-      res = step();
-      gas.check();
+      try {
+        res = step();
+        gas.check();
+      } catch (vm::CellBuilder::CellWriteError) {
+        throw VmError{Excno::cell_ov};
+      } catch (vm::CellBuilder::CellCreateError) {
+        throw VmError{Excno::cell_ov};
+      } catch (vm::CellSlice::CellReadError) {
+        throw VmError{Excno::cell_und};
+      }
     } catch (const VmError& vme) {
       VM_LOG(this) << "handling exception code " << vme.get_errno() << ": " << vme.get_msg();
       try {

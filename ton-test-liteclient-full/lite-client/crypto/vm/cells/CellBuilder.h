@@ -109,9 +109,18 @@ class CellBuilder : public td::CntObject {
   // bool store_long_top_bool(unsigned long long val, unsigned top_bits);
   CellBuilder& store_long_top(unsigned long long val, unsigned top_bits);
   bool store_bool_bool(bool val);
-  bool store_bigint256_bool(const td::BigInt256& val, unsigned val_bits, bool sgnd = true);
-  bool store_bigint256_bool(td::RefInt256 val, unsigned val_bits, bool sgnd = true);
-  CellBuilder& store_bigint256(const td::BigInt256& val, unsigned val_bits, bool sgnd = true);
+  bool store_int256_bool(const td::BigInt256& val, unsigned val_bits, bool sgnd = true);
+  bool store_int256_bool(td::RefInt256 val, unsigned val_bits, bool sgnd = true);
+  bool store_uint256_bool(const td::BigInt256& val, unsigned val_bits) {
+    return store_int256_bool(val, val_bits, false);
+  }
+  bool store_uint256_bool(td::RefInt256 val, unsigned val_bits) {
+    return store_int256_bool(std::move(val), val_bits, false);
+  }
+  CellBuilder& store_int256(const td::BigInt256& val, unsigned val_bits, bool sgnd = true);
+  CellBuilder& store_uint256(const td::BigInt256& val, unsigned val_bits) {
+    return store_int256(val, val_bits, false);
+  }
   bool store_builder_ref_bool(vm::CellBuilder&& cb);
   bool store_ref_bool(Ref<Cell> r);
   CellBuilder& store_ref(Ref<Cell> r);

@@ -7,6 +7,8 @@
 #include "td/utils/Slice.h"
 #include "td/utils/StorerBase.h"
 
+#include "crypto/common/bitstring.h"
+
 #include <cstring>
 
 namespace td {
@@ -232,13 +234,13 @@ class TlStorerToString {
     store_field_end();
   }
 
-  void store_field(const char *name, const UInt128 &value) {
+  void store_field(const char *name, const Bits128 &value) {
     store_field_begin(name);
     store_binary(as_slice(value));
     store_field_end();
   }
 
-  void store_field(const char *name, const UInt256 &value) {
+  void store_field(const char *name, const Bits256 &value) {
     store_field_begin(name);
     store_binary(as_slice(value));
     store_field_end();

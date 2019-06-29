@@ -105,6 +105,7 @@ class RefcntCellParser {
 }  // namespace
 
 CellLoader::CellLoader(std::shared_ptr<KeyValueReader> reader) : reader_(std::move(reader)) {
+  CHECK(reader_);
 }
 
 td::Result<CellLoader::LoadResult> CellLoader::load(td::Slice hash, bool need_data, ExtCellCreator &ext_cell_creator) {

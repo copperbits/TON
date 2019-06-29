@@ -5,6 +5,7 @@
 #include <string>
 #include <ostream>
 #include <cstdlib>
+#include "td/utils/bits.h"
 
 namespace td {
 template <class Pt>
@@ -94,6 +95,9 @@ struct BitPtrGen {
   }
   int compare(BitPtrGen<const Pt> other, std::size_t size, std::size_t* same_upto = nullptr) const {
     return bitstring::bits_memcmp(*this, other, size, same_upto);
+  }
+  std::size_t scan(bool value, std::size_t len) const {
+    return bitstring::bits_memscan(*this, len, value);
   }
   long long get_int(unsigned bits) const {
     return bitstring::bits_load_long(*this, bits);
@@ -495,6 +499,13 @@ class BitArray {
   void set_zero() {
     set_same(0);
   }
+  void set_zero_s() {
+    volatile uint8* p = data();
+    auto x = m;
+    while (x--) {
+      *p++ = 0;
+    }
+  }
   void set_ones() {
     set_same(1);
   }
@@ -548,13 +559,41 @@ class BitArray {
     x.set_zero();
     return x;
   }
+  static inline BitArray ones() {
+    BitArray x;
+    x.set_ones();
+    return x;
+  }
+  BitArray operator^(const BitArray& with) const {
+    BitArray res;
+    for (unsigned i = 0; i < m; i++) {
+      res.bytes[i] = bytes[i] ^ with.bytes[i];
+    }
+    return res;
+  }
+  unsigned scan(bool value) const {
+    return (unsigned)cbits().scan(value, n);
+  }
+  unsigned count_leading_zeroes() const {
+    return scan(false);
+  }
 };
 
 using Bits256 = BitArray<256>;
+using Bits128 = BitArray<128>;
 
 template <unsigned n>
 std::ostream& operator<<(std::ostream& os, BitArray<n> bits) {
   return os << bits.to_hex();
+}
+
+template <unsigned N>
+Slice as_slice(const BitArray<N>& value) {
+  return value.as_slice();
+}
+template <unsigned N>
+MutableSlice as_slice(BitArray<N>& value) {
+  return value.as_slice();
 }
 
 }  // namespace td

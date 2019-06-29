@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 
 namespace td {
 namespace tl {
@@ -108,10 +109,18 @@ int tl_config_parser::get_schema_version(std::int32_t version_id) {
   return -1;
 }
 
+template <class T>
+T *store(std::unique_ptr<T> ptr) {
+  static std::vector<std::unique_ptr<T>> storage;
+  auto res = ptr.get();
+  storage.push_back(std::move(ptr));
+  return res;
+}
+
 tl_tree *tl_config_parser::read_num_const() {
   int num = static_cast<int>(try_parse_int());
 
-  return new tl_tree_nat_const(FLAG_NOVAR, num);
+  return store(std::make_unique<tl_tree_nat_const>(FLAG_NOVAR, num));
 }
 
 tl_tree *tl_config_parser::read_num_var(int *var_count) {
@@ -122,7 +131,7 @@ tl_tree *tl_config_parser::read_num_var(int *var_count) {
     *var_count = var_num + 1;
   }
 
-  return new tl_tree_var_num(0, var_num, diff);
+  return store(std::make_unique<tl_tree_var_num>(0, var_num, diff));
 }
 
 tl_tree *tl_config_parser::read_type_var(int *var_count) {
@@ -134,14 +143,14 @@ tl_tree *tl_config_parser::read_type_var(int *var_count) {
   }
   assert(!(flags & (FLAG_NOVAR | FLAG_BARE)));
 
-  return new tl_tree_var_type(flags, var_num);
+  return store(std::make_unique<tl_tree_var_type>(flags, var_num));
 }
 
 tl_tree *tl_config_parser::read_array(int *var_count) {
   std::int32_t flags = FLAG_NOVAR;
   tl_tree *multiplicity = read_nat_expr(var_count);
 
-  tl_tree_array *T = new tl_tree_array(flags, multiplicity, read_args_list(var_count));
+  tl_tree_array *T = store(std::make_unique<tl_tree_array>(flags, multiplicity, read_args_list(var_count)));
 
   for (std::size_t i = 0; i < T->args.size(); i++) {
     if (!(T->args[i].flags & FLAG_NOVAR)) {
@@ -158,7 +167,7 @@ tl_tree *tl_config_parser::read_type(int *var_count) {
   int arity = static_cast<int>(try_parse_int());
   assert(type->arity == arity);
 
-  tl_tree_type *T = new tl_tree_type(flags, type, arity);
+  tl_tree_type *T = store(std::make_unique<tl_tree_type>(flags, type, arity));
   for (std::int32_t i = 0; i < arity; i++) {
     tl_tree *child = read_expr(var_count);
 
@@ -269,7 +278,7 @@ tl_combinator *tl_config_parser::read_combinator() {
     std::abort();
   }
 
-  tl_combinator *combinator = new tl_combinator();
+  tl_combinator *combinator = store(std::make_unique<tl_combinator>());
   combinator->id = try_parse_int();
   combinator->name = try_parse_string();
   combinator->type_id = try_parse_int();
@@ -302,7 +311,7 @@ tl_type *tl_config_parser::read_type() {
     std::abort();
   }
 
-  tl_type *type = new tl_type();
+  tl_type *type = store(std::make_unique<tl_type>());
   type->id = try_parse_int();
   type->name = try_parse_string();
   type->constructors_num = static_cast<std::size_t>(try_parse_int());

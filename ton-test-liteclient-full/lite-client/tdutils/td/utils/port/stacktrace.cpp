@@ -91,9 +91,9 @@ void print_backtrace_gdb(void) {
 }  // namespace
 
 void Stacktrace::print_to_stderr(const PrintOptions &options) {
-  print_backtrace();
   if (options.use_gdb) {
     print_backtrace_gdb();
   }
+  print_backtrace();
 }
 }  // namespace td

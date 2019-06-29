@@ -135,7 +135,7 @@ bool Account::unpack_state(vm::CellSlice& cs) {
   }
   code = state.code->prefetch_ref();
   data = state.data->prefetch_ref();
-  library = state.library->prefetch_ref();
+  library = orig_library = state.library->prefetch_ref();
   return true;
 }
 
@@ -241,7 +241,8 @@ bool Account::unpack(Ref<vm::CellSlice> shard_account, Ref<vm::CellSlice> extra,
       return false;
   }
   LOG(DEBUG) << "end of Account.unpack() for " << workchain << ":" << addr.to_hex()
-             << " (balance = " << td::dec_string(balance) << " ; last_trans_lt = " << last_trans_lt_ << ".." << last_trans_end_lt_ << ")";
+             << " (balance = " << td::dec_string(balance) << " ; last_trans_lt = " << last_trans_lt_ << ".."
+             << last_trans_end_lt_ << ")";
   return true;
 }
 
@@ -321,8 +322,7 @@ td::RefInt256 Account::compute_storage_fees(ton::UnixTime now, const std::vector
     ton::UnixTime valid_until = (i < n - 1 ? std::min(now, pricing[i + 1].valid_since) : now);
     if (upto < valid_until) {
       assert(upto >= pricing[i].valid_since);
-      add_partial_storage_payment(total.unique_write(), valid_until - upto, pricing[i], storage_stat,
-                                  is_masterchain());
+      add_partial_storage_payment(total.unique_write(), valid_until - upto, pricing[i], storage_stat, is_masterchain());
     }
     upto = valid_until;
   }
@@ -333,6 +333,7 @@ td::RefInt256 Account::compute_storage_fees(ton::UnixTime now, const std::vector
 Transaction::Transaction(const Account& _account, int ttype, ton::LogicalTime req_start_lt, ton::UnixTime _now,
                          Ref<vm::Cell> _inmsg)
     : trans_type(ttype)
+    , is_first(_account.transactions.empty())
     , new_tick(_account.tick)
     , new_tock(_account.tock)
     , now(_now)
@@ -639,28 +640,27 @@ bool Transaction::prepare_rand_seed(td::BitArray<256>& rand_seed, const ComputeP
   return true;
 }
 
-Ref<vm::Cell> Transaction::prepare_vm_c5(const ComputePhaseConfig& cfg) const {
-  // TODO: fix initialization of c5
-  vm::CellBuilder cb, cb2;
-  Ref<vm::Cell> cell;
+Ref<vm::Tuple> Transaction::prepare_vm_c7(const ComputePhaseConfig& cfg) const {
+  // TODO: fix initialization of c7
   td::BitArray<256> rand_seed;
-  if (!(cb.store_long_bool(0x076ef1ea, 32)       // smc_info#076ef1ea
-        && cb.store_zeroes_bool(16 + 16)         // actions:uint16 msgs_sent:uint16
-        && cb.store_long_bool(now, 32)           // unixtime:uint32
-        && cb.store_long_bool(account.block_lt)  // block_lt:uint64
-        && cb.store_long_bool(start_lt)          // trans_lt:uint64
-        && prepare_rand_seed(rand_seed, cfg) && cb.store_bits_bool(rand_seed.cbits(), 256)  // rand_seed:bits256
-        && block::tlb::t_Grams.store_integer_ref(cb, balance)  // balance_remaining:CurrencyCollection
-        && vm::dict::store_cell_dict(cb, extra_balance) &&
-        cb.append_cellslice_bool(account.my_addr)  // myself:MsgAddressInt
-        && cb.finalize_to(cell)
-        // && block::gen::t_SmartContractInfo.print_ref(std::cerr, cell)
-        && block::gen::t_SmartContractInfo.validate_ref(cell) && cb2.store_ref_bool(std::move(cell)) &&
-        cb2.finalize_to(cell))) {
-    LOG(ERROR) << "cannot generate valid SmartContractInfo for initializing VM's c5";
+  td::RefInt256 rand_seed_int{true};
+  if (!(prepare_rand_seed(rand_seed, cfg) && rand_seed_int.unique_write().import_bits(rand_seed.cbits(), 256, false))) {
+    LOG(ERROR) << "cannot compute rand_seed for transaction";
     throw CollatorError{"cannot generate valid SmartContractInfo"};
+    return {};
   }
-  return cell;
+  auto tuple = vm::make_tuple_ref(
+      td::make_refint(0x076ef1ea),                                        // [ magic:0x076ef1ea
+      td::make_refint(0),                                                 //   actions:Integer
+      td::make_refint(0),                                                 //   msgs_sent:Integer
+      td::make_refint(now),                                               //   unixtime:Integer
+      td::make_refint(account.block_lt),                                  //   block_lt:Integer
+      td::make_refint(start_lt),                                          //   trans_lt:Integer
+      std::move(rand_seed_int),                                           //   rand_seed:Integer
+      vm::make_tuple_ref(balance, vm::StackEntry::maybe(extra_balance)),  //   balance_remaining:[Integer (Maybe Cell)]
+      account.my_addr);  //  myself:MsgAddressInt ] = SmartContractInfo;
+  LOG(DEBUG) << "SmartContractInfo initialized with " << vm::StackEntry(tuple).to_string();
+  return vm::make_tuple_ref(std::move(tuple));
 }
 
 int output_actions_count(Ref<vm::Cell> list) {
@@ -750,7 +750,7 @@ bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
   LOG(DEBUG) << "creating VM";
 
   vm::VmState vm{new_code, std::move(stack), gas, 1, new_data};
-  vm.set_d(5, prepare_vm_c5(cfg));  // cell with ^SmartContractInfo
+  vm.set_c7(prepare_vm_c7(cfg));  // tuple with SmartContractInfo
 
   LOG(DEBUG) << "starting VM";
   cp.vm_init_state_hash = vm.get_state_hash();
@@ -772,8 +772,8 @@ bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
             << ", limit=" << gas.gas_limit << ", credit=" << gas.gas_credit;
   LOG(INFO) << "out_of_gas=" << cp.out_of_gas << ", accepted=" << cp.accepted << ", success=" << cp.success;
   if (cp.success) {
-    cp.new_data = vm.get_c4();
-    cp.actions = vm.get_d(6);
+    cp.new_data = vm.get_c4();  // c4 -> persistent data
+    cp.actions = vm.get_d(5);   // c5 -> action list
     int out_act_num = output_actions_count(cp.actions);
     if (verbosity > 2) {
       std::cerr << "new smart contract data: ";
@@ -1481,6 +1481,9 @@ bool Transaction::compute_state() {
         std::cerr << "with hash " << frozen_hash.to_hex() << std::endl;
       }
     }
+    new_code.clear();
+    new_data.clear();
+    new_library.clear();
     if (frozen_hash == account.addr_orig) {
       // if frozen_hash equals account's "original" address (before rewriting), do not need storing hash
       CHECK(cb.store_long_bool(0, 2));  // account_uninit$00 = AccountState
@@ -1758,6 +1761,42 @@ bool Transaction::serialize_bounce_phase(vm::CellBuilder& cb) {
   }
 }
 
+td::Result<vm::NewCellStorageStat::Stat> Transaction::estimate_block_storage_profile_incr(
+    const vm::NewCellStorageStat& store_stat, const vm::CellUsageTree* usage_tree) const {
+  if (root.is_null()) {
+    return td::Status::Error("Cannot estimate the size profile of a transaction before it is serialized");
+  }
+  if (new_total_state.is_null()) {
+    return td::Status::Error("Cannot estimate the size profile of a transaction before its new state is computed");
+  }
+  return store_stat.tentative_add_proof(new_total_state, usage_tree) + store_stat.tentative_add_cell(root);
+}
+
+bool Transaction::update_block_storage_profile(vm::NewCellStorageStat& store_stat,
+                                               const vm::CellUsageTree* usage_tree) const {
+  if (root.is_null() || new_total_state.is_null()) {
+    return false;
+  }
+  store_stat.add_proof(new_total_state, usage_tree);
+  store_stat.add_cell(root);
+  return true;
+}
+
+bool Transaction::would_fit(unsigned cls, const block::BlockLimitStatus& blimst) const {
+  auto res = estimate_block_storage_profile_incr(blimst.st_stat, blimst.limits.usage_tree);
+  if (res.is_error()) {
+    LOG(ERROR) << res.move_as_error();
+    return false;
+  }
+  auto extra = res.move_as_ok();
+  return blimst.would_fit(cls, end_lt, gas_used(), &extra);
+}
+
+bool Transaction::update_limits(block::BlockLimitStatus& blimst) const {
+  return blimst.update_lt(end_lt) && blimst.update_gas(gas_used()) && blimst.add_proof(new_total_state) &&
+         blimst.add_cell(root) && blimst.add_transaction() && blimst.add_account(is_first);
+}
+
 /*
  * 
  *  COMMIT TRANSACTION
@@ -1844,6 +1883,16 @@ bool Account::create_account_block(vm::CellBuilder& cb) {
          && cb2.store_bits_bool(orig_total_state->get_hash().bits(), 256)  // old_hash:bits256
          && cb2.store_bits_bool(total_state->get_hash().bits(), 256)       // new_hash:bits256
          && cb.store_ref_bool(cb2.finalize());                             // state_update:(^HASH_UPDATE Account)
+}
+
+bool Account::libraries_changed() const {
+  bool s = orig_library.not_null();
+  bool t = library.not_null();
+  if (s & t) {
+    return orig_library->get_hash() != library->get_hash();
+  } else {
+    return s != t;
+  }
 }
 
 }  // namespace block

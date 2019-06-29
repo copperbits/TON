@@ -723,7 +723,7 @@ struct Int final : TLB {
     return cb.store_zeroes_bool(n);
   }
   bool store_integer_value(vm::CellBuilder& cb, const td::BigInt256& value) const override {
-    return cb.store_bigint256_bool(value, n, true);
+    return cb.store_int256_bool(value, n, true);
   }
   std::ostream& print_type(std::ostream& os) const override {
     return os << "int" << n;
@@ -753,7 +753,7 @@ struct UInt final : TLB {
     return cb.store_zeroes_bool(n);
   }
   bool store_integer_value(vm::CellBuilder& cb, const td::BigInt256& value) const override {
-    return cb.store_bigint256_bool(value, n, false);
+    return cb.store_int256_bool(value, n, false);
   }
   std::ostream& print_type(std::ostream& os) const override {
     return os << "uint" << n;

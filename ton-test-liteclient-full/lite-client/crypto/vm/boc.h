@@ -22,6 +22,9 @@ class NewCellStorageStat {
   struct Stat {
     Stat() {
     }
+    Stat(td::uint64 cells_, td::uint64 bits_, td::uint64 internal_refs_ = 0, td::uint64 external_refs_ = 0)
+        : cells(cells_), bits(bits_), internal_refs(internal_refs_), external_refs(external_refs_) {
+    }
     td::uint64 cells{0};
     td::uint64 bits{0};
     td::uint64 internal_refs{0};
@@ -33,6 +36,24 @@ class NewCellStorageStat {
     bool operator==(const Stat& other) const {
       return key() == other.key();
     }
+    Stat& operator=(const Stat& other) = default;
+    Stat& operator+=(const Stat& other) {
+      cells += other.cells;
+      bits += other.bits;
+      internal_refs += other.internal_refs;
+      external_refs += other.external_refs;
+      return *this;
+    }
+    Stat operator+(const Stat& other) const {
+      return Stat{cells + other.cells, bits + other.bits, internal_refs + other.internal_refs,
+                  external_refs + other.external_refs};
+    }
+    bool fits_uint32() const {
+      return !((cells | bits | internal_refs | external_refs) >> 32);
+    }
+    void set_zero() {
+      cells = bits = internal_refs = external_refs = 0;
+    }
   };
 
   Stat get_stat() const {
@@ -43,18 +64,29 @@ class NewCellStorageStat {
     return proof_stat_;
   }
 
+  Stat get_total_stat() const {
+    return stat_ + proof_stat_;
+  }
+
   void add_cell(Ref<Cell> cell);
-  void add_proof(Ref<Cell> cell, CellUsageTree* usage_tree);
-  void add_cell_and_proof(Ref<Cell> cell, CellUsageTree* usage_tree);
+  void add_proof(Ref<Cell> cell, const CellUsageTree* usage_tree);
+  void add_cell_and_proof(Ref<Cell> cell, const CellUsageTree* usage_tree);
+  Stat tentative_add_cell(Ref<Cell> cell) const;
+  Stat tentative_add_proof(Ref<Cell> cell, const CellUsageTree* usage_tree) const;
+  void set_zero() {
+    stat_.set_zero();
+    proof_stat_.set_zero();
+  }
 
  private:
-  CellUsageTree* usage_tree_;
+  const CellUsageTree* usage_tree_;
   std::set<vm::Cell::Hash> seen_;
   Stat stat_;
   std::set<vm::Cell::Hash> proof_seen_;
   Stat proof_stat_;
+  const NewCellStorageStat* parent_{nullptr};
 
-  void dfs(Ref<Cell> root, bool need_stat, bool need_proof_stat);
+  void dfs(Ref<Cell> cell, bool need_stat, bool need_proof_stat);
 };
 
 struct CellStorageStat {

@@ -7,7 +7,7 @@ namespace ton {
 
 class AdnlNodeIdShort {
  public:
-  explicit AdnlNodeIdShort(PublicKeyHash &hash) : hash_(hash) {
+  explicit AdnlNodeIdShort(const PublicKeyHash &hash) : hash_(hash) {
   }
   explicit AdnlNodeIdShort(PublicKeyHash &&hash) : hash_(std::move(hash)) {
   }
@@ -15,7 +15,9 @@ class AdnlNodeIdShort {
   }
   explicit AdnlNodeIdShort(td::Slice data) : hash_(data) {
   }
-  explicit AdnlNodeIdShort(td::UInt256 value) : hash_(value) {
+  explicit AdnlNodeIdShort(td::Bits256 value) : hash_(value) {
+  }
+  explicit AdnlNodeIdShort(tl_object_ptr<ton_api::adnl_id_short> obj) : hash_(obj->id_) {
   }
 
   const auto &pubkey_hash() const {
@@ -31,8 +33,8 @@ class AdnlNodeIdShort {
   bool operator<(const AdnlNodeIdShort &with) const {
     return hash_ < with.hash_;
   }
-  auto tl() const {
-    return hash_.tl();
+  tl_object_ptr<ton_api::adnl_id_short> tl() const {
+    return create_tl_object<ton_api::adnl_id_short>(hash_.tl());
   }
   auto as_slice() {
     return hash_.as_slice();
@@ -58,12 +60,17 @@ class AdnlNodeIdShort {
 };
 
 class AdnlNodeIdFull {
+ private:
+  explicit AdnlNodeIdFull(const tl_object_ptr<ton_api::PublicKey> &pub) : pub_(pub) {
+  }
+
  public:
-  explicit AdnlNodeIdFull(PublicKey &pub) : pub_(pub) {
+  explicit AdnlNodeIdFull(const PublicKey &pub) : pub_(pub) {
   }
   explicit AdnlNodeIdFull(PublicKey &&pub) : pub_(std::move(pub)) {
   }
-  explicit AdnlNodeIdFull(const tl_object_ptr<ton_api::PublicKey> &pub) : pub_(pub) {
+  static td::Result<AdnlNodeIdFull> create(const tl_object_ptr<ton_api::PublicKey> &pub) {
+    return AdnlNodeIdFull{pub};
   }
   AdnlNodeIdFull() {
   }
@@ -95,7 +102,7 @@ class AdnlNodeIdFull {
 namespace td {
 
 inline StringBuilder &operator<<(StringBuilder &stream, const ton::AdnlNodeIdShort &value) {
-  return stream << value.uint256_value();
+  return stream << value.bits256_value();
 }
 
 }  // namespace td

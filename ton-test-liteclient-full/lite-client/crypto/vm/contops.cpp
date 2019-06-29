@@ -590,28 +590,28 @@ int exec_bless_args(VmState* st, unsigned args) {
 int exec_push_ctr(VmState* st, unsigned args) {
   unsigned idx = args & 15;
   VM_LOG(st) << "execute PUSH c" << idx;
-  st->get_stack().push_cont(st->get_c(idx));
+  st->get_stack().push(st->get(idx));
   return 0;
 }
 
-int exec_push_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  VM_LOG(st) << "execute PUSH c" << idx;
-  st->get_stack().push_cell(st->get_d(idx));
-  return 0;
+namespace {
+inline void throw_typechk(bool ok) {
+  if (!ok) {
+    throw VmError{Excno::type_chk, "invalid value type for control register"};
+  }
 }
+
+inline void throw_rangechk(bool ok) {
+  if (!ok) {
+    throw VmError{Excno::range_chk, "control register index out of range"};
+  }
+}
+}  // namespace
 
 int exec_pop_ctr(VmState* st, unsigned args) {
   unsigned idx = args & 15;
   VM_LOG(st) << "execute POP c" << idx;
-  st->ensure_throw(st->set_c(idx, st->get_stack().pop_cont()));
-  return 0;
-}
-
-int exec_pop_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  VM_LOG(st) << "execute POP c" << idx;
-  st->ensure_throw(st->set_d(idx, st->get_stack().pop_cell()));
+  throw_typechk(st->set(idx, st->get_stack().pop_chk()));
   return 0;
 }
 
@@ -621,20 +621,7 @@ int exec_setcont_ctr(VmState* st, unsigned args) {
   VM_LOG(st) << "execute SETCONTCTR c" << idx;
   stack.check_underflow(2);
   auto cont = stack.pop_cont();
-  auto val = stack.pop_cont();
-  force_cregs(cont)->define_c(idx, std::move(val));
-  st->get_stack().push_cont(std::move(cont));
-  return 0;
-}
-
-int exec_setcont_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute SETCONTCTR c" << idx;
-  stack.check_underflow(2);
-  auto cont = stack.pop_cont();
-  auto val = stack.pop_cell();
-  force_cregs(cont)->define_d(idx, std::move(val));
+  throw_typechk(force_cregs(cont)->define(idx, stack.pop_chk()));
   st->get_stack().push_cont(std::move(cont));
   return 0;
 }
@@ -643,16 +630,7 @@ int exec_setret_ctr(VmState* st, unsigned args) {
   unsigned idx = args & 15;
   VM_LOG(st) << "execute SETRETCTR c" << idx;
   auto cont = st->get_c0();
-  force_cregs(cont)->define_c(idx, st->get_stack().pop_cont());
-  st->set_c0(std::move(cont));
-  return 0;
-}
-
-int exec_setret_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  VM_LOG(st) << "execute SETRETCTR c" << idx;
-  auto cont = st->get_c0();
-  force_cregs(cont)->define_d(idx, st->get_stack().pop_cell());
+  throw_typechk(force_cregs(cont)->define(idx, st->get_stack().pop_chk()));
   st->set_c0(std::move(cont));
   return 0;
 }
@@ -661,16 +639,7 @@ int exec_setalt_ctr(VmState* st, unsigned args) {
   unsigned idx = args & 15;
   VM_LOG(st) << "execute SETALTCTR c" << idx;
   auto cont = st->get_c1();
-  force_cregs(cont)->define_c(idx, st->get_stack().pop_cont());
-  st->set_c1(std::move(cont));
-  return 0;
-}
-
-int exec_setalt_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  VM_LOG(st) << "execute SETALTCTR c" << idx;
-  auto cont = st->get_c1();
-  force_cregs(cont)->define_d(idx, st->get_stack().pop_cell());
+  throw_typechk(force_cregs(cont)->define(idx, st->get_stack().pop_chk()));
   st->set_c1(std::move(cont));
   return 0;
 }
@@ -678,20 +647,17 @@ int exec_setalt_dtr(VmState* st, unsigned args) {
 int exec_popsave_ctr(VmState* st, unsigned args) {
   unsigned idx = args & 15;
   VM_LOG(st) << "execute POPSAVE c" << idx;
+  auto val = st->get_stack().pop_chk();
   auto c0 = st->get_c0();
-  force_cregs(c0)->define_c(idx, st->get_c(idx));
-  st->set_c0(std::move(c0));
-  st->ensure_throw(st->set_c(idx, st->get_stack().pop_cont()));
-  return 0;
-}
-
-int exec_popsave_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  VM_LOG(st) << "execute POPSAVE c" << idx;
-  auto c0 = st->get_c0();
-  force_cregs(c0)->define_d(idx, st->get_d(idx));
-  st->set_c0(std::move(c0));
-  st->ensure_throw(st->set_d(idx, st->get_stack().pop_cell()));
+  throw_typechk(idx || val.is(StackEntry::t_vmcont));
+  force_cregs(c0)->define(idx, st->get(idx));
+  if (!idx) {
+    st->set_c0(std::move(c0));
+  }
+  throw_typechk(st->set(idx, std::move(val)));
+  if (idx) {
+    st->set_c0(std::move(c0));
+  }
   return 0;
 }
 
@@ -699,16 +665,7 @@ int exec_save_ctr(VmState* st, unsigned args) {
   unsigned idx = args & 15;
   VM_LOG(st) << "execute SAVECTR c" << idx;
   auto c0 = st->get_c0();
-  force_cregs(c0)->define_c(idx, st->get_c(idx));
-  st->set_c0(std::move(c0));
-  return 0;
-}
-
-int exec_save_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  VM_LOG(st) << "execute SAVECTR c" << idx;
-  auto c0 = st->get_c0();
-  force_cregs(c0)->define_d(idx, st->get_d(idx));
+  throw_typechk(force_cregs(c0)->define(idx, st->get(idx)));
   st->set_c0(std::move(c0));
   return 0;
 }
@@ -717,16 +674,7 @@ int exec_savealt_ctr(VmState* st, unsigned args) {
   unsigned idx = args & 15;
   VM_LOG(st) << "execute SAVEALTCTR c" << idx;
   auto c1 = st->get_c1();
-  force_cregs(c1)->define_c(idx, st->get_c(idx));
-  st->set_c1(std::move(c1));
-  return 0;
-}
-
-int exec_savealt_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  VM_LOG(st) << "execute SAVEALTCTR c" << idx;
-  auto c1 = st->get_c1();
-  force_cregs(c1)->define_c(idx, st->get_c(idx));
+  throw_typechk(force_cregs(c1)->define(idx, st->get(idx)));
   st->set_c1(std::move(c1));
   return 0;
 }
@@ -735,21 +683,9 @@ int exec_saveboth_ctr(VmState* st, unsigned args) {
   unsigned idx = args & 15;
   VM_LOG(st) << "execute SAVEBOTHCTR c" << idx;
   auto c0 = st->get_c0(), c1 = st->get_c1();
-  auto val = st->get_c(idx);
-  force_cregs(c0)->define_c(idx, val);
-  force_cregs(c1)->define_c(idx, std::move(val));
-  st->set_c0(std::move(c0));
-  st->set_c1(std::move(c1));
-  return 0;
-}
-
-int exec_saveboth_dtr(VmState* st, unsigned args) {
-  unsigned idx = args & 15;
-  VM_LOG(st) << "execute SAVEBOTHCTR c" << idx;
-  auto c0 = st->get_c0(), c1 = st->get_c1();
-  auto val = st->get_d(idx);
-  force_cregs(c0)->define_d(idx, val);
-  force_cregs(c1)->define_d(idx, std::move(val));
+  auto val = st->get(idx);
+  force_cregs(c0)->define(idx, val);
+  force_cregs(c1)->define(idx, std::move(val));
   st->set_c0(std::move(c0));
   st->set_c1(std::move(c1));
   return 0;
@@ -758,12 +694,10 @@ int exec_saveboth_dtr(VmState* st, unsigned args) {
 int exec_push_ctr_var(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute PUSHCTRX\n";
-  unsigned idx = stack.pop_smallint_range(6);
-  if (idx < 4) {
-    stack.push_cont(st->get_c(idx));
-  } else {
-    stack.push_cell(st->get_d(idx));
-  }
+  unsigned idx = stack.pop_smallint_range(16);
+  auto val = st->get(idx);
+  throw_rangechk(!val.empty());
+  stack.push(std::move(val));
   return 0;
 }
 
@@ -771,12 +705,9 @@ int exec_pop_ctr_var(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute POPCTRX\n";
   stack.check_underflow(2);
-  unsigned idx = stack.pop_smallint_range(6);
-  if (idx < 4) {
-    st->ensure_throw(st->set_c(idx, stack.pop_cont()));
-  } else {
-    st->ensure_throw(st->set_d(idx, stack.pop_cell()));
-  }
+  unsigned idx = stack.pop_smallint_range(16);
+  throw_rangechk(ControlRegs::valid_idx(idx));
+  throw_typechk(st->set(idx, stack.pop_chk()));
   return 0;
 }
 
@@ -784,13 +715,10 @@ int exec_setcont_ctr_var(VmState* st) {
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute SETCONTCTRX\n";
   stack.check_underflow(3);
-  unsigned idx = stack.pop_smallint_range(6);
+  unsigned idx = stack.pop_smallint_range(16);
+  throw_rangechk(ControlRegs::valid_idx(idx));
   auto cont = stack.pop_cont();
-  if (idx < 4) {
-    force_cregs(cont)->define_c(idx, stack.pop_cont());
-  } else {
-    force_cregs(cont)->define_d(idx, stack.pop_cell());
-  }
+  throw_typechk(force_cregs(cont)->define(idx, stack.pop_chk()));
   st->get_stack().push_cont(std::move(cont));
   return 0;
 }
@@ -880,10 +808,10 @@ int exec_booleval(VmState* st) {
   return st->jump(std::move(cont));
 }
 
-void reg_ctr_oprange(OpcodeTable& cp, unsigned opcode, std::string name, exec_arg_instr_func_t exec_ctr,
-                     exec_arg_instr_func_t exec_dtr) {
+void reg_ctr_oprange(OpcodeTable& cp, unsigned opcode, std::string name, exec_arg_instr_func_t exec_ctr) {
   cp.insert(OpcodeInstr::mkfixedrange(opcode, opcode + 4, 16, 4, instr::dump_1c(name + " c"), exec_ctr))
-      .insert(OpcodeInstr::mkfixedrange(opcode + 4, opcode + 7, 16, 4, instr::dump_1c(name + " c"), exec_dtr));
+      .insert(OpcodeInstr::mkfixedrange(opcode + 4, opcode + 6, 16, 4, instr::dump_1c(name + " c"), exec_ctr))
+      .insert(OpcodeInstr::mkfixedrange(opcode + 7, opcode + 8, 16, 4, instr::dump_1c(name + " c"), exec_ctr));
 }
 
 void register_continuation_change_ops(OpcodeTable& cp0) {
@@ -896,15 +824,15 @@ void register_continuation_change_ops(OpcodeTable& cp0) {
       .insert(OpcodeInstr::mksimple(0xed1e, 16, "BLESS", exec_bless))
       .insert(OpcodeInstr::mksimple(0xed1f, 16, "BLESSVARARGS", exec_bless_varargs));
 
-  reg_ctr_oprange(cp0, 0xed40, "PUSH", exec_push_ctr, exec_push_dtr);
-  reg_ctr_oprange(cp0, 0xed50, "POP", exec_pop_ctr, exec_pop_dtr);
-  reg_ctr_oprange(cp0, 0xed60, "SETCONTCTR", exec_setcont_ctr, exec_setcont_dtr);
-  reg_ctr_oprange(cp0, 0xed70, "SETRETCTR", exec_setret_ctr, exec_setret_dtr);
-  reg_ctr_oprange(cp0, 0xed80, "SETALTCTR", exec_setalt_ctr, exec_setalt_dtr);
-  reg_ctr_oprange(cp0, 0xed90, "POPSAVE", exec_popsave_ctr, exec_popsave_dtr);
-  reg_ctr_oprange(cp0, 0xeda0, "SAVECTR", exec_save_ctr, exec_save_dtr);
-  reg_ctr_oprange(cp0, 0xedb0, "SAVEALTCTR", exec_savealt_ctr, exec_savealt_dtr);
-  reg_ctr_oprange(cp0, 0xedc0, "SAVEBOTHCTR", exec_saveboth_ctr, exec_saveboth_dtr);
+  reg_ctr_oprange(cp0, 0xed40, "PUSH", exec_push_ctr);
+  reg_ctr_oprange(cp0, 0xed50, "POP", exec_pop_ctr);
+  reg_ctr_oprange(cp0, 0xed60, "SETCONTCTR", exec_setcont_ctr);
+  reg_ctr_oprange(cp0, 0xed70, "SETRETCTR", exec_setret_ctr);
+  reg_ctr_oprange(cp0, 0xed80, "SETALTCTR", exec_setalt_ctr);
+  reg_ctr_oprange(cp0, 0xed90, "POPSAVE", exec_popsave_ctr);
+  reg_ctr_oprange(cp0, 0xeda0, "SAVECTR", exec_save_ctr);
+  reg_ctr_oprange(cp0, 0xedb0, "SAVEALTCTR", exec_savealt_ctr);
+  reg_ctr_oprange(cp0, 0xedc0, "SAVEBOTHCTR", exec_saveboth_ctr);
 
   cp0.insert(OpcodeInstr::mksimple(0xede0, 16, "PUSHCTRX", exec_push_ctr_var))
       .insert(OpcodeInstr::mksimple(0xede1, 16, "POPCTRX", exec_pop_ctr_var))

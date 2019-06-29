@@ -30,6 +30,7 @@ bool IoWorker::run_once(double timeout) {
     auto *heap_node = heap.pop();
     auto *actor_info = ActorInfo::from_heap_node(heap_node);
 
+    auto id = actor_info->unpin();
     ActorExecutor executor(*actor_info, dispatcher, ActorExecutor::Options().with_has_poll(true));
     if (executor.can_send_immediate()) {
       executor.send_immediate(ActorSignals::one(ActorSignals::Alarm));

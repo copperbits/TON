@@ -12,15 +12,17 @@
 #include "common/status.h"
 #include "keys/keys.hpp"
 
+#include "crypto/common/bitstring.h"
+
 namespace td {
 
-template <size_t size>
-StringBuilder &operator<<(StringBuilder &stream, const UInt<size> &x) {
+template <unsigned size>
+StringBuilder &operator<<(StringBuilder &stream, const td::BitArray<size> &x) {
   return stream << td::base64_encode(as_slice(x));
 }
 
 inline StringBuilder &operator<<(StringBuilder &stream, const ton::PublicKeyHash &value) {
-  return stream << value.uint256_value();
+  return stream << value.bits256_value();
 }
 
 }  // namespace td

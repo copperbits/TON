@@ -8,6 +8,7 @@
 #include "common/bigint.hpp"
 #include "common/refint.h"
 #include "common/bitstring.h"
+#include "common/util.h"
 
 #include "Ed25519.h"
 
@@ -19,6 +20,7 @@
 #include "vm/boc.h"
 
 #include "vm/box.hpp"
+#include "vm/atom.h"
 
 #include "block/block.h"
 
@@ -496,6 +498,17 @@ void interpret_str_len(vm::Stack& stack) {
   stack.push_smallint((long long)stack.pop_string().size());
 }
 
+void interpret_str_split(vm::Stack& stack) {
+  stack.check_underflow(2);
+  unsigned sz = stack.pop_smallint_range(0x7fffffff);
+  std::string str = stack.pop_string();
+  if (sz > str.size()) {
+    throw IntError{"not enough bytes for cutting"};
+  }
+  stack.push_string(std::string{str, 0, sz});
+  stack.push_string(std::string{str, sz});
+}
+
 void interpret_str_reverse(vm::Stack& stack) {
   std::string s = stack.pop_string();
   auto it = s.begin();
@@ -623,7 +636,7 @@ void interpret_store(vm::Stack& stack, bool sgnd) {
   int bits = stack.pop_smallint_range(1023);
   auto x = stack.pop_int();
   auto cell = stack.pop_builder();
-  if (!cell.write().store_bigint256_bool(*x, bits, sgnd)) {
+  if (!cell.write().store_int256_bool(*x, bits, sgnd)) {
     throw IntError{"integer does not fit into cell"};
   }
   stack.push(cell);
@@ -897,6 +910,10 @@ void interpret_empty_tuple(vm::Stack& stack) {
   stack.push_tuple(Ref<vm::Tuple>{true});
 }
 
+void interpret_is_tuple(vm::Stack& stack) {
+  stack.push_bool(stack.pop_chk().type() == vm::StackEntry::t_tuple);
+}
+
 void interpret_tuple_push(vm::Stack& stack) {
   stack.check_underflow(2);
   auto val = stack.pop();
@@ -967,6 +984,48 @@ void interpret_allot(vm::Stack& stack) {
     tuple.emplace_back(Ref<vm::Box>{true});
   }
   stack.push(std::move(ref));
+}
+
+// Atoms
+
+void interpret_atom(vm::Stack& stack) {
+  bool create = stack.pop_bool();
+  auto atom = vm::Atom::find(stack.pop_string(), create);
+  if (atom.is_null()) {
+    stack.push_bool(false);
+  } else {
+    stack.push_atom(std::move(atom));
+    stack.push_bool(true);
+  }
+}
+
+void interpret_atom_anon(vm::Stack& stack) {
+  stack.push_atom(vm::Atom::anon());
+}
+
+void interpret_is_atom(vm::Stack& stack) {
+  stack.push_bool(stack.pop().is_atom());
+}
+
+bool are_eq(vm::StackEntry x, vm::StackEntry y) {
+  if (x.type() != y.type()) {
+    return false;
+  }
+  switch (x.type()) {
+    case vm::StackEntry::t_null:
+      return true;
+    case vm::StackEntry::t_atom:
+      return std::move(x).as_atom() == std::move(y).as_atom();
+    case vm::StackEntry::t_int:
+      return !td::cmp(std::move(x).as_int(), std::move(y).as_int());
+    default:
+      return false;
+  }
+}
+
+void interpret_is_eq(vm::Stack& stack) {
+  auto y = stack.pop(), x = stack.pop();
+  stack.push_bool(are_eq(std::move(x), std::move(y)));
 }
 
 // BoC (de)serialization
@@ -1121,15 +1180,28 @@ void interpret_ed25519_chksign(vm::Stack& stack) {
 
 // vm dictionaries
 void interpret_dict_new(vm::Stack& stack) {
+  stack.push({});
+}
+
+void interpret_dict_to_slice(vm::Stack& stack) {
   vm::CellBuilder cb;
-  cb.store_long(0, 1);
-  stack.push_cellslice(Ref<vm::CellSlice>{true, cb.finalize()});
+  cb.store_maybe_ref(stack.pop_maybe_cell());
+  stack.push_cellslice(vm::load_cell_slice_ref(cb.finalize()));
+}
+
+void interpret_store_dict(vm::Stack& stack) {
+  auto cell = stack.pop_maybe_cell();
+  auto cb = stack.pop_builder();
+  if (!cb.write().store_maybe_ref(std::move(cell))) {
+    throw IntError{"cell overflow"};
+  }
+  stack.push_builder(std::move(cb));
 }
 
 // val key dict keylen -- dict' ?
 void interpret_dict_add_u(vm::Stack& stack, vm::Dictionary::SetMode mode, bool add_builder, bool sgnd) {
   int n = stack.pop_smallint_range(vm::Dictionary::max_key_bits);
-  vm::Dictionary dict{stack.pop_cellslice(), n};
+  vm::Dictionary dict{stack.pop_maybe_cell(), n};
   unsigned char buffer[vm::Dictionary::max_key_bytes];
   vm::BitSlice key = dict.integer_key(stack.pop_int(), n, sgnd, buffer);
   if (!key.is_valid()) {
@@ -1141,13 +1213,13 @@ void interpret_dict_add_u(vm::Stack& stack, vm::Dictionary::SetMode mode, bool a
   } else {
     res = dict.set(key.get_bitptr(), key.size(), stack.pop_cellslice(), mode);
   }
-  stack.push_cellslice(std::move(dict).extract_root());
+  stack.push_maybe_cell(std::move(dict).extract_root_cell());
   stack.push_bool(res);
 }
 
 void interpret_dict_get_u(vm::Stack& stack, bool sgnd) {
   int n = stack.pop_smallint_range(vm::Dictionary::max_key_bits);
-  vm::Dictionary dict{stack.pop_cellslice(), n};
+  vm::Dictionary dict{stack.pop_maybe_cell(), n};
   unsigned char buffer[vm::Dictionary::max_key_bytes];
   vm::BitSlice key = dict.integer_key(stack.pop_int(), n, sgnd, buffer);
   if (!key.is_valid()) {
@@ -1165,8 +1237,7 @@ void interpret_dict_get_u(vm::Stack& stack, bool sgnd) {
 void interpret_dict_map(IntCtx& ctx) {
   auto func = pop_exec_token(ctx);
   int n = ctx.stack.pop_smallint_range(vm::Dictionary::max_key_bits);
-  vm::Dictionary dict{ctx.stack.pop_cellslice(), n};
-  vm::Stack temp_stack;
+  vm::Dictionary dict{ctx.stack.pop_maybe_cell(), n};
   vm::Dictionary::simple_map_func_t simple_map = [&ctx, func](vm::CellBuilder& cb, Ref<vm::CellSlice> cs_ref) -> bool {
     ctx.stack.push_builder(Ref<vm::CellBuilder>(cb));
     ctx.stack.push_cellslice(std::move(cs_ref));
@@ -1179,21 +1250,21 @@ void interpret_dict_map(IntCtx& ctx) {
     cb = *cb_ref;
     return true;
   };
-  dict.map(simple_map);
-  ctx.stack.push_cellslice(std::move(dict).extract_root());
+  dict.map(std::move(simple_map));
+  ctx.stack.push_maybe_cell(std::move(dict).extract_root_cell());
 }
 
-void interpret_dict_merge(IntCtx& ctx) {
+void interpret_dict_map_ext(IntCtx& ctx) {
   auto func = pop_exec_token(ctx);
   int n = ctx.stack.pop_smallint_range(vm::Dictionary::max_key_bits);
-  vm::Dictionary dict2{ctx.stack.pop_cellslice(), n};
-  vm::Dictionary dict1{ctx.stack.pop_cellslice(), n};
-  vm::Stack temp_stack;
-  vm::Dictionary::simple_combine_func_t simple_combine = [&ctx, func](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
-                                                                      Ref<vm::CellSlice> cs2_ref) -> bool {
+  vm::Dictionary dict{ctx.stack.pop_maybe_cell(), n};
+  vm::Dictionary::map_func_t map_func = [&ctx, func](vm::CellBuilder& cb, Ref<vm::CellSlice> cs_ref,
+                                                     td::ConstBitPtr key, int key_len) -> bool {
     ctx.stack.push_builder(Ref<vm::CellBuilder>(cb));
-    ctx.stack.push_cellslice(std::move(cs2_ref));
-    ctx.stack.push_cellslice(std::move(cs1_ref));
+    td::RefInt256 x{true};
+    x.unique_write().import_bits(key, key_len, false);
+    ctx.stack.push_int(std::move(x));
+    ctx.stack.push_cellslice(std::move(cs_ref));
     func->run(ctx);
     assert(cb.is_unique());
     if (!ctx.stack.pop_bool()) {
@@ -1203,13 +1274,72 @@ void interpret_dict_merge(IntCtx& ctx) {
     cb = *cb_ref;
     return true;
   };
-  dict1.combine_with(dict2, simple_combine);
-  ctx.stack.push_cellslice(std::move(dict1).extract_root());
+  dict.map(std::move(map_func));
+  ctx.stack.push_maybe_cell(std::move(dict).extract_root_cell());
+}
+
+void interpret_dict_foreach(IntCtx& ctx) {
+  auto func = pop_exec_token(ctx);
+  int n = ctx.stack.pop_smallint_range(vm::Dictionary::max_key_bits);
+  vm::Dictionary dict{ctx.stack.pop_maybe_cell(), n};
+  vm::Dictionary::foreach_func_t foreach_func = [&ctx, func](Ref<vm::CellSlice> cs_ref, td::ConstBitPtr key,
+                                                             int key_len) -> bool {
+    td::RefInt256 x{true};
+    x.unique_write().import_bits(key, key_len, false);
+    ctx.stack.push_int(std::move(x));
+    ctx.stack.push_cellslice(std::move(cs_ref));
+    func->run(ctx);
+    return ctx.stack.pop_bool();
+  };
+  ctx.stack.push_bool(dict.check_for_each(std::move(foreach_func)));
+}
+
+void interpret_dict_merge(IntCtx& ctx) {
+  auto func = pop_exec_token(ctx);
+  int n = ctx.stack.pop_smallint_range(vm::Dictionary::max_key_bits);
+  vm::Dictionary dict2{ctx.stack.pop_maybe_cell(), n};
+  vm::Dictionary dict1{ctx.stack.pop_maybe_cell(), n};
+  vm::Dictionary::simple_combine_func_t simple_combine = [&ctx, func](vm::CellBuilder& cb, Ref<vm::CellSlice> cs1_ref,
+                                                                      Ref<vm::CellSlice> cs2_ref) -> bool {
+    ctx.stack.push_builder(Ref<vm::CellBuilder>(cb));
+    ctx.stack.push_cellslice(std::move(cs1_ref));
+    ctx.stack.push_cellslice(std::move(cs2_ref));
+    func->run(ctx);
+    assert(cb.is_unique());
+    if (!ctx.stack.pop_bool()) {
+      return false;
+    }
+    Ref<vm::CellBuilder> cb_ref = ctx.stack.pop_builder();
+    cb = *cb_ref;
+    return true;
+  };
+  if (!dict1.combine_with(dict2, std::move(simple_combine))) {
+    throw IntError{"cannot combine dictionaries"};
+  }
+  ctx.stack.push_maybe_cell(std::move(dict1).extract_root_cell());
+}
+
+void interpret_dict_diff(IntCtx& ctx) {
+  auto func = pop_exec_token(ctx);
+  int n = ctx.stack.pop_smallint_range(vm::Dictionary::max_key_bits);
+  vm::Dictionary dict2{ctx.stack.pop_maybe_cell(), n};
+  vm::Dictionary dict1{ctx.stack.pop_maybe_cell(), n};
+  vm::Dictionary::scan_diff_func_t scan_value_pair =
+      [&ctx, func](td::ConstBitPtr key, int key_len, Ref<vm::CellSlice> cs1_ref, Ref<vm::CellSlice> cs2_ref) -> bool {
+    td::RefInt256 x{true};
+    x.unique_write().import_bits(key, key_len, false);
+    ctx.stack.push_int(std::move(x));
+    ctx.stack.push_maybe_cellslice(std::move(cs1_ref));
+    ctx.stack.push_maybe_cellslice(std::move(cs2_ref));
+    func->run(ctx);
+    return ctx.stack.pop_bool();
+  };
+  ctx.stack.push_bool(dict1.scan_diff(dict2, std::move(scan_value_pair)));
 }
 
 void interpret_pfx_dict_add(vm::Stack& stack, vm::Dictionary::SetMode mode, bool add_builder) {
   int n = stack.pop_smallint_range(vm::Dictionary::max_key_bits);
-  vm::PrefixDictionary dict{stack.pop_cellslice(), n};
+  vm::PrefixDictionary dict{stack.pop_maybe_cell(), n};
   auto cs = stack.pop_cellslice();
   bool res;
   if (add_builder) {
@@ -1217,13 +1347,13 @@ void interpret_pfx_dict_add(vm::Stack& stack, vm::Dictionary::SetMode mode, bool
   } else {
     res = dict.set(cs->data_bits(), cs->size(), stack.pop_cellslice(), mode);
   }
-  stack.push_cellslice(std::move(dict).extract_root());
+  stack.push_maybe_cell(std::move(dict).extract_root_cell());
   stack.push_bool(res);
 }
 
 void interpret_pfx_dict_get(vm::Stack& stack) {
   int n = stack.pop_smallint_range(vm::Dictionary::max_key_bits);
-  vm::PrefixDictionary dict{stack.pop_cellslice(), n};
+  vm::PrefixDictionary dict{stack.pop_maybe_cell(), n};
   auto cs = stack.pop_cellslice();
   auto res = dict.lookup(cs->data_bits(), cs->size());
   if (res.not_null()) {
@@ -1680,6 +1810,25 @@ void interpret_unpack_std_smc_addr(vm::Stack& stack) {
   }
 }
 
+void interpret_bytes_to_base64(vm::Stack& stack, bool base64_url) {
+  stack.push_string(td::str_base64_encode(stack.pop_bytes(), base64_url));
+}
+
+void interpret_base64_to_bytes(vm::Stack& stack, bool allow_base64_url, bool quiet) {
+  auto s = stack.pop_string();
+  if (!td::is_valid_base64(s, allow_base64_url)) {
+    stack.push_bool(false);
+    if (!quiet) {
+      throw IntError{"invalid base64"};
+    }
+  } else {
+    stack.push_bytes(td::str_base64_decode(s, allow_base64_url));
+    if (quiet) {
+      stack.push_bool(true);
+    }
+  }
+}
+
 vm::VmLog create_vm_log(td::LogInterface* logger) {
   if (!logger) {
     return {};
@@ -2054,6 +2203,7 @@ void init_words_common(Dictionary& d) {
   d.def_stack_word("chr ", interpret_chr);
   d.def_stack_word("hold ", interpret_hold);
   d.def_stack_word("(number) ", interpret_parse_number);
+  d.def_stack_word("$| ", interpret_str_split);
   d.def_stack_word("$+ ", interpret_str_concat);
   d.def_stack_word("$= ", interpret_str_equal);
   d.def_stack_word("$cmp ", interpret_str_cmp);
@@ -2147,6 +2297,8 @@ void init_words_common(Dictionary& d) {
   d.def_stack_word("ed25519_sign_uint ", interpret_ed25519_sign_uint);
   // vm dictionaries
   d.def_stack_word("dictnew ", interpret_dict_new);
+  d.def_stack_word("dict>s ", interpret_dict_to_slice);
+  d.def_stack_word("dict, ", interpret_store_dict);
   d.def_stack_word("udict!+ ", std::bind(interpret_dict_add_u, _1, vm::Dictionary::SetMode::Add, false, false));
   d.def_stack_word("udict! ", std::bind(interpret_dict_add_u, _1, vm::Dictionary::SetMode::Set, false, false));
   d.def_stack_word("b>udict!+ ", std::bind(interpret_dict_add_u, _1, vm::Dictionary::SetMode::Add, true, false));
@@ -2161,7 +2313,10 @@ void init_words_common(Dictionary& d) {
   d.def_stack_word("pfxdict! ", std::bind(interpret_pfx_dict_add, _1, vm::Dictionary::SetMode::Set, false));
   d.def_stack_word("pfxdict@ ", interpret_pfx_dict_get);
   d.def_ctx_word("dictmap ", interpret_dict_map);
+  d.def_ctx_word("dictmapext ", interpret_dict_map_ext);
+  d.def_ctx_word("dictforeach ", interpret_dict_foreach);
   d.def_ctx_word("dictmerge ", interpret_dict_merge);
+  d.def_ctx_word("dictdiff ", interpret_dict_diff);
   // slice/bitstring constants
   d.def_active_word("B{", interpret_bytes_hex_literal);
   d.def_active_word("x{", interpret_bitstring_hex_literal);
@@ -2178,10 +2333,16 @@ void init_words_common(Dictionary& d) {
   d.def_stack_word(", ", interpret_tuple_push);
   d.def_stack_word("[] ", interpret_tuple_index);
   d.def_stack_word("count ", interpret_tuple_len);
+  d.def_stack_word("tuple? ", interpret_is_tuple);
   d.def_stack_word("tuple ", interpret_make_tuple);
   d.def_stack_word("untuple ", std::bind(interpret_tuple_explode, _1, true));
   d.def_stack_word("explode ", std::bind(interpret_tuple_explode, _1, false));
   d.def_stack_word("allot ", interpret_allot);
+  // atoms
+  d.def_stack_word("anon ", interpret_atom_anon);
+  d.def_stack_word("(atom) ", interpret_atom);
+  d.def_stack_word("eq? ", interpret_is_eq);
+  d.def_stack_word("atom? ", interpret_is_atom);
   // execution control
   d.def_ctx_word("execute ", interpret_execute);
   d.def_ctx_word("times ", interpret_execute_times);
@@ -2224,8 +2385,12 @@ void init_words_common(Dictionary& d) {
 
 void init_words_ton(Dictionary& d) {
   using namespace std::placeholders;
-  d.def_ctx_word("smca>$ ", interpret_pack_std_smc_addr);
-  d.def_ctx_word("$>smca ", interpret_unpack_std_smc_addr);
+  d.def_stack_word("smca>$ ", interpret_pack_std_smc_addr);
+  d.def_stack_word("$>smca ", interpret_unpack_std_smc_addr);
+  d.def_stack_word("B>base64 ", std::bind(interpret_bytes_to_base64, _1, false));
+  d.def_stack_word("B>base64url ", std::bind(interpret_bytes_to_base64, _1, true));
+  d.def_stack_word("base64>B ", std::bind(interpret_base64_to_bytes, _1, false, false));
+  d.def_stack_word("base64url>B ", std::bind(interpret_base64_to_bytes, _1, true, false));
 }
 
 void init_words_vm(Dictionary& d) {

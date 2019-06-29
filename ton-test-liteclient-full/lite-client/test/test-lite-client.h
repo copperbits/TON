@@ -63,6 +63,7 @@ class TestNode : public td::actor::Actor {
   void got_state(ton::BlockIdExt blkid, ton::RootHash root_hash, ton::FileHash file_hash, td::BufferSlice data,
                  bool dump);
   bool get_block_header(ton::BlockIdExt blk, int mode);
+  bool lookup_block(ton::ShardIdFull shard, int mode, td::uint64 arg);
   void got_block_header(ton::BlockIdExt blkid, td::BufferSlice data, int mode);
   bool show_block_header(ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode);
   bool show_state_header(ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode);
@@ -90,9 +91,15 @@ class TestNode : public td::actor::Actor {
   bool parse_account_addr(ton::WorkchainId& wc, ton::StdSmcAddress& addr);
   static int parse_hex_digit(int c);
   static bool parse_hash(const char* str, ton::Bits256& hash);
-  static bool parse_uint64(std::string word, td::uint64& val);
+  static bool convert_uint64(std::string word, td::uint64& val);
+  static bool convert_int64(std::string word, td::int64& val);
+  static bool convert_uint32(std::string word, td::uint32& val);
+  static bool convert_int32(std::string word, td::int32& val);
+  static bool convert_shard_id(std::string str, ton::ShardIdFull& shard);
   bool parse_hash(ton::Bits256& hash);
   bool parse_lt(ton::LogicalTime& lt);
+  bool parse_uint32(td::uint32& val);
+  bool parse_shard_id(ton::ShardIdFull& shard);
   bool parse_block_id_ext(ton::BlockIdExt& blkid, bool allow_incomplete = false);
   bool parse_block_id_ext(std::string blk_id_string, ton::BlockIdExt& blkid, bool allow_incomplete = false) const;
   bool register_blkid(const ton::BlockIdExt& blkid);

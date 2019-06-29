@@ -82,7 +82,7 @@ phme_root$1 {n:#} {X:Type} root:^(PfxHashmap n X)
 // TON BLOCK LAYOUT
 //
 addr_none$00 = MsgAddressExt;
-addr_extern$01 len:(## 8) external_address:(bits len) 
+addr_extern$01 len:(## 9) external_address:(bits len) 
              = MsgAddressExt;
 anycast_info$_ depth:(#<= 30) { depth >= 1 }
    rewrite_pfx:(bits depth) = Anycast;
@@ -414,8 +414,8 @@ block_info#9bc7a986 version:uint32
   prev_vert_ref:vert_seq_no?^(BlkPrevInfo 0)
   = BlockInfo;
 
-prev_blk_info$_ {merged:#} prev:ExtBlkRef
-  prev_alt:merged?ExtBlkRef = BlkPrevInfo merged;
+prev_blk_info$_ prev:ExtBlkRef = BlkPrevInfo 0;
+prev_blks_info$_ prev1:^ExtBlkRef prev2:^ExtBlkRef = BlkPrevInfo 1;
 
 block#11ef55aa global_id:int32
   info:^BlockInfo value_flow:^ValueFlow
@@ -552,6 +552,14 @@ gas_prices#dd gas_price:uint64 gas_limit:uint64 gas_credit:uint64
 config_mc_gas_prices#_ GasLimitsPrices = ConfigParam 20;
 config_gas_prices#_ GasLimitsPrices = ConfigParam 21;
 
+param_limits#c3 underload:# soft_limit:# { underload <= soft_limit }
+  hard_limit:# { soft_limit <= hard_limit } = ParamLimits;
+block_limits#5d bytes:ParamLimits gas:ParamLimits lt_delta:ParamLimits
+  = BlockLimits;
+  
+config_mc_block_limits#_ BlockLimits = ConfigParam 22;
+config_block_limits#_ BlockLimits = ConfigParam 23;
+
 // msg_fwd_fees = (lump_price + ceil((bit_price * msg.bits + cell_price * msg.cells)/2^16)) nanograms
 // ihr_fwd_fees = ceil((msg_fwd_fees * ihr_price_factor)/2^16) nanograms
 // bits in the root cell of a message are not included in msg.bits (lump_price pays for them)
@@ -566,12 +574,16 @@ config_fwd_prices#_ MsgForwardPrices = ConfigParam 25;
 catchain_config#c1 mc_catchain_lifetime:uint32 shard_catchain_lifetime:uint32 
   shard_validators_lifetime:uint32 shard_validators_num:uint32 = CatchainConfig;
 
-  _ CatchainConfig = ConfigParam 28;
+_ CatchainConfig = ConfigParam 28;
 
 _ fundamental_smc_addr:(HashmapE 256 True) = ConfigParam 31;
 _ prev_validators:ValidatorSet = ConfigParam 32;
 _ cur_validators:ValidatorSet = ConfigParam 34;
 _ next_validators:ValidatorSet = ConfigParam 36;
+
+validator_temp_key#3 adnl_addr:bits256 temp_public_key:SigPubKey seqno:# valid_until:uint32 = ValidatorTempKey;
+signed_temp_key#4 key:^ValidatorTempKey signature:CryptoSignature = ValidatorSignedTempKey;
+_ (HashmapE 256 ValidatorSignedTempKey) = ConfigParam 39;
 
 //
 //  PROOFS

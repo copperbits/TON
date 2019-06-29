@@ -108,7 +108,7 @@ class ConstRefInt {
   ConstRefInt(int _bits, const td::RefInt256& _val) : bits(_bits), value(_val) {
   }
   bool serialize(CellBuilder& cb) const {
-    return value.not_null() && cb.store_bigint256_bool(*value, bits, S);
+    return value.not_null() && cb.store_int256_bool(*value, bits, S);
   }
 };
 
@@ -123,7 +123,7 @@ class ConstRefIntVal {
   ConstRefIntVal(int _bits, td::RefInt256&& _val) : bits(_bits), value(std::move(_val)) {
   }
   bool serialize(CellBuilder& cb) const {
-    return value.not_null() && cb.store_bigint256_bool(*value, bits, S);
+    return value.not_null() && cb.store_int256_bool(*value, bits, S);
   }
 };
 
@@ -136,7 +136,7 @@ class ConstBigInt {
   ConstBigInt(int _bits, const td::BigInt256& _val) : bits(_bits), value(_val) {
   }
   bool serialize(CellBuilder& cb) const {
-    return cb.store_bigint256_bool(value, bits, S);
+    return cb.store_int256_bool(value, bits, S);
   }
 };
 
@@ -153,7 +153,7 @@ class RefInt {
     return value.not_null();
   }
   bool serialize(CellBuilder& cb) const {
-    return value.not_null() && cb.store_bigint256_bool(*value, bits, S);
+    return value.not_null() && cb.store_int256_bool(*value, bits, S);
   }
 };
 

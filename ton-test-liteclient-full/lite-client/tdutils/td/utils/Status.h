@@ -291,6 +291,9 @@ class Status {
 
   Status(bool static_flag, ErrorType error_type, int error_code, Slice message)
       : Status(to_info(static_flag, error_type, error_code), message) {
+    if (static_flag) {
+      TD_LSAN_IGNORE(ptr_.get());
+    }
   }
 
   Status clone_static() const TD_WARN_UNUSED_RESULT {
