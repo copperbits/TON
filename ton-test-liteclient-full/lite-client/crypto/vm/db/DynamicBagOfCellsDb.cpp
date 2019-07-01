@@ -183,6 +183,10 @@ class DynamicBagOfCellsDbImpl : public DynamicBagOfCellsDb, private ExtCellCreat
     CellDbReaderImpl(DynamicBagOfCellsDb *db) : db_(db) {
     }
     void set_loader(std::unique_ptr<CellLoader> cell_loader) {
+      if (cell_loader_) {
+        // avoid race
+        return;
+      }
       cell_loader_ = std::move(cell_loader);
       db_ = nullptr;
     }
@@ -245,7 +249,8 @@ class DynamicBagOfCellsDbImpl : public DynamicBagOfCellsDb, private ExtCellCreat
     }
 
     bool not_in_db = false;
-    for_each(info, [&not_in_db, this](auto &child_info) { not_in_db |= !dfs_new_cells_in_db(child_info); }, false);
+    for_each(
+        info, [&not_in_db, this](auto &child_info) { not_in_db |= !dfs_new_cells_in_db(child_info); }, false);
 
     if (not_in_db) {
       CHECK(!info.in_db);

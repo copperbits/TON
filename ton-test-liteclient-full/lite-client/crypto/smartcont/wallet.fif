@@ -8,39 +8,34 @@
 def? $# { @' $# dup 4 < swap 5 > or ' usage if } if
 
 "new-wallet" constant file-base
-Basechain constant wallet_wc
-0x13CB612A00A7C092C7DFD2EA45D603A9B54591BA4C88F71E707E009B879F0FB2 constant dest_addr
-Basechain constant dest_wc
+Basechain 0x13CB612A00A7C092C7DFD2EA45D603A9B54591BA4C88F71E707E009B879F0FB2 2constant dest_addr
 0 constant seqno
 GR$.666 constant amount
 true constant bounce
 
 def? $4 {
   @' $1 =: file-base
-  @' $2 parse-smc-addr =: bounce =: dest_addr =: dest_wc
+  @' $2 bounce parse-load-address =: bounce 2=: dest_addr
   @' $3 parse-int =: seqno
   @' $4 $>GR =: amount
 } if
 def? $5 { @' $5 } { "wallet-query" } cond constant savefile
 
-file-base +".addr" file>B 32 B| 
-dup Blen { 32 B>i@ =: wallet_wc } { drop } cond
-256 B>u@ dup constant wallet_addr
-."Source wallet address = " wallet_wc ._ .":" x. cr
-wallet_wc wallet_addr 6 smca>$ type cr
-file-base +".pk" file>B dup Blen 32 <> abort"Private key must be exactly 32 bytes long"
-constant wallet_pk
+file-base +".addr" load-address
+2dup 2constant wallet_addr
+."Source wallet address = " 2dup .addr cr 6 .Addr cr
+file-base +".pk" load-keypair nip constant wallet_pk
 
 ."Transferring " amount .GR ."to account "
-dest_wc dest_addr bounce 7 + smca>$ type ." = " dest_wc ._ .":"
-dest_addr x. ."seqno=0x" seqno x. ."bounce=" bounce . cr
+dest_addr 2dup bounce 7 + .Addr ." = " .addr 
+."seqno=0x" seqno x. ."bounce=" bounce . cr
   
 // create a message
-<b b{01} s, bounce 1 i, b{000100} s, dest_wc 8 i, dest_addr 256 u, amount Gram, 0 9 64 32 + + 1+ 1+ u, "TEST" $, b>
+<b b{01} s, bounce 1 i, b{000100} s, dest_addr addr, amount Gram, 0 9 64 32 + + 1+ 1+ u, "TEST" $, b>
 <b seqno 32 u, 1 8 u, swap ref, b>
 dup ."signing message: " <s csr. cr
 dup hash wallet_pk ed25519_sign_uint
-<b b{1000100} s, wallet_wc 8 i, wallet_addr 256 u, 0 Gram, b{00} s,
+<b b{1000100} s, wallet_addr addr, 0 Gram, b{00} s,
    swap B, swap <s s, b>
 dup ."resulting external message: " <s csr. cr
 2 boc+>B dup Bx. cr

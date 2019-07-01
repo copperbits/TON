@@ -47,6 +47,7 @@ void Scheduler::start() {
       this->run_in_context_impl(*this->info_->cpu_workers[i],
                                 [this] { CpuWorker(*info_->cpu_queue, *info_->cpu_queue_waiter).run(); });
     });
+    cpu_threads_[i].set_name(PSLICE() << "#" << info_->id.value() << ":cpu#" << i);
   }
 #if TD_PORT_WINDOWS
   // FIXME: use scheduler_id
@@ -95,6 +96,7 @@ void Scheduler::do_stop() {
 
   io_worker_.reset();
   poll_.clear();
+  heap_.for_each([](auto &key, auto &node) { ActorInfo::from_heap_node(node)->unpin(); });
 
   std::unique_lock<std::mutex> lock(scheduler_group_info_->active_scheduler_count_mutex);
   scheduler_group_info_->active_scheduler_count--;
@@ -160,15 +162,15 @@ void Scheduler::ContextImpl::set_alarm_timestamp(const ActorInfoPtr &actor_info_
     if (heap_node->in_heap()) {
       heap.fix(timestamp.at(), heap_node);
     } else {
+      actor_info_ptr->pin(actor_info_ptr);
       heap.insert(timestamp.at(), heap_node);
     }
   } else {
     if (heap_node->in_heap()) {
+      actor_info_ptr->unpin();
       heap.erase(heap_node);
     }
   }
-
-  // TODO: do something in plain worker
 }
 
 bool Scheduler::ContextImpl::is_stop_requested() {

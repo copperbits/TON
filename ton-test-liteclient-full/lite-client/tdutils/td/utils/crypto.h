@@ -92,6 +92,7 @@ void pbkdf2_sha256(Slice password, Slice salt, int iteration_count, MutableSlice
 void pbkdf2_sha512(Slice password, Slice salt, int iteration_count, MutableSlice dest);
 
 void hmac_sha256(Slice key, Slice message, MutableSlice dest);
+void hmac_sha512(Slice key, Slice message, MutableSlice dest);
 
 // Interface may be improved
 Result<BufferSlice> rsa_encrypt_pkcs1_oaep(Slice public_key, Slice data);

@@ -463,6 +463,14 @@ void hmac_sha256(Slice key, Slice message, MutableSlice dest) {
   CHECK(result == dest.ubegin());
   CHECK(len == dest.size());
 }
+void hmac_sha512(Slice key, Slice message, MutableSlice dest) {
+  CHECK(dest.size() == 512 / 8);
+  unsigned int len = 0;
+  auto result = HMAC(EVP_sha512(), key.ubegin(), narrow_cast<int>(key.size()), message.ubegin(),
+                     narrow_cast<int>(message.size()), dest.ubegin(), &len);
+  CHECK(result == dest.ubegin());
+  CHECK(len == dest.size());
+}
 
 static int get_evp_pkey_type(EVP_PKEY *pkey) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L

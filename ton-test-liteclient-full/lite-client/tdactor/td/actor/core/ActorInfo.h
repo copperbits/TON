@@ -12,6 +12,8 @@ namespace td {
 namespace actor {
 namespace core {
 class Actor;
+class ActorInfo;
+using ActorInfoPtr = SharedObjectPool<ActorInfo>::Ptr;
 class ActorInfo : private HeapNode, private ListNode {
  public:
   ActorInfo(std::unique_ptr<Actor> actor, ActorState::Flags state_flags, Slice name)
@@ -60,14 +62,25 @@ class ActorInfo : private HeapNode, private ListNode {
     alarm_timestamp_at_.store(timestamp.at(), std::memory_order_relaxed);
   }
 
+  void pin(ActorInfoPtr ptr) {
+    CHECK(pin_.empty());
+    CHECK(&*ptr == this);
+    pin_ = std::move(ptr);
+  }
+  ActorInfoPtr unpin() {
+    CHECK(!pin_.empty());
+    return std::move(pin_);
+  }
+
  private:
   std::unique_ptr<Actor> actor_;
   ActorState state_;
   ActorMailbox mailbox_;
   std::string name_;
   std::atomic<double> alarm_timestamp_at_{0};
+
+  ActorInfoPtr pin_;
 };
-using ActorInfoPtr = SharedObjectPool<ActorInfo>::Ptr;
 
 }  // namespace core
 }  // namespace actor

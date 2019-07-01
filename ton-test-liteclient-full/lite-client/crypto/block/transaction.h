@@ -220,7 +220,7 @@ struct Account {
   Ref<vm::Cell> total_state;       // ^Account
   Ref<vm::CellSlice> inner_state;  // StateInit
   ton::Bits256 state_hash;         // hash of StateInit for frozen accounts
-  Ref<vm::Cell> code, data, library;
+  Ref<vm::Cell> code, data, library, orig_library;
   std::vector<LtCellRef> transactions;
   Account() = default;
   Account(ton::WorkchainId wc, td::ConstBitPtr _addr, int depth = 0)
@@ -239,6 +239,7 @@ struct Account {
     return store_acc_status(cb, status);
   }
   void push_transaction(Ref<vm::Cell> trans_root, ton::LogicalTime trans_lt);
+  bool libraries_changed() const;
   bool create_account_block(vm::CellBuilder& cb);  // stores an AccountBlock with all transactions
 
  private:
@@ -270,6 +271,7 @@ struct Transaction {
   bool bounce_enabled{false};
   bool in_msg_extern{false};
   bool use_msg_state{false};
+  bool is_first{false};
   bool new_tick;
   bool new_tock;
   signed char new_split_depth{-1};
@@ -311,13 +313,23 @@ struct Transaction {
   bool prepare_bounce_phase(const ActionPhaseConfig& cfg);
   bool compute_state();
   bool serialize();
+  td::uint64 gas_used() const {
+    return compute_phase ? compute_phase->gas_used : 0;
+  }
+
+  td::Result<vm::NewCellStorageStat::Stat> estimate_block_storage_profile_incr(
+      const vm::NewCellStorageStat& store_stat, const vm::CellUsageTree* usage_tree) const;
+  bool update_block_storage_profile(vm::NewCellStorageStat& store_stat, const vm::CellUsageTree* usage_tree) const;
+  bool would_fit(unsigned cls, const block::BlockLimitStatus& blk_lim_st) const;
+  bool update_limits(block::BlockLimitStatus& blk_lim_st) const;
+
   Ref<vm::Cell> commit(Account& _account);  // _account should point to the same account
   LtCellRef extract_out_msg(unsigned i);
   NewOutMsg extract_out_msg_ext(unsigned i);
   void extract_out_msgs(std::vector<LtCellRef>& list);
 
  private:
-  Ref<vm::Cell> prepare_vm_c5(const ComputePhaseConfig& cfg) const;
+  Ref<vm::Tuple> prepare_vm_c7(const ComputePhaseConfig& cfg) const;
   bool prepare_rand_seed(td::BitArray<256>& rand_seed, const ComputePhaseConfig& cfg) const;
   int try_action_set_code(vm::CellSlice& cs, ActionPhase& ap, const ActionPhaseConfig& cfg);
   int try_action_send_msg(vm::CellSlice& cs, ActionPhase& ap, const ActionPhaseConfig& cfg);

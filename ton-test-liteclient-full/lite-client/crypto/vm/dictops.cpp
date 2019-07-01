@@ -11,14 +11,37 @@
 
 namespace vm {
 
+template <typename T>
+void push_dict(Stack& stack, T&& dict) {
+  stack.push_maybe_cell(std::move(dict).extract_root_cell());
+}
+
+template <typename T>
+void push_dict(Stack& stack, const T& dict) {
+  stack.push_maybe_cell(dict.get_root_cell());
+}
+
 int exec_dict_empty(VmState* st) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute DICTEMPTY\n";
+  VM_LOG(st) << "execute DICTEMPTY";
   auto dict = stack.pop_cellslice();
   if (!dict->have(1)) {
     throw VmError{Excno::cell_und};
   }
   stack.push_smallint(~dict->prefetch_long(1));
+  return 0;
+}
+
+int exec_store_dict(VmState* st) {
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute STDICT";
+  stack.check_underflow(2);
+  auto cb = stack.pop_builder();
+  auto d = stack.pop_maybe_cell();
+  if (!cb.write().store_maybe_ref(std::move(d))) {
+    throw VmError{Excno::cell_ov};
+  }
+  stack.push_builder(std::move(cb));
   return 0;
 }
 
@@ -43,8 +66,7 @@ int exec_skip_dict(VmState* st) {
   VM_LOG(st) << "execute SKIPDICT\n";
   auto dict = stack.pop_cellslice();
   int res = dict_nonempty_chk(*dict);
-  dict.write().advance_refs(res);
-  dict.write().advance(1);
+  dict.write().advance_ext(1, res);
   stack.push_cellslice(std::move(dict));
   return 0;
 }
@@ -78,6 +100,33 @@ int exec_preload_optref(VmState* st) {
   return 0;
 }
 
+int exec_load_dict_slice(VmState* st, unsigned args) {
+  bool preload = args & 1, quiet = args & 2;
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute " << (preload ? "P" : "") << "LDDICTS" << (quiet ? "Q\n" : "\n");
+  auto cs = stack.pop_cellslice();
+  int res = dict_nonempty(*cs);
+  if (res < 0) {
+    if (!quiet) {
+      throw VmError{Excno::cell_und};
+    }
+    if (!preload) {
+      stack.push_cellslice(std::move(cs));
+    }
+  } else {
+    if (preload) {
+      stack.push_cellslice(cs->prefetch_subslice(1, res));
+    } else {
+      stack.push_cellslice(cs.write().fetch_subslice(1, res));
+      stack.push_cellslice(std::move(cs));
+    }
+  }
+  if (quiet) {
+    stack.push_bool(res >= 0);
+  }
+  return 0;
+}
+
 int exec_load_dict(VmState* st, unsigned args) {
   bool preload = args & 1, quiet = args & 2;
   Stack& stack = st->get_stack();
@@ -91,16 +140,15 @@ int exec_load_dict(VmState* st, unsigned args) {
     if (!preload) {
       stack.push_cellslice(std::move(cs));
     }
-    stack.push_smallint(0);
   } else {
-    if (preload) {
-      stack.push_cellslice(cs->prefetch_subslice(1, res));
-    } else {
-      auto dict = cs.write().fetch_subslice(1, res);
+    stack.push_maybe_cell(res ? cs->prefetch_ref() : Ref<Cell>{});
+    if (!preload) {
+      cs.write().advance_ext(1, res);
       stack.push_cellslice(std::move(cs));
-      stack.push_cellslice(std::move(dict));
     }
-    stack.push_smallint(-1);
+  }
+  if (quiet) {
+    stack.push_bool(res >= 0);
   }
   return 0;
 }
@@ -140,7 +188,7 @@ int exec_dict_get(VmState* st, unsigned args) {
   VM_LOG(st) << "execute DICT" << (args & 4 ? (args & 2 ? "U" : "I") : "") << "GET" << (args & 1 ? "REF\n" : "\n");
   stack.check_underflow(3);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   BitSlice key;
   unsigned char buffer[Dictionary::max_key_bytes];
   if (args & 4) {
@@ -182,7 +230,7 @@ int exec_dict_set(VmState* st, unsigned args, Dictionary::SetMode mode, const ch
              << (args & 1 ? "REF\n" : (bld ? "B\n" : "\n"));
   stack.check_underflow(4);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   BitSlice key;
   unsigned char buffer[Dictionary::max_key_bytes];
   if (args & 4) {
@@ -210,7 +258,7 @@ int exec_dict_set(VmState* st, unsigned args, Dictionary::SetMode mode, const ch
     }
     res = dict.set_ref(key.get_bitptr(), key.size(), std::move(new_value_ref), mode);
   }
-  stack.push_cellslice(std::move(dict).extract_root());
+  push_dict(stack, std::move(dict));
   if (mode == Dictionary::SetMode::Set) {
     st->ensure_throw(res);
   } else {
@@ -226,7 +274,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
              << (args & 1 ? "REF\n" : (bld ? "B\n" : "\n"));
   stack.check_underflow(4);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   BitSlice key;
   unsigned char buffer[Dictionary::max_key_bytes];
   if (args & 4) {
@@ -241,7 +289,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
     auto res = dict.lookup_set_builder(key.get_bitptr(), key.size(), std::move(new_value), mode);
-    stack.push_cellslice(std::move(dict).extract_root());
+    push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cellslice(std::move(res));
       stack.push_bool(ok_f);
@@ -254,7 +302,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
     auto res = dict.lookup_set(key.get_bitptr(), key.size(), std::move(new_value), mode);
-    stack.push_cellslice(std::move(dict).extract_root());
+    push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cellslice(std::move(res));
       stack.push_bool(ok_f);
@@ -267,7 +315,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
     auto res = dict.lookup_set_ref(key.get_bitptr(), key.size(), std::move(new_value_ref), mode);
-    stack.push_cellslice(std::move(dict).extract_root());
+    push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cell(std::move(res));
       stack.push_bool(ok_f);
@@ -283,13 +331,13 @@ int exec_dict_delete(VmState* st, unsigned args) {
   VM_LOG(st) << "execute DICT" << (args & 2 ? (args & 1 ? "U" : "I") : "") << "DEL\n";
   stack.check_underflow(3);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   BitSlice key;
   unsigned char buffer[Dictionary::max_key_bytes];
   if (args & 2) {
     key = dict.integer_key(stack.pop_int(), n, !(args & 1), buffer);
     if (!key.is_valid()) {
-      stack.push_cellslice(std::move(dict).extract_root());
+      push_dict(stack, std::move(dict));
       stack.push_smallint(0);
       return 0;
     }
@@ -300,7 +348,7 @@ int exec_dict_delete(VmState* st, unsigned args) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
   }
   bool res = dict.lookup_delete(key.get_bitptr(), key.size()).not_null();
-  stack.push_cellslice(std::move(dict).extract_root());
+  push_dict(stack, std::move(dict));
   stack.push_bool(res);
   return 0;
 }
@@ -310,13 +358,13 @@ int exec_dict_deleteget(VmState* st, unsigned args) {
   VM_LOG(st) << "execute DICT" << (args & 4 ? (args & 2 ? "U" : "I") : "") << "DELGET" << (args & 1 ? "REF\n" : "\n");
   stack.check_underflow(3);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   BitSlice key;
   unsigned char buffer[Dictionary::max_key_bytes];
   if (args & 4) {
     key = dict.integer_key(stack.pop_int(), n, !(args & 2), buffer);
     if (!key.is_valid()) {
-      stack.push_cellslice(std::move(dict).extract_root());
+      push_dict(stack, std::move(dict));
       stack.push_smallint(0);
       return 0;
     }
@@ -328,7 +376,7 @@ int exec_dict_deleteget(VmState* st, unsigned args) {
   }
   if (!(args & 1)) {
     auto res = dict.lookup_delete(key.get_bitptr(), key.size());
-    stack.push_cellslice(std::move(dict).extract_root());
+    push_dict(stack, std::move(dict));
     bool ok = res.not_null();
     if (ok) {
       stack.push_cellslice(std::move(res));
@@ -336,7 +384,7 @@ int exec_dict_deleteget(VmState* st, unsigned args) {
     stack.push_bool(ok);
   } else {
     auto res = dict.lookup_delete_ref(key.get_bitptr(), key.size());
-    stack.push_cellslice(std::move(dict).extract_root());
+    push_dict(stack, std::move(dict));
     bool ok = res.not_null();
     if (ok) {
       stack.push_cell(std::move(res));
@@ -352,14 +400,14 @@ int exec_dict_getmin(VmState* st, unsigned args) {
              << (args & 8 ? "MAX" : "MIN") << (args & 1 ? "REF\n" : "\n");
   stack.check_underflow(2);
   int n = stack.pop_smallint_range(args & 4 ? (args & 2 ? 256 : 257) : Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   unsigned char buffer[Dictionary::max_key_bytes];
   bool flip_first = !(args & 2);
   if (!(args & 1)) {
     auto res = (args & 16) ? dict.extract_minmax_key(buffer, n, args & 8, flip_first)
                            : dict.get_minmax_key(buffer, n, args & 8, flip_first);
     if (args & 16) {
-      stack.push_cellslice(std::move(dict).extract_root());
+      push_dict(stack, std::move(dict));
     }
     if (res.is_null()) {
       stack.push_bool(false);
@@ -370,7 +418,7 @@ int exec_dict_getmin(VmState* st, unsigned args) {
     auto res = (args & 16) ? dict.extract_minmax_key_ref(buffer, n, args & 8, flip_first)
                            : dict.get_minmax_key_ref(buffer, n, args & 8, flip_first);
     if (args & 16) {
-      stack.push_cellslice(std::move(dict).extract_root());
+      push_dict(stack, std::move(dict));
     }
     if (res.is_null()) {
       stack.push_bool(false);
@@ -404,7 +452,7 @@ int exec_dict_getnear(VmState* st, unsigned args) {
              << (args & 1 ? "EQ\n" : "\n");
   stack.check_underflow(3);
   int n = stack.pop_smallint_range(args & 8 ? (args & 4 ? 256 : 257) : Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   unsigned char buffer[Dictionary::max_key_bytes];
   bool sgnd = !(args & 4), go_up = !(args & 2), allow_eq = args & 1;
   if (!(args & 8)) {
@@ -446,11 +494,11 @@ int exec_pfx_dict_set(VmState* st, Dictionary::SetMode mode, const char* name) {
   VM_LOG(st) << "execute PFXDICT" << name;
   stack.check_underflow(3);
   int n = stack.pop_smallint_range(PrefixDictionary::max_key_bits);
-  PrefixDictionary dict{stack.pop_cellslice(), n};
+  PrefixDictionary dict{stack.pop_maybe_cell(), n};
   auto key_slice = stack.pop_cellslice();
   auto new_value = stack.pop_cellslice();
   bool res = dict.set(key_slice->data_bits(), key_slice->size(), std::move(new_value), mode);
-  stack.push_cellslice(std::move(dict).extract_root());
+  push_dict(stack, std::move(dict));
   stack.push_bool(res);
   return 0;
 }
@@ -460,10 +508,10 @@ int exec_pfx_dict_delete(VmState* st) {
   VM_LOG(st) << "execute PFXDICTDEL\n";
   stack.check_underflow(2);
   int n = stack.pop_smallint_range(PrefixDictionary::max_key_bits);
-  PrefixDictionary dict{stack.pop_cellslice(), n};
+  PrefixDictionary dict{stack.pop_maybe_cell(), n};
   auto key_slice = stack.pop_cellslice();
   bool res = dict.lookup_delete(key_slice->data_bits(), key_slice->size()).not_null();
-  stack.push_cellslice(std::move(dict).extract_root());
+  push_dict(stack, std::move(dict));
   stack.push_bool(res);
   return 0;
 }
@@ -473,7 +521,7 @@ int exec_dict_get_exec(VmState* st, unsigned args) {
   VM_LOG(st) << "execute DICT" << (args & 1 ? 'U' : 'I') << "GET" << (args & 2 ? "EXEC\n" : "JMP\n");
   stack.check_underflow(3);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   unsigned char buffer[Dictionary::max_key_bytes];
   dict.integer_key_simple(stack.pop_int(), n, !(args & 1), td::BitPtr{buffer});
   auto value = dict.lookup(td::BitPtr{buffer}, n);
@@ -501,7 +549,7 @@ int exec_push_const_dict(VmState* st, CellSlice& cs, unsigned args, int pfx_bits
   auto slice = cs.fetch_subslice(1, 1);
   int n = (int)cs.fetch_ulong(10);
   VM_LOG(st) << "execute DICTPUSHCONST " << n << " (" << slice << ")";
-  stack.push_cellslice(std::move(slice));
+  stack.push_cell(slice->prefetch_ref());
   stack.push_smallint(n);
   return 0;
 }
@@ -532,7 +580,7 @@ int exec_pfx_dict_get(VmState* st, int op, const char* name_suff) {
   VM_LOG(st) << "execute PFXDICTGET" << name_suff;
   stack.check_underflow(3);
   int n = stack.pop_smallint_range(PrefixDictionary::max_key_bits);
-  PrefixDictionary dict{stack.pop_cellslice(), n};
+  PrefixDictionary dict{stack.pop_maybe_cell(), n};
   auto cs = stack.pop_cellslice();
   auto res = dict.lookup_prefix(cs->data_bits(), cs->size());
   if (res.first.is_null()) {
@@ -596,7 +644,7 @@ int exec_subdict_get(VmState* st, unsigned args) {
   VM_LOG(st) << "execute SUBDICT" << (args & 2 ? (args & 1 ? "U" : "I") : "") << (args & 4 ? "RP" : "") << "GET";
   stack.check_underflow(4);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
-  Dictionary dict{stack.pop_cellslice(), n};
+  Dictionary dict{stack.pop_maybe_cell(), n};
   int mk = (args & 2 ? (args & 1 ? 256 : 257) : Dictionary::max_key_bits);
   int k = stack.pop_smallint_range(std::min(mk, n));
   BitSlice key;
@@ -612,16 +660,16 @@ int exec_subdict_get(VmState* st, unsigned args) {
   if (!dict.cut_prefix_subdict(key.get_bitptr(), k, args & 4)) {
     throw VmError{Excno::dict_err, "cannot construct subdictionary by key prefix"};
   }
-  stack.push_cellslice(std::move(dict).extract_root());
+  push_dict(stack, std::move(dict));
   return 0;
 }
 
 void register_dictionary_ops(OpcodeTable& cp0) {
   using namespace std::placeholders;
-  cp0.insert(OpcodeInstr::mksimple(0xf400, 16, "DICTEMPTY", exec_dict_empty))
+  cp0.insert(OpcodeInstr::mksimple(0xf400, 16, "STDICT", exec_store_dict))
       .insert(OpcodeInstr::mksimple(0xf401, 16, "SKIPDICT", exec_skip_dict))
-      .insert(OpcodeInstr::mksimple(0xf402, 16, "LDOPTREF", exec_load_optref))
-      .insert(OpcodeInstr::mksimple(0xf403, 16, "PLDOPTREF", exec_preload_optref))
+      .insert(OpcodeInstr::mksimple(0xf402, 16, "LDDICTS", std::bind(exec_load_dict_slice, _1, 0)))
+      .insert(OpcodeInstr::mksimple(0xf403, 16, "PLDDICTS", std::bind(exec_load_dict_slice, _1, 1)))
       .insert(OpcodeInstr::mksimple(0xf404, 16, "LDDICT", std::bind(exec_load_dict, _1, 0)))
       .insert(OpcodeInstr::mksimple(0xf405, 16, "PLDDICT", std::bind(exec_load_dict, _1, 1)))
       .insert(OpcodeInstr::mksimple(0xf406, 16, "LDDICTQ", std::bind(exec_load_dict, _1, 2)))

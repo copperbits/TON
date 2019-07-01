@@ -530,7 +530,7 @@ bool CellSlice::fetch_uint_leq(unsigned upper_bound, int& res) {
 }
 
 bool CellSlice::fetch_uint_leq(unsigned upper_bound, unsigned& res) {
-  unsigned bits = 32 - td::count_trailing_zeroes32(upper_bound);
+  unsigned bits = 32 - td::count_leading_zeroes32(upper_bound);
   if (bits > 32 || !have(bits)) {
     return false;
   } else {

@@ -5,6 +5,7 @@
 #include "td/utils/format.h"
 #include "td/utils/logging.h"
 #include "td/utils/port/thread.h"
+#include "td/utils/Random.h"
 #include "td/utils/Slice.h"
 #include "td/utils/StringBuilder.h"
 #include "td/utils/tests.h"
@@ -862,5 +863,219 @@ TEST(Actor2, ActorIdDynamicCast) {
     send_closure(actor_shared_a, &A::close);
   });
   scheduler.run();
+}
+
+TEST(Actor2, send_vs_close) {
+  for (int it = 0; it < 100; it++) {
+    Scheduler scheduler({8});
+
+    auto watcher = td::create_shared_destructor([] { SchedulerContext::get()->stop(); });
+    scheduler.run_in_context([watcher = std::move(watcher)] {
+      class To : public Actor {
+       public:
+        class Callback {
+         public:
+          virtual ~Callback() {
+          }
+          virtual void on_closed(ActorId<To> to) = 0;
+        };
+        To(int cnt, std::shared_ptr<td::Destructor> watcher) : cnt_(cnt), watcher_(std::move(watcher)) {
+        }
+        void on_event() {
+          if (--cnt_ <= 0) {
+            stop();
+          }
+        }
+        void add_callback(std::unique_ptr<Callback> callback) {
+          callbacks_.push_back(std::move(callback));
+        }
+        void start_up() override {
+          alarm_timestamp() = td::Timestamp::in(td::Random::fast(0, 4) * 0.001);
+        }
+        void tear_down() override {
+          if (td::Random::fast(0, 4) == 0) {
+            send_closure(actor_id(this), &To::self_ref, actor_id(this));
+          }
+          for (auto &callback : callbacks_) {
+            callback->on_closed(actor_id(this));
+          }
+        }
+        void self_ref(ActorId<To>) {
+        }
+        void alarm() override {
+          stop();
+        }
+
+       private:
+        int cnt_;
+        std::shared_ptr<td::Destructor> watcher_;
+        std::vector<std::unique_ptr<Callback>> callbacks_;
+      };
+      class From : public Actor {
+       public:
+        From(std::vector<ActorId<To>> to, std::shared_ptr<td::Destructor> watcher)
+            : to_(std::move(to)), watcher_(std::move(watcher)) {
+        }
+        void start_up() override {
+          yield();
+        }
+        void on_closed(ActorId<To>) {
+        }
+        void loop() override {
+          while (!to_.empty()) {
+            if (td::Random::fast(0, 3) == 0) {
+              break;
+            }
+            auto id = to_.back();
+            to_.pop_back();
+            if (td::Random::fast(0, 4) == 0) {
+              class Callback : public To::Callback {
+               public:
+                Callback(ActorId<From> from) : from_(std::move(from)) {
+                }
+                void on_closed(ActorId<To> id) override {
+                  send_closure(from_, &From::on_closed, std::move(id));
+                }
+
+               private:
+                ActorId<From> from_;
+              };
+              send_closure(id, &To::add_callback, std::make_unique<Callback>(actor_id(this)));
+            }
+            send_closure(id, &To::on_event);
+          }
+          if (to_.empty()) {
+            stop();
+          } else {
+            yield();
+          }
+        }
+
+       private:
+        std::vector<ActorId<To>> to_;
+        std::shared_ptr<td::Destructor> watcher_;
+      };
+
+      class Master : public Actor {
+       public:
+        Master(std::shared_ptr<td::Destructor> watcher) : watcher_(std::move(watcher)) {
+        }
+
+       private:
+        std::shared_ptr<td::Destructor> watcher_;
+        int cnt_ = 10;
+        void loop() override {
+          if (cnt_-- < 0) {
+            return stop();
+          }
+          int from_n = 5;
+          int to_n = 5;
+          std::vector<std::vector<ActorId<To>>> from(from_n);
+          for (int i = 0; i < to_n; i++) {
+            int cnt = td::Random::fast(1, 10);
+            int to_cnt = td::Random::fast(1, cnt);
+            auto to =
+                td::actor::create_actor<To>(
+                    td::actor::ActorOptions().with_name(PSLICE() << "To#" << i).with_poll(td::Random::fast(0, 4) == 0),
+                    to_cnt, watcher_)
+                    .release();
+            for (int j = 0; j < cnt; j++) {
+              auto from_i = td::Random::fast(0, from_n - 1);
+              from[from_i].push_back(to);
+            }
+          }
+          for (int i = 0; i < from_n; i++) {
+            td::actor::create_actor<From>(
+                td::actor::ActorOptions().with_name(PSLICE() << "From#" << i).with_poll(td::Random::fast(0, 4) == 0),
+                std::move(from[i]), watcher_)
+                .release();
+          }
+          alarm_timestamp() = td::Timestamp::in(td::Random::fast(0, 10) * 0.01 / 30);
+        }
+      };
+      td::actor::create_actor<Master>("Master", watcher).release();
+    });
+
+    scheduler.run();
+  }
+}
+TEST(Actor2, send_vs_close2) {
+  for (int it = 0; it < 100; it++) {
+    Scheduler scheduler({8});
+
+    auto watcher = td::create_shared_destructor([] { SchedulerContext::get()->stop(); });
+    //std::shared_ptr<td::Destructor> watcher;
+    scheduler.run_in_context([watcher = std::move(watcher)] {
+      class To : public Actor {
+       public:
+        To(int cnt, std::shared_ptr<td::Destructor> watcher) : cnt_(cnt), watcher_(std::move(watcher)) {
+        }
+        void start_up() override {
+          alarm_timestamp() = td::Timestamp::in(td::Random::fast(0, 4) * 0.001 / 30);
+        }
+        void alarm() override {
+          stop();
+        }
+
+       private:
+        int cnt_;
+        std::shared_ptr<td::Destructor> watcher_;
+      };
+      class From : public Actor {
+       public:
+        From(std::vector<ActorId<To>> to, std::shared_ptr<td::Destructor> watcher)
+            : to_(std::move(to)), watcher_(std::move(watcher)) {
+        }
+        void start_up() override {
+          stop();
+        }
+
+       private:
+        std::vector<ActorId<To>> to_;
+        std::shared_ptr<td::Destructor> watcher_;
+      };
+
+      class Master : public Actor {
+       public:
+        Master(std::shared_ptr<td::Destructor> watcher) : watcher_(std::move(watcher)) {
+        }
+
+       private:
+        std::shared_ptr<td::Destructor> watcher_;
+        int cnt_ = 5;
+        void loop() override {
+          if (cnt_-- < 0) {
+            return stop();
+          }
+          int from_n = 2;
+          int to_n = 2;
+          std::vector<std::vector<ActorId<To>>> from(from_n);
+          for (int i = 0; i < to_n; i++) {
+            int cnt = td::Random::fast(1, 2);
+            int to_cnt = td::Random::fast(1, cnt);
+            auto to =
+                td::actor::create_actor<To>(
+                    td::actor::ActorOptions().with_name(PSLICE() << "To#" << i).with_poll(td::Random::fast(0, 4) == 0),
+                    to_cnt, watcher_)
+                    .release();
+            for (int j = 0; j < cnt; j++) {
+              auto from_i = td::Random::fast(0, from_n - 1);
+              from[from_i].push_back(to);
+            }
+          }
+          for (int i = 0; i < from_n; i++) {
+            td::actor::create_actor<From>(
+                td::actor::ActorOptions().with_name(PSLICE() << "From#" << i).with_poll(td::Random::fast(0, 4) == 0),
+                std::move(from[i]), watcher_)
+                .release();
+          }
+          alarm_timestamp() = td::Timestamp::in(td::Random::fast(0, 10) * 0.01 / 30);
+        }
+      };
+      td::actor::create_actor<Master>("Master", watcher).release();
+    });
+
+    scheduler.run();
+  }
 }
 #endif  //!TD_THREAD_UNSUPPORTED

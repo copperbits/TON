@@ -45,6 +45,9 @@ bool IntCtx::load_next_line() {
   if (!std::getline(*input_stream, str)) {
     return false;
   }
+  if (!str.empty() && str.back() == '\r') {
+    str.pop_back();
+  }
   set_input(str);
   return true;
 }
@@ -69,7 +72,7 @@ std::string IntCtx::scan_word_to(char delim, bool err_endl) {
 std::string IntCtx::scan_word() {
   skipspc(true);
   std::string res;
-  while (*input_ptr && *input_ptr != ' ' && *input_ptr != '\t') {
+  while (*input_ptr && *input_ptr != ' ' && *input_ptr != '\t' && *input_ptr != '\r') {
     res += *input_ptr++;
   }
   skipspc();
@@ -78,7 +81,7 @@ std::string IntCtx::scan_word() {
 
 void IntCtx::skipspc(bool skip_eol) {
   do {
-    while (*input_ptr == ' ' || *input_ptr == '\t') {
+    while (*input_ptr == ' ' || *input_ptr == '\t' || *input_ptr == '\r') {
       ++input_ptr;
     }
     if (!skip_eol || *input_ptr) {

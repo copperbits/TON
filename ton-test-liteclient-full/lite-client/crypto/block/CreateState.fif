@@ -96,6 +96,14 @@ dictnew constant special-dict
 } : make-catchain-params
 { make-catchain-params 28 config! } : config.catchain_params!
 
+// b [underload soft hard] -- b'
+{ untriple 3 roll x{c3} s, 3 roll 32 u, rot 32 u, swap 32 u, } : param_limits,
+// bytes-limits gas-limits lt-limits -- c
+{ <b x{5d} s, 3 roll param_limits, rot param_limits, swap param_limits, b>
+} : make-block-limits
+{ make-block-limits 22 config! } : config.mc_block_limits!
+{ make-block-limits 23 config! } : config.block_limits!
+
 1000000000 constant Gram
 1000000 constant mGram
 1000 constant uGram
@@ -113,6 +121,11 @@ dictnew constant special-dict
   1- { Gram swap */r } { Gram * } cond 
   1 'nop
 } ::_ GR$
+
+{ 10 << } : *Ki
+{ 20 << } : *Mi
+{ 10 <</r } : */Ki
+{ 20 <</r } : */Mi
 
 0 constant recv_internal
 -1 constant recv_external

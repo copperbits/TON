@@ -42,7 +42,7 @@ TEST(Cells, simple) {
       .store_long(-17, 11)
       .store_long(1000000239, 32)
       .store_long(1000000239LL * 1000000239)
-      .store_bigint256("-1000000000000000000000000239"_i256, 91);
+      .store_int256("-1000000000000000000000000239"_i256, 91);
   cb1.store_ref(cb2.finalize_copy());
   show_total_cells(os);
   cb2.store_bytes("<->", 3);

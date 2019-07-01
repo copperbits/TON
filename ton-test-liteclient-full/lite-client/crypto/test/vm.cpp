@@ -75,11 +75,11 @@ TEST(VM, bug_div_short_any) {
   test_run_vm("6883FF73A98D");
 }
 TEST(VM, assert_pfx_dict_lookup) {
-  test_run_vm("778B04212173F43E211277F473");
+  test_run_vm("778B04216D73F43E018B04591277F473");
 }
 
 TEST(VM, assert_lookup_prefix) {
-  test_run_vm("78E58B008B028B040100002190ED5272F43A755D77F4A8");
+  test_run_vm("78E58B008B028B04010000016D90ED5272F43A755D77F4A8");
 }
 
 TEST(VM, assert_code_not_null) {
@@ -87,7 +87,7 @@ TEST(VM, assert_code_not_null) {
 }
 
 TEST(VM, bug_exec_dict_getnear) {
-  test_run_vm("8B048B00008B0472F47573655F6D656D6D656D8B007F");
+  test_run_vm("8B048B00006D72F47573655F6D656D6D656D8B007F");
 }
 
 TEST(VM, bug_stack_overflow) {
@@ -95,7 +95,7 @@ TEST(VM, bug_stack_overflow) {
 }
 
 TEST(VM, assert_extract_minmax_key) {
-  test_run_vm("8B048B04EB21807AF49C2180EB21807AF41C");
+  test_run_vm("6D6DEB21807AF49C2180EB21807AF41C");
 }
 
 TEST(VM, memory_leak_new) {
@@ -121,7 +121,7 @@ TEST(VM, unhandled_exception_4) {
 }
 
 TEST(VM, unhandled_exception_5) {
-  test_run_vm("738B04012121F41476A721F49F");
+  test_run_vm("738B04016D21F41476A721F49F");
 }
 
 TEST(VM, bigint) {

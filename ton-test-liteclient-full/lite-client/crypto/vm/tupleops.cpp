@@ -60,13 +60,6 @@ int exec_mktuple_var(VmState* st) {
   return exec_mktuple_common(st->get_stack(), args);
 }
 
-const StackEntry& tuple_index(const Tuple& tup, unsigned idx) {
-  if (idx >= tup->size()) {
-    throw VmError{Excno::range_chk, "tuple index out of range"};
-  }
-  return (*tup)[idx];
-}
-
 int exec_tuple_index_common(Stack& stack, unsigned n) {
   auto tuple = stack.pop_tuple_range(255);
   stack.push(tuple_index(*tuple, n));

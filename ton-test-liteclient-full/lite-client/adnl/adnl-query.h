@@ -9,7 +9,7 @@ namespace ton {
 
 class AdnlPeerPair;
 
-using AdnlQueryId = td::UInt256;
+using AdnlQueryId = td::Bits256;
 
 class AdnlQuery : public td::actor::Actor {
  public:

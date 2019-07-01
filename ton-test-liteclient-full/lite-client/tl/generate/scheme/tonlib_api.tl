@@ -63,3 +63,17 @@ generic.getAccountState account_address:accountAddress = generic.AccountState;
 generic.sendGrams private_key:PrivateKey source:accountAddress destination:accountAddress amount:int64 = Ok;
 
 runTests dir:string = Ok;
+
+---types---
+key public_key:bytes secret:bytes = Key;
+inputKey key:key local_password:bytes = InputKey;
+exportedKey word_list:vector<string> = ExportedKey;
+exportedPemKey pem:string= ExportedPemKey;
+--- functions ---
+createNewKey local_password:bytes mnemonic_password:bytes = Key;
+deleteKey public_key:bytes = Ok;
+exportKey input_key:inputKey = ExportedKey;
+exportPemKey input_key:inputKey key_password:bytes = ExportedPemKey;
+importKey local_password:bytes mnemonic_password:bytes exported_key:exportedKey = Key;
+importPemKey local_password:bytes key_password:bytes exported_key:exportedPemKey = Key;
+changeLocalPassword input_key:inputKey new_local_password:bytes = Key;

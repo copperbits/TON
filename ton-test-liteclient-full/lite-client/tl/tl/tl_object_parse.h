@@ -8,6 +8,7 @@
 #include "tl/TlObject.h"
 
 #include "td/utils/int_types.h"
+#include "crypto/common/bitstring.h"
 
 namespace ton {
 
@@ -77,16 +78,16 @@ class TlFetchDouble {
 class TlFetchInt128 {
  public:
   template <class Parser>
-  static td::UInt128 parse(Parser &p) {
-    return p.template fetch_binary<td::UInt128>();
+  static td::Bits128 parse(Parser &p) {
+    return p.template fetch_binary<td::Bits128>();
   }
 };
 
 class TlFetchInt256 {
  public:
   template <class Parser>
-  static td::UInt256 parse(Parser &p) {
-    return p.template fetch_binary<td::UInt256>();
+  static td::Bits256 parse(Parser &p) {
+    return p.template fetch_binary<td::Bits256>();
   }
 };
 

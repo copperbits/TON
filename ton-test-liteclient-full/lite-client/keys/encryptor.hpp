@@ -65,7 +65,7 @@ class EncryptorEd25519 : public Encryptor {
   td::Result<td::BufferSlice> encrypt(td::Slice data) override;
   td::Status check_signature(td::Slice message, td::Slice signature) override;
 
-  EncryptorEd25519(td::UInt256 key) : pub_(as_slice(key)) {
+  EncryptorEd25519(td::Bits256 key) : pub_(as_slice(key)) {
   }
 };
 
@@ -76,7 +76,7 @@ class DecryptorEd25519 : public Decryptor {
  public:
   td::Result<td::BufferSlice> decrypt(td::Slice data) override;
   td::Result<td::BufferSlice> sign(td::Slice data) override;
-  DecryptorEd25519(td::UInt256 key) : pk_(as_slice(key)) {
+  DecryptorEd25519(td::Bits256 key) : pk_(as_slice(key)) {
   }
 };
 
@@ -88,7 +88,7 @@ class EncryptorOverlay : public Encryptor {
     return td::Status::Error("overlay id can not be used for encryption");
   }
   td::Status check_signature(td::Slice message, td::Slice signature) override {
-    auto R = fetch_tl_object<ton_api::dht_keyDescription>(message, false);
+    auto R = fetch_tl_object<ton_api::dht_keyDescription>(message, true);
     if (R.is_error()) {
       return R.move_as_error();
     }
@@ -108,7 +108,7 @@ class EncryptorOverlay : public Encryptor {
 
 class EncryptorAES : public Encryptor {
  private:
-  td::UInt256 shared_secret_;
+  td::Bits256 shared_secret_;
 
  public:
   td::Result<td::BufferSlice> encrypt(td::Slice data) override;
@@ -116,20 +116,20 @@ class EncryptorAES : public Encryptor {
     return td::Status::Error("can no sign channel messages");
   }
 
-  EncryptorAES(td::UInt256 shared_secret) : shared_secret_(shared_secret) {
+  EncryptorAES(td::Bits256 shared_secret) : shared_secret_(shared_secret) {
   }
 };
 
 class DecryptorAES : public Decryptor {
  private:
-  td::UInt256 shared_secret_;
+  td::Bits256 shared_secret_;
 
  public:
   td::Result<td::BufferSlice> decrypt(td::Slice data) override;
   td::Result<td::BufferSlice> sign(td::Slice data) override {
     return td::Status::Error("can no sign channel messages");
   }
-  DecryptorAES(td::UInt256 shared_secret) : shared_secret_(shared_secret) {
+  DecryptorAES(td::Bits256 shared_secret) : shared_secret_(shared_secret) {
   }
 };
 

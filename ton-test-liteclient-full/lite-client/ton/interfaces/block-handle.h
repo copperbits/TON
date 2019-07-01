@@ -19,6 +19,7 @@ struct BlockHandleImpl {
   virtual bool inited_prev_right() const = 0;
   virtual bool inited_prev() const = 0;
   virtual bool inited_logical_time() const = 0;
+  virtual bool inited_unix_time() const = 0;
   virtual bool inited_proof() const = 0;
   virtual bool inited_proof_link() const = 0;
   virtual bool inited_signatures() const = 0;
@@ -48,7 +49,9 @@ struct BlockHandleImpl {
                      td::Promise<td::Unit> promise) = 0;
   virtual void flushed_upto(td::uint32 version) = 0;
   virtual void set_logical_time(LogicalTime lt) = 0;
+  virtual void set_unix_time(UnixTime ts) = 0;
   virtual LogicalTime logical_time() const = 0;
+  virtual UnixTime unix_time() const = 0;
   virtual void set_proof() = 0;
   virtual void set_proof_link() = 0;
   virtual void set_signatures() = 0;

@@ -12,17 +12,17 @@ dup csr. constant mkdict(16,16).code
 }>s dup csr. constant explode_dict(16,16).code
 { explode_dict(16,16).code runvmcode abort"cannot explode 16->16 dictionary" } : xdict(16,16)
 { xdict(16,16) ."{ " { swap . ."-> " . ."; " } swap times ."}" cr } : .dict(16,16)
-{ xdict(16,16) { dup 0< not { ."+" } if . 64 + emit } swap times space } : .v
+{ xdict(16,16) { dup 0< not { ."+" } if ._ 64 + emit } swap times space } : .v
 169 13 
 239 dup dup * swap
 289 17 
 3
 mkdict(16,16) constant dict
 
-{ 16 { 16 @+ s> 1+ 16 , true } dictmap } : dict:1+
-{ 16 { 16 @+ s> swap 16 @+ s> + 16 , true } dictmerge } : dict:+
+{ 16 { 16 i@+ s> 1+ 16 i, true } dictmap } : dict:1+
+{ 16 { 16 i@+ s> swap 16 i@+ s> + 16 i, true } dictmerge } : dict:+
 
-dict dict:1+ dup csr. constant dict2
+dict dict:1+ dup <s csr. constant dict2
 
 dict .dict(16,16)
 dict2 .dict(16,16)
@@ -35,7 +35,7 @@ dict2 .dict(16,16)
 
 
 dict dict3
-2dup swap csr. csr. dict:+ dup csr. .dict(16,16)
+2dup swap <s csr. <s csr. dict:+ dup <s csr. .dict(16,16)
 
 { 1 mkdict(16,16) } : cst*
 { 1 cst* } : A*

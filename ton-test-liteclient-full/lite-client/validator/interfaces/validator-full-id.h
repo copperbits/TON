@@ -15,7 +15,7 @@ class ValidatorFullId : public PublicKey {
 
   ValidatorFullId(PublicKey id) : PublicKey{std::move(id)} {
   }
-  ValidatorFullId(Ed25519_PublicKey key) : PublicKey{pubkeys::Ed25519{key.as_uint256()}} {
+  ValidatorFullId(Ed25519_PublicKey key) : PublicKey{pubkeys::Ed25519{key.as_bits256()}} {
   }
 };
 

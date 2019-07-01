@@ -57,7 +57,7 @@ adnl.address.tcp6 ip:int128 port:int = adnl.Address;
 
 //adnl.address.tunnel to:adnl.Address tunid: = adnl.Address; 
 
-adnl.addressList addrs:(vector adnl.Address) version:int = adnl.AddressList;
+adnl.addressList addrs:(vector adnl.Address) version:int reinit_date:int priority:int expire_at:int = adnl.AddressList;
 
 adnl.node id:PublicKey addr_list:adnl.addressList signature:bytes = adnl.Node;
 adnl.nodes nodes:(vector adnl.node) = adnl.Nodes;
@@ -66,37 +66,25 @@ adnl.nodes nodes:(vector adnl.node) = adnl.Nodes;
 
 ---types---
 
-// Header of received packet
-// Magic is omitted, encryption mode is determined by dst
-adnl.packetHeader.secp256k1 dst:int256 point:int256 = adnl.PacketHeader;
-adnl.packetHeader.unenc dst:int256 = adnl.PacketHeader;
-adnl.packetHeader.channel dst:int256 hash:int256 = adnl.PacketHeader;
+adnl.packetContents 
+  rand1:bytes 
+  flags:# 
+  from:flags.0?PublicKey 
+  from_short:flags.1?adnl.id.short
+  message:flags.2?adnl.Message 
+  messages:flags.3?(vector adnl.Message)
+  address:flags.4?adnl.addressList 
+  priority_address:flags.5?adnl.addressList
+  seqno:flags.6?long 
+  confirm_seqno:flags.7?long 
+  recv_addr_list_version:flags.8?int
+  recv_priority_addr_list_version:flags.9?int
+  reinit_date:flags.10?int 
+  dst_reinit_date:flags.10?int
+  signature:flags.11?bytes 
+  rand2:bytes 
+        = adnl.PacketContents;
 
-// @rand1      - random padding
-// @from       - full sender id
-// @from_short - short version of sender id. May be used if recepient
-//             knows about sender. But need to be used with caution
-// @message    - one encrypted message
-// @messages   - multiple encrypted messages
-// @address    - list of network addresses. By default if answer in needed it will be sent
-//             backwards
-// @seqno      - seqno 
-// @confirm_seqno
-//             - max received seqno confirmation
-// @reinit_date
-//             - date of new incarnation start 
-// @recv_addr_list_version 
-//             - last received addr list version
-// @signature  - signature of sender
-// @rand2      - random padding
-adnl.packetContents rand1:bytes flags:# from:flags.0?PublicKey from_short:flags.1?adnl.id.short
-                    message:flags.2?adnl.Message messages:flags.3?(vector adnl.Message)
-                    address:flags.6?adnl.addressList seqno:flags.8?long recv_addr_list_version:flags.9?int
-                    confirm_seqno:flags.10?long reinit_date:flags.11?int dst_reinit_date:flags.11?int
-                    signature:flags.7?bytes rand2:bytes = adnl.PacketContents;
-
-// Magic may be omitted in TL-B
-adnl.message.packet packet:bytes = adnl.Message;
 
 adnl.message.createChannel key:int256 date:int = adnl.Message;
 adnl.message.confirmChannel key:int256 peer_key:int256 date:int = adnl.Message;
@@ -109,8 +97,17 @@ adnl.message.reinit date:int = adnl.Message;
 adnl.message.query query_id:int256 query:bytes = adnl.Message;
 adnl.message.answer query_id:int256 answer:bytes = adnl.Message;
 
+adnl.message.part hash:int256 total_size:int offset:int data:bytes = adnl.Message;
 
 ---functions---
+---types---
+
+adnl.db.node.key local_id:int256 peer_id:int256 = adnl.db.Key;
+adnl.db.node.value date:int id:PublicKey addr_list:adnl.addressList priority_addr_list:adnl.addressList = adnl.db.node.Value; 
+
+---functions---
+
+
 ---types---
 
 rldp.messagePart transfer_id:int256 fer_type:fer.Type part:int total_size:long seqno:int data:bytes = rldp.MessagePart;
@@ -118,7 +115,7 @@ rldp.confirm transfer_id:int256 part:int seqno:int = rldp.MessagePart;
 rldp.complete transfer_id:int256 part:int = rldp.MessagePart;
 
 rldp.message id:int256 data:bytes = rldp.Message;
-rldp.query query_id:int256 data:bytes = rldp.Message;
+rldp.query query_id:int256 timeout:int data:bytes = rldp.Message;
 rldp.answer query_id:int256 data:bytes = rldp.Message;
 
 
@@ -132,8 +129,7 @@ dht.key id:int256 name:bytes idx:int = dht.Key;
 
 dht.updateRule.signature = dht.UpdateRule;
 dht.updateRule.anybody = dht.UpdateRule;
-dht.updateRule.nodes max_nodes:int = dht.UpdateRule;
-dht.updateRule.overlayNodes max_nodes:int = dht.UpdateRule;
+dht.updateRule.overlayNodes = dht.UpdateRule;
 
 dht.keyDescription key:dht.key id:PublicKey update_rule:dht.UpdateRule signature:bytes = dht.KeyDescription;
 
@@ -147,6 +143,9 @@ dht.valueFound value:dht.Value = dht.ValueResult;
 dht.stored = dht.Stored;
 dht.message node:dht.node = dht.Message;
 
+dht.db.bucket nodes:dht.nodes = dht.db.Bucket;
+dht.db.key.bucket id:int = dht.db.Key;
+
 ---functions---
 
 dht.ping random_id:long = dht.Pong;
@@ -159,7 +158,7 @@ dht.query node:dht.node = True;
 
 ---types---
 
-overlay.node.toSign id:int256 overlay:int256 version:int = overlay.node.ToSign;
+overlay.node.toSign id:adnl.id.short overlay:int256 version:int = overlay.node.ToSign;
 overlay.node id:PublicKey overlay:int256 version:int signature:bytes = overlay.Node;
 overlay.nodes nodes:(vector overlay.node) = overlay.Nodes;
 
@@ -195,6 +194,13 @@ overlay.getRandomPeers peers:overlay.nodes = overlay.Nodes;
 overlay.query overlay:int256 = True;
 overlay.getBroadcast hash:int256 = overlay.Broadcast;
 overlay.getBroadcastList list:overlay.broadcastList = overlay.BroadcastList;
+
+---types---
+
+overlay.db.nodes nodes:overlay.nodes = overlay.db.Nodes;
+overlay.db.key.nodes local_id:int256 overlay:int256 = overlay.db.Key;
+
+---functions---
 
 ---types---
 
@@ -295,6 +301,7 @@ tonNode.sessionId workchain:int shard:long utime_from:int utime_to:int = tonNode
 
 tonNode.blockSignature who:int256 signature:bytes = tonNode.BlockSignature;
 
+tonNode.blockId workchain:int shard:long seqno:int = tonNode.BlockId;
 tonNode.blockIdExt workchain:int shard:long seqno:int root_hash:int256 file_hash:int256 = tonNode.BlockIdExt;
 tonNode.zeroStateIdExt workchain:int root_hash:int256 file_hash:int256 = tonNode.ZeroStateIdExt;
 
@@ -312,7 +319,7 @@ tonNode.data data:bytes = tonNode.Data;
 tonNode.ihrMessage data:bytes = tonNode.IhrMessage;
 tonNode.externalMessage data:bytes = tonNode.ExternalMessage;
 
-tonNode.newShardBlock workchain:int shard:long data:bytes = tonNode.NewShardBlock;
+tonNode.newShardBlock block:tonNode.blockIdExt cc_seqno:int data:bytes = tonNode.NewShardBlock;
 
 tonNode.blockBroadcast id:tonNode.blockIdExt catchain_seqno:int validator_set_hash:int 
               signatures:(vector tonNode.blockSignature) masterchain_block_id:tonNode.blockIdExt
@@ -321,7 +328,7 @@ tonNode.ihrMessageBroadcast message:tonNode.ihrMessage = tonNode.Broadcast;
 tonNode.externalMessageBroadcast message:tonNode.externalMessage = tonNode.Broadcast;
 tonNode.newShardBlockBroadcast block:tonNode.newShardBlock = tonNode.Broadcast;
 
-tonNode.shardPublicOverlayId workchain:int shard:long = tonNode.ShardPublicOverlayId;
+tonNode.shardPublicOverlayId workchain:int shard:long zero_state_file_hash:int256 = tonNode.ShardPublicOverlayId;
 
 ton.blockId root_cell_hash:int256 file_hash:int256 = ton.BlockId;
 
@@ -399,6 +406,7 @@ db.block.info id:tonNode.blockIdExt flags:# prev_left:flags.1?tonNode.blockIdExt
                                             next_left:flags.3?tonNode.blockIdExt
                                             next_right:flags.4?tonNode.blockIdExt
                                             lt:flags.13?long 
+                                            ts:flags.14?int
                                             state:flags.17?int256 = db.block.Info;
 db.block.archivedInfo id:tonNode.blockIdExt flags:# next:flags.0?tonNode.blockIdExt = db.block.Info;
 
@@ -421,18 +429,20 @@ db.filedb.key.candidate id:db.candidate.id = db.filedb.Key;
 
 db.state.destroyedSessions sessions:(vector int256) = db.state.DestroyedSessions;
 db.state.initBlockId block:tonNode.blockIdExt = db.state.InitBlockId;
+db.state.gcBlockId block:tonNode.blockIdExt = db.state.GcBlockId;
 db.state.shardClient block:tonNode.blockIdExt = db.state.ShardClient;
 
 db.state.key.destroyedSessions = db.state.Key;
 db.state.key.initBlockId = db.state.Key;
+db.state.key.gcBlockId = db.state.Key;
 db.state.key.shardClient workchain:int shard:long = db.state.Key;
 
 db.lt.el.key workchain:int shard:long idx:int = db.lt.Key;
 db.lt.desc.key workchain:int shard:long = db.lt.Key;
 db.lt.shard.key idx:int = db.lt.Key;
 db.lt.status.key = db.lt.Key;
-db.lt.el.value id:tonNode.blockIdExt lt:long = db.lt.el.Value;
-db.lt.desc.value first_idx:int last_idx:int last_seqno:int last_lt:long = db.lt.desc.Value; 
+db.lt.el.value id:tonNode.blockIdExt lt:long ts:int = db.lt.el.Value;
+db.lt.desc.value first_idx:int last_idx:int last_seqno:int last_lt:long last_ts:int = db.lt.desc.Value; 
 db.lt.shard.value workchain:int shard:long = db.lt.shard.Value; 
 db.lt.status.value total_shards:int = db.lt.status.Value;
 
@@ -492,7 +502,8 @@ liteServer.getAccountState id:tonNode.blockIdExt account:liteServer.accountId = 
 liteServer.getShardInfo id:tonNode.blockIdExt workchain:int shard:long exact:Bool = liteServer.ShardInfo;
 liteServer.getAllShardsInfo id:tonNode.blockIdExt = liteServer.AllShardsInfo;
 liteServer.getOneTransaction id:tonNode.blockIdExt account:liteServer.accountId lt:long = liteServer.TransactionInfo;
-liteServer.getTransactions count:# account:liteServer.accountId lt:long hash:int256 = liteServer.TransactionList; 
+liteServer.getTransactions count:# account:liteServer.accountId lt:long hash:int256 = liteServer.TransactionList;
+liteServer.lookupBlock mode:# id:tonNode.blockId lt:mode.1?long utime:mode.2?int = liteServer.BlockHeader;
 
 liteServer.debug.setVerbosity verbosity:liteServer.debug.verbosity = liteServer.debug.Verbosity;
 

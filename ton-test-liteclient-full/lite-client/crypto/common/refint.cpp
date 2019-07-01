@@ -219,6 +219,12 @@ bool operator>=(RefInt256 x, RefInt256 y) {
   return cmp(x, y) >= 0;
 }
 
+extern RefInt256 make_refint(long long x) {
+  auto xx = td::RefInt256{true, x};
+  xx.unique_write().normalize();
+  return xx;
+}
+
 std::string dec_string(RefInt256 x) {
   return x.is_null() ? "(null)" : (x.is_unique() ? x.unique_write().to_dec_string_destroy() : x->to_dec_string());
 }
