@@ -301,7 +301,7 @@ CellBuilder& CellBuilder::store_long(long long val, unsigned val_bits) {
 CellBuilder& CellBuilder::store_long_top(unsigned long long val, unsigned top_bits) {
   unsigned pos = bits;
   auto reserve_ok = prepare_reserve(top_bits);
-  DCHECK(reserve_ok);
+  ensure_throw(reserve_ok);
   td::bitstring::bits_store_long_top(data, pos, val, top_bits);
   return *this;
 }
@@ -314,7 +314,7 @@ bool CellBuilder::store_uint_leq(unsigned upper_bound, unsigned long long val) {
   return val <= upper_bound && store_long_bool(val, 32 - td::count_leading_zeroes32(upper_bound));
 }
 
-bool CellBuilder::store_bigint256_bool(const td::BigInt256& val, unsigned val_bits, bool sgnd) {
+bool CellBuilder::store_int256_bool(const td::BigInt256& val, unsigned val_bits, bool sgnd) {
   unsigned pos = bits;
   if (!prepare_reserve(val_bits)) {
     return false;
@@ -327,12 +327,12 @@ bool CellBuilder::store_bigint256_bool(const td::BigInt256& val, unsigned val_bi
   }
 }
 
-CellBuilder& CellBuilder::store_bigint256(const td::BigInt256& val, unsigned val_bits, bool sgnd) {
-  return ensure_pass(store_bigint256_bool(val, val_bits, sgnd));
+CellBuilder& CellBuilder::store_int256(const td::BigInt256& val, unsigned val_bits, bool sgnd) {
+  return ensure_pass(store_int256_bool(val, val_bits, sgnd));
 }
 
-bool CellBuilder::store_bigint256_bool(td::RefInt256 val, unsigned val_bits, bool sgnd) {
-  return val.not_null() && store_bigint256_bool(*val, val_bits, sgnd);
+bool CellBuilder::store_int256_bool(td::RefInt256 val, unsigned val_bits, bool sgnd) {
+  return val.not_null() && store_int256_bool(*val, val_bits, sgnd);
 }
 
 bool CellBuilder::store_builder_ref_bool(vm::CellBuilder&& cb) {
@@ -516,11 +516,11 @@ CellBuilder* CellBuilder::make_copy() const {
   return c;
 }
 
-CellSlice CellBuilder::as_cellslice() const& {
+CellSlice CellBuilder::as_cellslice() const & {
   return CellSlice{finalize_copy()};
 }
 
-Ref<CellSlice> CellBuilder::as_cellslice_ref() const& {
+Ref<CellSlice> CellBuilder::as_cellslice_ref() const & {
   return Ref<CellSlice>{true, finalize_copy()};
 }
 

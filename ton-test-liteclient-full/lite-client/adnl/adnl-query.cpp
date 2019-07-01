@@ -5,12 +5,12 @@
 namespace ton {
 void AdnlQuery::alarm() {
   promise_.set_error(td::Status::Error(ErrorCode::timeout, "adnl query timeout"));
-  hangup();
+  stop();
 }
 void AdnlQuery::result(td::BufferSlice data) {
   promise_.set_value(std::move(data));
   alarm_timestamp() = td::Timestamp::never();
-  hangup();
+  stop();
 }
 
 AdnlQueryId AdnlQuery::random_query_id() {

@@ -53,8 +53,8 @@ void to_json(JsonValueScope &jv, const JsonVectorBytesImpl<T> &vec) {
     ja.enter_value() << ToJson(JsonBytes{value});
   }
 }
-template <size_t size>
-inline void to_json(JsonValueScope &jv, const UInt<size> &vec) {
+template <unsigned size>
+inline void to_json(JsonValueScope &jv, const td::BitArray<size> &vec) {
   to_json(jv, base64_encode(as_slice(vec)));
 }
 
@@ -141,14 +141,15 @@ inline Status from_json_bytes(BufferSlice &to, JsonValue &from) {
   return Status::OK();
 }
 
-template <size_t size>
-inline Status from_json(UInt<size> &to, JsonValue &from) {
+template <unsigned size>
+inline Status from_json(td::BitArray<size> &to, JsonValue &from) {
   string raw;
   TRY_STATUS(from_json_bytes(raw, from));
-  if (raw.size() != sizeof(to.raw)) {
+  auto S = to.as_slice();
+  if (raw.size() != S.size()) {
     return Status::Error("Wrong length for UInt");
   }
-  as_slice(to).copy_from(raw);
+  S.copy_from(raw);
   return Status::OK();
 }
 

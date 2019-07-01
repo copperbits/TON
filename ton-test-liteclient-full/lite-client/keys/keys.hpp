@@ -17,13 +17,13 @@ class DecryptorAsync;
 
 class PublicKeyHash {
  public:
-  explicit PublicKeyHash(td::UInt256 value) : value_(value) {
+  explicit PublicKeyHash(td::Bits256 value) : value_(value) {
   }
   explicit PublicKeyHash(const tl_object_ptr<ton_api::PublicKey> &value);
   PublicKeyHash() {
   }
   static PublicKeyHash zero() {
-    return PublicKeyHash{td::UInt256::zero()};
+    return PublicKeyHash{td::Bits256::zero()};
   }
   explicit PublicKeyHash(td::Slice data) {
     CHECK(data.size() == 32);
@@ -31,12 +31,12 @@ class PublicKeyHash {
   }
 
   td::UInt256 uint256_value() const {
-    return value_;
-  }
-  td::BitArray<256> bits256_value() const {
-    td::BitArray<256> x;
+    td::UInt256 x;
     x.as_slice().copy_from(value_.as_slice());
     return x;
+  }
+  td::Bits256 bits256_value() const {
+    return value_;
   }
   auto tl() const {
     return value_;
@@ -59,20 +59,20 @@ class PublicKeyHash {
   }
 
  private:
-  td::UInt256 value_;
+  td::Bits256 value_;
 };
 
 namespace pubkeys {
 
 class Ed25519 {
  private:
-  td::UInt256 data_;
+  td::Bits256 data_;
 
  public:
   Ed25519(const ton_api::pub_ed25519 &obj) {
     data_ = obj.key_;
   }
-  Ed25519(td::UInt256 id) : data_(id) {
+  Ed25519(td::Bits256 id) : data_(id) {
   }
   Ed25519() {
   }
@@ -81,6 +81,12 @@ class Ed25519 {
     return td::Ed25519::PublicKey{data_.as_slice()};
   }
 
+  auto raw() const {
+    return data_;
+  }
+  td::uint32 serialized_size() const {
+    return 36;
+  }
   tl_object_ptr<ton_api::pub_ed25519> tl() const {
     return create_tl_object<ton_api::pub_ed25519>(data_);
   }
@@ -94,7 +100,7 @@ class Ed25519 {
 
 class AES {
  private:
-  td::UInt256 data_;
+  td::Bits256 data_;
 
  public:
   ~AES() {
@@ -107,7 +113,10 @@ class AES {
     CHECK(data.size() == 32);
     data_.as_slice().copy_from(data);
   }
-  AES(td::UInt256 data) : data_(data) {
+  AES(td::Bits256 data) : data_(data) {
+  }
+  td::uint32 serialized_size() const {
+    return 36;
   }
   tl_object_ptr<ton_api::pub_aes> tl() const {
     return create_tl_object<ton_api::pub_aes>(data_);
@@ -133,6 +142,9 @@ class Unenc {
   }
   explicit Unenc(td::BufferSlice data) : data_(std::move(data)) {
   }
+  td::uint32 serialized_size() const {
+    return static_cast<td::uint32>(data_.size()) + 8;
+  }
   tl_object_ptr<ton_api::pub_unenc> tl() const {
     return create_tl_object<ton_api::pub_unenc>(data_.clone());
   }
@@ -157,6 +169,9 @@ class Overlay {
   }
   explicit Overlay(td::BufferSlice data) : data_(std::move(data)) {
   }
+  td::uint32 serialized_size() const {
+    return static_cast<td::uint32>(data_.size()) + 8;
+  }
   tl_object_ptr<ton_api::pub_overlay> tl() const {
     return create_tl_object<ton_api::pub_overlay>(data_.clone());
   }
@@ -175,6 +190,9 @@ class PublicKey {
   class Empty {
    public:
     tl_object_ptr<ton_api::PublicKey> tl() const {
+      UNREACHABLE();
+    }
+    td::uint32 serialized_size() const {
       UNREACHABLE();
     }
     bool operator==(const Empty &with) const {
@@ -202,6 +220,7 @@ class PublicKey {
   bool empty() const;
 
   PublicKeyHash compute_short_id() const;
+  td::uint32 serialized_size() const;
   tl_object_ptr<ton_api::PublicKey> tl() const;
 
   td::Result<std::unique_ptr<Encryptor>> create_encryptor() const;
@@ -219,7 +238,7 @@ namespace privkeys {
 
 class Ed25519 {
  private:
-  td::UInt256 data_;
+  td::Bits256 data_;
 
  public:
   ~Ed25519() {
@@ -228,7 +247,7 @@ class Ed25519 {
   Ed25519(const ton_api::pk_ed25519 &obj) {
     data_ = obj.key_;
   }
-  Ed25519(td::UInt256 id) : data_(id) {
+  Ed25519(td::Bits256 id) : data_(id) {
   }
   Ed25519() {
   }
@@ -246,7 +265,7 @@ class Ed25519 {
 
 class AES {
  private:
-  td::UInt256 data_;
+  td::Bits256 data_;
 
  public:
   ~AES() {

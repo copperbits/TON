@@ -67,3 +67,5 @@
 { cdr cdr } : cddr
 { cdr cdr car } : caddr
 { null ' cons rot times } : list
+{ true (atom) drop } : atom
+{ bl word atom 1 'nop } ::_ `

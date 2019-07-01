@@ -17,7 +17,7 @@ rm -rf $CHECK_DIR
 mkdir $CHECK_DIR
 
 # DOWNLOAD
-echo ">>> downloading latest sources from $"
+echo ">>> downloading latest sources from $SOURCES"
 wget -q $SOURCES
 tar -C $CHECK_DIR -xf $ARCHIVE_NAME
 rm -f $ARCHIVE_NAME

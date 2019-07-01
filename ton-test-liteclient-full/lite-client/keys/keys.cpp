@@ -8,7 +8,7 @@
 namespace ton {
 
 PublicKeyHash::PublicKeyHash(const tl_object_ptr<ton_api::PublicKey> &value) {
-  value_ = get_tl_object_sha256(value);
+  value_ = get_tl_object_sha_bits256(value);
 }
 
 PublicKey::PublicKey(const tl_object_ptr<ton_api::PublicKey> &id) {
@@ -21,7 +21,13 @@ PublicKey::PublicKey(const tl_object_ptr<ton_api::PublicKey> &id) {
 }
 
 PublicKeyHash PublicKey::compute_short_id() const {
-  return PublicKeyHash{get_tl_object_sha256(tl())};
+  return PublicKeyHash{get_tl_object_sha_bits256(tl())};
+}
+
+td::uint32 PublicKey::serialized_size() const {
+  td::uint32 res;
+  pub_key_.visit([&](auto &obj) { res = obj.serialized_size(); });
+  return res;
 }
 
 tl_object_ptr<ton_api::PublicKey> PublicKey::tl() const {
@@ -49,7 +55,7 @@ tl_object_ptr<ton_api::PublicKey> privkeys::Ed25519::pub_tl() const {
     return nullptr;
   } else {
     auto public_key = r_public_key.ok().as_octet_string();
-    td::UInt256 X;
+    td::Bits256 X;
     as_slice(X).copy_from(public_key);
     return create_tl_object<ton_api::pub_ed25519>(X);
   }

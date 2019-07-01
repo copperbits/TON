@@ -15,15 +15,23 @@ class Continuation;
 class DispatchTable;
 
 struct ControlRegs {
-  static constexpr int creg_num = 4, dreg_num = 3, dreg_idx = 4;
+  static constexpr int creg_num = 4, dreg_num = 2, dreg_idx = 4;
   Ref<Continuation> c[creg_num];  // c0..c3
-  Ref<Cell> d[dreg_num];          // c4..c6
+  Ref<Cell> d[dreg_num];          // c4..c5
+  Ref<Tuple> c7;                  // c7
   Ref<Continuation> get_c(unsigned idx) const {
     return idx < creg_num ? c[idx] : Ref<Continuation>{};
   }
   Ref<Cell> get_d(unsigned idx) const {
     idx -= dreg_idx;
     return idx < dreg_num ? d[idx] : Ref<Cell>{};
+  }
+  Ref<Tuple> get_c7() const {
+    return c7;
+  }
+  StackEntry get(unsigned idx) const;
+  static bool valid_idx(unsigned idx) {
+    return idx < creg_num || (idx >= dreg_idx && idx < dreg_idx + dreg_num) || idx == 7;
   }
   void set_c0(Ref<Continuation> cont) {
     c[0] = std::move(cont);
@@ -57,6 +65,11 @@ struct ControlRegs {
       return false;
     }
   }
+  bool set_c7(Ref<Tuple> tuple) {
+    c7 = std::move(tuple);
+    return true;
+  }
+  bool set(unsigned idx, StackEntry value);
   void define_c0(Ref<Continuation> cont) {
     if (c[0].is_null()) {
       c[0] = std::move(cont);
@@ -94,6 +107,13 @@ struct ControlRegs {
       d[0] = std::move(cell);
     }
   }
+  bool define_c7(Ref<Tuple> tuple) {
+    if (c7.is_null()) {
+      c7 = std::move(tuple);
+    }
+    return true;
+  }
+  bool define(unsigned idx, StackEntry value);
   ControlRegs& operator&=(const ControlRegs& save);  // clears all c[i]'s which are present in save
   ControlRegs& operator^=(const ControlRegs& save);  // sets c[i]=save.c[i] for all save.c[i] != 0
   ControlRegs& operator^=(ControlRegs&& save);
@@ -412,11 +432,17 @@ class VmState final : public VmStateInterface {
   Ref<Cell> get_c4() const {
     return cr.d[0];
   }
+  Ref<Tuple> get_c7() const {
+    return cr.c7;
+  }
   Ref<Continuation> get_c(unsigned idx) const {
     return cr.get_c(idx);
   }
   Ref<Cell> get_d(unsigned idx) const {
     return cr.get_d(idx);
+  }
+  StackEntry get(unsigned idx) const {
+    return cr.get(idx);
   }
   const VmLog& get_log() const {
     return log;
@@ -441,6 +467,12 @@ class VmState final : public VmStateInterface {
   }
   void set_c4(Ref<Cell> val) {
     cr.set_c4(std::move(val));
+  }
+  bool set_c7(Ref<Tuple> val) {
+    return cr.set_c7(std::move(val));
+  }
+  bool set(unsigned idx, StackEntry val) {
+    return cr.set(idx, std::move(val));
   }
   void set_stack(Ref<Stack> new_stk) {
     stack = std::move(new_stk);

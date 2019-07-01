@@ -2,7 +2,11 @@
 
 Alongside with the main client binary (test-lite-client), you may also build an executable `test-lite-client-with-webserver` by running:
 
-```cmake --build . --target test-lite-client-with-webserver```
+```cd ton-test-liteclient-full```
+```mkdir lite-client-with-webserver-build```
+```cd lite-client-with-webserver-build```
+
+```cmake ../lite-client-with-webserver && cmake --build . --target test-lite-client-with-webserver```
 
 *Boost 1.69 required*
 
@@ -10,6 +14,7 @@ Web server uses port `8000` and listens requests to such endpoints:
 
 * `/time` - ton server time
 * `/getaccount/<account_address>` - address information
+* `/getblock/<block_id>` - block information
 
 **Some Notes**
 

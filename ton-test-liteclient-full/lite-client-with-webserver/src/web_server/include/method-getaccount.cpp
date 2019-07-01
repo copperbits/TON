@@ -16,7 +16,7 @@ void TestNode::get_account_state_web(std::string address, std::shared_ptr<HttpSe
     return;
   }
 
-  auto a = ton::create_tl_object<ton::ton_api::liteServer_accountId>(workchain, ton::Bits256_2_UInt256(addr));
+  auto a = ton::create_tl_object<ton::ton_api::liteServer_accountId>(workchain, addr);
   auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_getAccountState>(
                                         ton::create_tl_block_id(mc_last_id_), std::move(a)),
                                     true);

@@ -8,6 +8,7 @@
 #include "td/utils/invoke.h"
 #include "td/utils/port/detail/ThreadIdGuard.h"
 #include "td/utils/port/thread_local.h"
+#include "td/utils/Slice.h"
 
 #include <thread>
 #include <tuple>
@@ -39,6 +40,8 @@ class ThreadStl {
   }
   void detach() {
     thread_.detach();
+  }
+  void set_name(CSlice name) {
   }
 
   static unsigned hardware_concurrency() {

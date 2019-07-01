@@ -24,7 +24,7 @@ using LogicalTime = td::uint64;
 using ValidatorWeight = td::uint64;  // was td::uint32 before
 using CatchainSeqno = td::uint32;
 
-using ValidatorSessionId = td::UInt256;
+using ValidatorSessionId = td::Bits256;
 
 constexpr WorkchainId masterchainId = -1, basechainId = 0, workchainInvalid = 0x80000000;
 constexpr ShardId shardIdAll = (1ULL << 63);
@@ -34,6 +34,11 @@ constexpr unsigned split_merge_interval = 100;  // split/merge is enabled during
 
 static inline int shard_pfx_len(ShardId shard) {
   return shard ? 63 - td::count_trailing_zeroes_non_zero64(shard) : 0;
+}
+
+static inline std::string shard_to_str(ShardId shard) {
+  char buffer[64];
+  return std::string{buffer, (unsigned)snprintf(buffer, 63, "%016llx", static_cast<unsigned long long>(shard))};
 }
 
 struct ShardIdFull {
@@ -222,6 +227,9 @@ struct BlockIdExt {
   }
   explicit operator ShardIdFull() const {
     return ShardIdFull(id);
+  }
+  BlockSeqno seqno() const {
+    return id.seqno;
   }
   bool is_valid() const {
     return id.is_valid();

@@ -59,6 +59,8 @@ extern int cmp(RefInt256 x, RefInt256 y);
 extern int cmp(RefInt256 x, long long y);
 extern int sgn(RefInt256 x);
 
+extern RefInt256 make_refint(long long x);
+
 extern std::string dec_string(RefInt256 x);
 extern std::string dec_string2(RefInt256&& x);
 extern std::string hex_string(RefInt256 x);

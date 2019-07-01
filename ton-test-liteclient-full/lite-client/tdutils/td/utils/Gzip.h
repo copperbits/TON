@@ -87,6 +87,8 @@ class Gzip {
 
   void init_common();
   void clear();
+
+  void swap(Gzip &other);
 };
 
 BufferSlice gzdecode(Slice s);

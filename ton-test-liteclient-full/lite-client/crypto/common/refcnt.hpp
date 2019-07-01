@@ -38,6 +38,8 @@ class CntObject {
   }
   CntObject(const CntObject& other) : CntObject() {
   }
+  void operator=(const CntObject& other) {
+  }
   virtual ~CntObject() {
     auto cnt = cnt_.load(std::memory_order_relaxed);
     (void)cnt;
@@ -304,6 +306,7 @@ class Ref {
   typename RefValue<T>::Type& write();
   typename RefValue<T>::Type& unique_write() const;
 
+ public:
   template <class S>
   static void release_shared(S* obj, int cnt = 1) {
     if (obj->dec(cnt)) {
@@ -324,6 +327,16 @@ class Ref {
     }
   }
 };
+
+template <class T, typename... Args>
+Ref<T> make_ref(Args&&... args) {
+  return Ref<T>{true, std::forward<Args>(args)...};
+}
+
+template <class T, typename... Args>
+Ref<Cnt<T>> make_cnt_ref(Args&&... args) {
+  return Ref<Cnt<T>>{true, std::forward<Args>(args)...};
+}
 
 template <class T>
 td::StringBuilder& operator<<(td::StringBuilder& sb, const Ref<T>& ref) {

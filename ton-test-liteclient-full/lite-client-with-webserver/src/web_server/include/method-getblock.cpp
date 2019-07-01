@@ -100,15 +100,11 @@ bool TestNode::give_block_header_description(std::ostringstream& out, ton::Block
     return false;
   }
   std::vector<ton::BlockIdExt> prev;
-  ton::BlockIdExt mc_blkid, blkid_u = blkid;
+  ton::BlockIdExt mc_blkid;
   bool after_split;
-  auto res = block::unpack_block_prev_blk_ext(root, blkid_u, prev, mc_blkid, after_split);
+  auto res = block::unpack_block_prev_blk_ext(root, blkid, prev, mc_blkid, after_split);
   if (res.is_error()) {
     LOG(ERROR) << "cannot unpack header for block " << blkid.to_str() << " : " << res.to_string();
-    return false;
-  }
-  if (blkid_u.id != blkid.id || blkid_u.root_hash != blkid.root_hash) {
-    LOG(ERROR) << "block header claims it is for block " << blkid_u.to_str() << " not " << blkid.to_str();
     return false;
   }
   block::gen::Block::Record blk;

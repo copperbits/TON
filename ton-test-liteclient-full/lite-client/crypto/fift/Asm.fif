@@ -49,7 +49,7 @@
 13 @Sreg s13
 14 @Sreg s14
 15 @Sreg s15
-{ dup 0 < over 6 > or abort"Invalid control register number" <b 0xcc 8 u, swap 4 u, b> } : c()
+{ dup 0 < over 7 > or abort"Invalid control register number" <b 0xcc 8 u, swap 4 u, b> } : c()
 { c() constant } : @Creg
 0 @Creg c0
 1 @Creg c1
@@ -57,12 +57,12 @@
 3 @Creg c3
 4 @Creg c4
 5 @Creg c5
-6 @Creg c6
+7 @Creg c7
 { <s 8 u@+ swap 0xef <> abort"not a stack register" 12 i@+ s> } : @bigsridx
 { @bigsridx dup 16 >= over 0< or abort"stack register s0..s15 expected" } : @sridx
 { rot @bigsridx tuck < -rot tuck > rot or abort"stack register out of range" } : @sridxrange
 { swap @bigsridx + dup 16 >= over 0< or abort"stack register out of range" } : @sridx+
-{ <s 8 u@+ 4 u@+ s> swap 0xcc <> over 6 > or abort"not a control register c0..c6" } : @cridx
+{ <s 8 u@+ 4 u@+ s> swap 0xcc <> over 7 > or over 6 = or abort"not a control register c0..c5 or c7" } : @cridx
 { <s 8 u@ 0xcc = } : @iscr?
 { <b swap s, 1 { swap @sridx 4 u, @addopb } does create } : @Defop(s)
 { <b swap s, 1 { rot @sridx 4 u, swap @sridx 4 u, @addopb } does create } : @Defop(s,s)
@@ -470,7 +470,8 @@ x{CF42} @Defop STSAME
     { 2drop swap PUSHSLICE STSLICER } cond
   } cond
 } : STSLICECONST
-
+x{CF81} @Defop STZERO
+x{CF83} @Defop STONE
 // cell deserialization (CellSlice primitives)
 x{D0} @Defop CTOS
 x{D1} @Defop ENDS
@@ -765,14 +766,15 @@ x{F3} @Defop(4u,4u) TRYARGS
 } : TRY:<{
 //
 // dictionary manipulation
-x{8B04} @Defop NEWDICT
-x{F400} @Defop DICTEMPTY
-' STSLICE : STDICT
+' NULL : NEWDICT
+' ISNULL : DICTEMPTY
+' STSLICE : STDICTS
+x{F400} dup @Defop STDICT @Defop STOPTREF
 x{F401} dup @Defop SKIPDICT @Defop SKIPOPTREF
-x{F402} @Defop LDOPTREF
-x{F403} @Defop PLDOPTREF
-x{F404} @Defop LDDICT
-x{F405} @Defop PLDDICT
+x{F402} @Defop LDDICTS
+x{F403} @Defop PLDDICTS
+x{F404} dup @Defop LDDICT @Defop LDOPTREF
+x{F405} dup @Defop PLDDICT @Defop PLDOPTREF
 x{F406} @Defop LDDICTQ
 x{F407} @Defop PLDDICTQ
 
@@ -902,9 +904,10 @@ x{F4A0} @Defop DICTIGETJMP
 x{F4A1} @Defop DICTUGETJMP
 x{F4A2} @Defop DICTIGETEXEC
 x{F4A3} @Defop DICTUGETEXEC
-{ dup sbitrefs tuck 1 > swap 1 <> or abort"not a dictionary" swap 1 u@ over <> abort"not a dictionary" } : @chkdict
+{ dup sbitrefs tuck 1 > swap 1 <> or abort"not a dictionary" swap 1 u@ over <> abort"not a dictionary" } : @chkdicts
+{ dup null? tuck { <s } ifnot drop not } : @chkdict 
 { over @chkdict
-  { swap <b x{F4A4_} s, swap s, swap 10 u, @addopb }
+  { swap <b x{F4A6_} s, swap ref, swap 10 u, @addopb }
   { nip swap NEWDICT swap PUSHINT }
   cond
 } : DICTPUSHCONST
@@ -913,7 +916,7 @@ x{F4A9} @Defop PFXDICTGET
 x{F4AA} @Defop PFXDICTGETJMP
 x{F4AB} @Defop PFXDICTGETEXEC
 { over @chkdict
-  { swap <b x{F4AC_} s, swap s, swap 10 u, @addopb
+  { swap <b x{F4AE_} s, swap ref, swap 10 u, @addopb
   } if
 } dup : PFXDICTCONSTGETJMP : PFXDICTSWITCH
 
@@ -930,9 +933,23 @@ x{F4B7} @Defop SUBDICTURPGET
 x{F800} @Defop ACCEPT
 x{F801} @Defop SETGASLIMIT
 
+x{F823} @Defop NOW
+x{F824} @Defop BLOCKLT
+x{F825} @Defop LTIME
+
 x{F900} @Defop HASHCU
 x{F901} @Defop HASHSU
 x{F910} @Defop CHKSIGNU
+
+x{FA00} dup @Defop LDGRAMS @Defop LDVARUINT16
+x{FA01} @Defop LDVARINT16
+x{FA02} dup @Defop STGRAMS @Defop STVARUINT16
+x{FA03} @Defop STVARINT16
+
+x{FA40} @Defop LDMSGADDR
+x{FA41} @Defop LDMSGADDRQ
+x{FA42} @Defop PARSEMSGADDR
+x{FA43} @Defop PARSEMSGADDRQ
 
 x{FB00} @Defop SENDRAWMSG
 x{FB02} @Defop RAWRESERVE

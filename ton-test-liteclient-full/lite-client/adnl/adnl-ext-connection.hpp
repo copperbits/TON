@@ -72,7 +72,6 @@ class AdnlExtConnection : public td::actor::Actor, public td::ObserverBase {
 
   void start_up() override {
     self_ = actor_id(this);
-    LOG(INFO) << "Start";
     // Subscribe for socket updates
     // NB: Interface will be changed
     td::actor::SchedulerContext::get()->get_poll().subscribe(buffered_fd_.get_poll_info().extract_pollable_fd(this),
@@ -98,7 +97,6 @@ class AdnlExtConnection : public td::actor::Actor, public td::ObserverBase {
   }
 
   void tear_down() override {
-    LOG(INFO) << "Close";
     if (callback_) {
       callback_->on_close(actor_id(this));
       callback_ = nullptr;
@@ -123,7 +121,6 @@ class AdnlExtConnection : public td::actor::Actor, public td::ObserverBase {
   void alarm() override {
     alarm_timestamp() = fail_at_;
     if (fail_at_.is_in_past()) {
-      LOG(INFO) << "Close because of timeout";
       stop();
     } else if (is_client_ && !ping_sent_) {
       if (send_ping_at_.is_in_past()) {

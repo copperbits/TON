@@ -266,16 +266,21 @@ std::size_t bits_memscan(const unsigned char* ptr, int offs, std::size_t bit_cou
   if (!bit_count) {
     return 0;
   }
-  int xor_val = (cmp_to ? -1 : 0);
+  int xor_val = -cmp_to;
   ptr += (offs >> 3);
   offs &= 7;
-  unsigned v = ((unsigned)(ptr[0] ^ xor_val) << (24 + offs));
-  unsigned c = td::count_leading_zeroes32(v);
-  if (c < (unsigned)(8 - offs) || bit_count <= (unsigned)(8 - offs)) {
-    return std::min(static_cast<std::size_t>(c), bit_count);
+  std::size_t rem = bit_count;
+  unsigned v, c;
+  if (offs) {
+    v = ((unsigned)(ptr[0] ^ xor_val) << (24 + offs));
+    c = td::count_leading_zeroes32(v);
+    unsigned l = (unsigned)(8 - offs);
+    if (c < l || bit_count <= l) {
+      return std::min<std::size_t>(c, bit_count);
+    }
+    rem -= l;
+    ptr++;
   }
-  std::size_t rem = bit_count + (unsigned)offs - 8;
-  ptr++;
   while (rem >= 8 && reinterpret_cast<unsigned long long>(ptr) & 7) {
     v = ((*ptr++ ^ xor_val) << 24);
     if (v) {
@@ -283,7 +288,7 @@ std::size_t bits_memscan(const unsigned char* ptr, int offs, std::size_t bit_cou
     }
     rem -= 8;
   }
-  unsigned long long xor_val_l = (cmp_to ? std::numeric_limits<td::uint64>::max() : 0LL);
+  unsigned long long xor_val_l = (cmp_to ? ~0LL : 0LL);
   while (rem >= 64) {
     unsigned long long z = as<unsigned long long>(ptr) ^ xor_val_l;
     if (z) {
@@ -336,7 +341,7 @@ int bits_memcmp(const unsigned char* bs1, int bs1_offs, const unsigned char* bs2
     bs1 += 4;
     acc2 |= ((unsigned long long)td::bswap32(as<unsigned>(bs2)) << (32 - z2));
     bs2 += 4;
-    if ((acc1 ^ acc2) & (std::numeric_limits<td::uint64>::max() << 32)) {
+    if ((acc1 ^ acc2) & (~0ULL << 32)) {
       if (same_upto) {
         *same_upto = processed + td::count_leading_zeroes64(acc1 ^ acc2);
       }
@@ -375,7 +380,7 @@ int bits_memcmp(const unsigned char* bs1, int bs1_offs, const unsigned char* bs2
   assert(z1 < 64);
   //fprintf(stderr, "acc1=%016llx acc2=%016llx z1=z2=%d\n", acc1, acc2, z1);
   if (z1) {
-    if ((acc1 ^ acc2) & (std::numeric_limits<td::uint64>::max() << (64 - z1))) {
+    if ((acc1 ^ acc2) & (~0ULL << (64 - z1))) {
       if (same_upto) {
         *same_upto = processed + td::count_leading_zeroes64(acc1 ^ acc2);
       }

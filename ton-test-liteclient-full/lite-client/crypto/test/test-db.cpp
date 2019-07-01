@@ -35,6 +35,34 @@
 
 #include <absl/container/flat_hash_set.h>
 
+struct Step {
+  std::function<void()> func;
+  td::uint32 weight;
+};
+class RandomSteps {
+ public:
+  RandomSteps(std::vector<Step> steps) : steps_(std::move(steps)) {
+    for (auto &step : steps_) {
+      steps_sum_ += step.weight;
+    }
+  }
+  template <class Random>
+  void step(Random &rnd) {
+    auto w = rnd() % steps_sum_;
+    for (auto &step : steps_) {
+      if (w < step.weight) {
+        step.func();
+        break;
+      }
+      w -= step.weight;
+    }
+  }
+
+ private:
+  std::vector<Step> steps_;
+  td::int32 steps_sum_ = 0;
+};
+
 namespace vm {
 
 std::vector<int> do_get_serialization_modes() {
@@ -203,14 +231,17 @@ class CellExplorer {
   static Exploration random_explore(Ref<Cell> root, T &rnd) {
     CellExplorer e(root);
     int it = 0;
-    while (it++ < 1000 && e.do_random_op(rnd)) {
+    int cnt = rnd.fast(1, 100);
+    while (it++ < cnt && e.do_random_op(rnd)) {
     }
     return e.get_exploration();
   }
 
  private:
   CellExplorer(Ref<Cell> root) {
-    cells_.push_back(std::move(root));
+    if (root.not_null()) {
+      cells_.push_back(std::move(root));
+    }
   }
 
   std::vector<Ref<Cell>> cells_;
@@ -411,10 +442,17 @@ class RandomBagOfCells {
   };
 };
 
+template <class T>
+void random_shuffle(td::MutableSpan<T> v, td::Random::Xorshift128plus &rnd) {
+  for (std::size_t i = 1; i < v.size(); i++) {
+    auto pos = rnd() % (i + 1);
+    std::swap(v[i], v[pos]);
+  }
+}
 Ref<Cell> gen_random_cell(int size, td::Random::Xorshift128plus &rnd, bool with_prunned_branches = true,
                           std::vector<Ref<Cell>> cells = {}) {
   if (!cells.empty()) {
-    std::random_shuffle(cells.begin(), cells.end());
+    random_shuffle(td::MutableSpan<Ref<Cell>>(cells), rnd);
     cells.resize(cells.size() % rnd());
   }
   return RandomBagOfCells(size, rnd, with_prunned_branches, std::move(cells)).get_root();
@@ -422,7 +460,7 @@ Ref<Cell> gen_random_cell(int size, td::Random::Xorshift128plus &rnd, bool with_
 std::vector<Ref<Cell>> gen_random_cells(int roots, int size, td::Random::Xorshift128plus &rnd,
                                         bool with_prunned_branches = true, std::vector<Ref<Cell>> cells = {}) {
   if (!cells.empty()) {
-    std::random_shuffle(cells.begin(), cells.end());
+    random_shuffle(td::MutableSpan<Ref<Cell>>(cells), rnd);
     cells.resize(cells.size() % rnd());
   }
   return RandomBagOfCells(size, rnd, with_prunned_branches, std::move(cells)).get_random_roots(roots, rnd);
@@ -538,13 +576,17 @@ TEST(Cell, MerkleProofCombine) {
 };
 
 int X = 20;
+Ref<Cell> gen_random_cell(int size, Ref<Cell> from, td::Random::Xorshift128plus &rnd,
+                          bool with_prunned_branches = true) {
+  auto exploration = CellExplorer::random_explore(from, rnd);
+  return gen_random_cell(size, rnd, with_prunned_branches, std::move(exploration.visited_cells));
+}
 auto gen_merkle_update(Ref<Cell> cell, td::Random::Xorshift128plus &rnd, bool with_prunned_branches) {
   auto usage_tree = std::make_shared<CellUsageTree>();
   auto usage_cell = UsageCell::create(cell, usage_tree->root_ptr());
-  auto exploration = CellExplorer::random_explore(usage_cell, rnd);
-  auto new_cell = gen_random_cell(rnd.fast(1, X), rnd, with_prunned_branches, std::move(exploration.visited_cells));
+  auto new_cell = gen_random_cell(rnd.fast(1, X), usage_cell, rnd, with_prunned_branches);
   auto update = MerkleUpdate::generate(cell, new_cell, usage_tree.get());
-  return std::make_pair(new_cell, update);
+  return std::make_tuple(new_cell, update, usage_tree);
 };
 
 void check_merkle_update(Ref<Cell> A, Ref<Cell> B, Ref<Cell> AB) {
@@ -564,7 +606,7 @@ TEST(Cell, MerkleUpdate) {
 
     Ref<Cell> B;
     Ref<Cell> AB;
-    std::tie(B, AB) = gen_merkle_update(A, rnd, with_prunned_branches);
+    std::tie(B, AB, std::ignore) = gen_merkle_update(A, rnd, with_prunned_branches);
     check_merkle_update(A, B, AB);
   }
 };
@@ -577,12 +619,12 @@ TEST(Cell, MerkleUpdateCombine) {
 
     Ref<Cell> B;
     Ref<Cell> AB;
-    std::tie(B, AB) = gen_merkle_update(A, rnd, with_prunned_branches);
+    std::tie(B, AB, std::ignore) = gen_merkle_update(A, rnd, with_prunned_branches);
     check_merkle_update(A, B, AB);
 
     Ref<Cell> C;
     Ref<Cell> BC;
-    std::tie(C, BC) = gen_merkle_update(B, rnd, with_prunned_branches);
+    std::tie(C, BC, std::ignore) = gen_merkle_update(B, rnd, with_prunned_branches);
     check_merkle_update(B, C, BC);
 
     check_merkle_update(A, C, MerkleUpdate::combine(AB, BC));
@@ -740,6 +782,95 @@ TEST(TonDb, DynamicBoc) {
   }
   ASSERT_EQ(0u, kv->count("").ok());
 };
+
+TEST(TonDb, DynamicBoc2) {
+  int VERBOSITY_NAME(boc) = VERBOSITY_NAME(DEBUG) + 10;
+  td::Random::Xorshift128plus rnd{123};
+  int total_roots = 10000;
+  int max_roots = 20;
+  std::vector<std::string> root_hashes(max_roots);
+  std::vector<Ref<Cell>> roots(max_roots);
+  int last_commit_at = 0;
+  int first_root_id = 0;
+  int last_root_id = 0;
+  auto kv = std::make_shared<td::MemoryKeyValue>();
+  auto dboc = DynamicBagOfCellsDb::create();
+  dboc->set_loader(std::make_unique<CellLoader>(kv));
+
+  auto add_root = [&](Ref<Cell> root) {
+    dboc->inc(root);
+    root_hashes[last_root_id % max_roots] = (root->get_hash().as_slice().str());
+    roots[last_root_id % max_roots] = root;
+    last_root_id++;
+  };
+
+  auto get_root = [&](int root_id) {
+    VLOG(boc) << "  from older root #" << root_id;
+    auto from_root = roots[root_id % max_roots];
+    if (from_root.is_null()) {
+      VLOG(boc) << "  from db";
+      auto from_root_hash = root_hashes[root_id % max_roots];
+      from_root = dboc->load_cell(from_root_hash).move_as_ok();
+    } else {
+      VLOG(boc) << "FROM MEMORY";
+    }
+    return from_root;
+  };
+  auto new_root = [&] {
+    if (last_root_id == total_roots) {
+      return;
+    }
+    if (last_root_id - first_root_id >= max_roots) {
+      return;
+    }
+    VLOG(boc) << "add root";
+    Ref<Cell> from_root;
+    if (first_root_id != last_root_id) {
+      from_root = get_root(rnd.fast(first_root_id, last_root_id - 1));
+    }
+    VLOG(boc) << "  ...";
+    add_root(gen_random_cell(rnd.fast(1, 20), from_root, rnd));
+    VLOG(boc) << "  OK";
+  };
+
+  auto commit = [&] {
+    VLOG(boc) << "commit";
+    dboc->prepare_commit();
+    {
+      CellStorer cell_storer(*kv);
+      dboc->commit(cell_storer);
+    }
+    dboc->set_loader(std::make_unique<CellLoader>(kv));
+    for (int i = last_commit_at; i < last_root_id; i++) {
+      roots[i % max_roots].clear();
+    }
+    last_commit_at = last_root_id;
+  };
+  auto reset = [&] {
+    VLOG(boc) << "reset";
+    commit();
+    dboc = DynamicBagOfCellsDb::create();
+    dboc->set_loader(std::make_unique<CellLoader>(kv));
+  };
+
+  auto delete_root = [&] {
+    VLOG(boc) << "Delete root";
+    if (first_root_id == last_root_id) {
+      return;
+    }
+    dboc->dec(get_root(first_root_id));
+    first_root_id++;
+    VLOG(boc) << "  OK";
+  };
+
+  RandomSteps steps({{new_root, 10}, {delete_root, 9}, {commit, 2}, {reset, 1}});
+  while (first_root_id != total_roots) {
+    VLOG(boc) << first_root_id << " " << last_root_id << " " << kv->count("").ok();
+    steps.step(rnd);
+  }
+  commit();
+  ASSERT_EQ(0u, kv->count("").ok());
+}
 
 template <class BocDeserializerT>
 td::Status test_boc_deserializer(std::vector<Ref<Cell>> cells, int mode) {
@@ -1584,28 +1715,12 @@ TEST(TonDb, CompactArray) {
     fast_array = vm::FastCompactArray(size);
   };
 
-  struct Step {
-    std::function<void()> func;
-    td::uint32 weight;
-  };
-  std::vector<Step> steps{{reset_array, 1}, {set_value, 1000}, {validate, 10}, {validate_full, 2}, {flush_to_db, 1}};
-  td::uint32 steps_sum = 0;
-  for (auto &step : steps) {
-    steps_sum += step.weight;
-  }
-
+  RandomSteps steps({{reset_array, 1}, {set_value, 1000}, {validate, 10}, {validate_full, 2}, {flush_to_db, 1}});
   for (size_t t = 0; t < 100000; t++) {
     if (t % 10000 == 0) {
       LOG(ERROR) << t;
     }
-    auto w = rnd() % steps_sum;
-    for (auto &step : steps) {
-      if (w < step.weight) {
-        step.func();
-        break;
-      }
-      w -= step.weight;
-    }
+    steps.step(rnd);
   }
 };
 
@@ -1749,42 +1864,57 @@ TEST(TonDb, DoNotMakeListsPrunned) {
 
 TEST(TonDb, CellStat) {
   td::Random::Xorshift128plus rnd(123);
-  for (int i = 0; i < 100; i++) {
-    auto cell = vm::gen_random_cell(20, rnd, true);
-    auto usage_tree = std::make_shared<vm::CellUsageTree>();
-    auto usage_cell = vm::UsageCell::create(cell, usage_tree->root_ptr());
-    auto exploration = vm::CellExplorer::random_explore(usage_cell, rnd);
-    auto new_cell = gen_random_cell(rnd.fast(1, vm::X), rnd, true, std::move(exploration.visited_cells));
-
-    auto is_prunned = [&](const td::Ref<vm::Cell> &cell) {
-      return cell->get_tree_node().is_from_tree(usage_tree.get());
-    };
-    auto proof = vm::MerkleProof::generate_raw(new_cell, is_prunned);
+  bool with_prunned_branches = true;
+  for (int i = 0; i < 1000; i++) {
+    auto A = vm::gen_random_cell(100, rnd, with_prunned_branches);
+    td::Ref<vm::Cell> B, AB, B_proof;
+    std::shared_ptr<vm::CellUsageTree> usage_tree;
+    std::tie(B, AB, usage_tree) = gen_merkle_update(A, rnd, with_prunned_branches);
+    B_proof = vm::CellSlice(vm::NoVm(), AB).prefetch_ref(1);
 
     vm::CellStorageStat stat;
-    stat.add_used_storage(new_cell);
+    stat.add_used_storage(B);
 
     vm::NewCellStorageStat new_stat;
     new_stat.add_cell({});
-    new_stat.add_cell(new_cell);
+    new_stat.add_cell(B);
     ASSERT_EQ(stat.cells, new_stat.get_stat().cells);
     ASSERT_EQ(stat.bits, new_stat.get_stat().bits);
 
     vm::CellStorageStat proof_stat;
-    proof_stat.add_used_storage(proof);
+    proof_stat.add_used_storage(B_proof);
 
     vm::NewCellStorageStat new_proof_stat;
-    new_proof_stat.add_proof(new_cell, usage_tree.get());
+    new_proof_stat.add_proof(B, usage_tree.get());
     CHECK(new_proof_stat.get_stat().cells == 0);
     CHECK(new_proof_stat.get_proof_stat().cells <= proof_stat.cells);
-    CHECK(new_proof_stat.get_proof_stat().cells + new_proof_stat.get_proof_stat().external_refs >= proof_stat.cells);
+    //CHECK(new_proof_stat.get_proof_stat().cells + new_proof_stat.get_proof_stat().external_refs >= proof_stat.cells);
 
     vm::NewCellStorageStat new_all_stat;
-    new_all_stat.add_cell_and_proof(new_cell, usage_tree.get());
+    new_all_stat.add_cell_and_proof(B, usage_tree.get());
     CHECK(new_proof_stat.get_proof_stat() == new_all_stat.get_proof_stat());
     CHECK(new_stat.get_stat() == new_all_stat.get_stat());
+
+    stat.add_used_storage(A);
+    auto AB_stat = new_stat.get_stat() + const_cast<vm::NewCellStorageStat &>(new_stat).tentative_add_cell(A);
+    new_stat.add_cell(A);
+    CHECK(AB_stat == new_stat.get_stat());
+    ASSERT_EQ(stat.cells, new_stat.get_stat().cells);
+    ASSERT_EQ(stat.bits, new_stat.get_stat().bits);
+
+    CHECK(usage_tree.unique());
+    usage_tree.reset();
+    td::Ref<vm::Cell> C, BC, C_proof;
+    std::shared_ptr<vm::CellUsageTree> usage_tree_B;
+    std::tie(C, BC, usage_tree_B) = gen_merkle_update(B, rnd, with_prunned_branches);
+    C_proof = vm::CellSlice(vm::NoVm(), BC).prefetch_ref(1);
+
+    auto BC_proof_stat = new_proof_stat.get_proof_stat() + new_proof_stat.tentative_add_proof(C, usage_tree_B.get());
+    new_proof_stat.add_proof(C, usage_tree_B.get());
+    CHECK(BC_proof_stat == new_proof_stat.get_proof_stat());
   }
 }
+
 struct String {
   String() {
     total_strings.add(1);

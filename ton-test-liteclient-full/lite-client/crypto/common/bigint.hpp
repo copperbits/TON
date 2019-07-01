@@ -25,6 +25,7 @@ namespace td {
 
 struct BigIntInfo {
   typedef long long word_t;
+  typedef unsigned long long uword_t;
   enum { word_bits = 64, word_shift = 52, words_for_256bit = 1 + 256 / word_shift, max_pow10_exp = 18 };
   static const word_t Base = (1LL << word_shift);
   static const word_t Half = (1LL << (word_shift - 1));
@@ -1044,7 +1045,7 @@ bool AnyIntView<Tr>::get_bit_any(unsigned bit) const {
 template <class Tr>
 typename Tr::word_t AnyIntView<Tr>::to_long_any() const {
   if (!is_valid()) {
-    return (std::numeric_limits<td::uint64>::max() << 63);
+    return (~0ULL << 63);
   } else if (size() == 1) {
     return digits[0];
   } else {
@@ -1056,11 +1057,11 @@ typename Tr::word_t AnyIntView<Tr>::to_long_any() const {
     for (int i = 1; i < n; i++) {
       w -= digits[i];
       if (w & (Tr::Base - 1)) {
-        return (std::numeric_limits<td::uint64>::max() << 63);
+        return (~0ULL << 63);
       }
       w >>= word_shift;
     }
-    return w != digits[n] ? (std::numeric_limits<td::uint64>::max() << 63) : v;
+    return w != digits[n] ? (~0ULL << 63) : v;
   }
 }
 

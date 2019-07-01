@@ -1,6 +1,7 @@
 #include "vm/stack.hpp"
 #include "vm/continuation.h"
 #include "vm/box.hpp"
+#include "vm/atom.h"
 
 namespace td {
 template class td::Cnt<std::string>;
@@ -73,6 +74,9 @@ void StackEntry::dump(std::ostream& os) const {
       os << "Box{" << (const void*)&*ref << "}";
       break;
     }
+    case t_atom:
+      os << as_atom();
+      break;
     case t_tuple: {
       const auto& tuple = *static_cast<Ref<Tuple>>(ref);
       auto n = tuple.size();
@@ -187,6 +191,14 @@ Ref<Box> StackEntry::as_box() && {
 StackEntry::StackEntry(Ref<Tuple> tuple_ref) : ref(std::move(tuple_ref)), tp(t_tuple) {
 }
 
+StackEntry::StackEntry(const std::vector<StackEntry>& tuple_components)
+    : ref(Ref<Tuple>{true, tuple_components}), tp(t_tuple) {
+}
+
+StackEntry::StackEntry(std::vector<StackEntry>&& tuple_components)
+    : ref(Ref<Tuple>{true, std::move(tuple_components)}), tp(t_tuple) {
+}
+
 Ref<Tuple> StackEntry::as_tuple() const & {
   return as<Tuple, t_tuple>();
 }
@@ -211,6 +223,24 @@ Ref<Tuple> StackEntry::as_tuple_range(unsigned max_len, unsigned min_len) && {
   } else {
     return {};
   }
+}
+
+StackEntry::StackEntry(Ref<Atom> atom_ref) : ref(std::move(atom_ref)), tp(t_atom) {
+}
+
+Ref<Atom> StackEntry::as_atom() const & {
+  return as<Atom, t_atom>();
+}
+
+Ref<Atom> StackEntry::as_atom() && {
+  return move_as<Atom, t_atom>();
+}
+
+const StackEntry& tuple_index(const Tuple& tup, unsigned idx) {
+  if (idx >= tup->size()) {
+    throw VmError{Excno::range_chk, "tuple index out of range"};
+  }
+  return (*tup)[idx];
 }
 
 Stack::Stack(const Stack& old_stack, unsigned copy_elem, unsigned skip_top) {
@@ -253,6 +283,13 @@ void Stack::move_from_stack(Stack& old_stack, unsigned copy_elem) {
   old_stack.pop_many(copy_elem);
 }
 
+void Stack::pop_null() {
+  check_underflow(1);
+  if (!pop().empty()) {
+    throw VmError{Excno::type_chk, "not an null"};
+  }
+}
+
 td::RefInt256 Stack::pop_int() {
   check_underflow(1);
   td::RefInt256 res = pop().as_int();
@@ -293,6 +330,19 @@ int Stack::pop_smallint_range(int max, int min) {
 Ref<Cell> Stack::pop_cell() {
   check_underflow(1);
   auto res = pop().as_cell();
+  if (res.is_null()) {
+    throw VmError{Excno::type_chk, "not a cell"};
+  }
+  return res;
+}
+
+Ref<Cell> Stack::pop_maybe_cell() {
+  check_underflow(1);
+  auto tmp = pop();
+  if (tmp.empty()) {
+    return {};
+  }
+  auto res = std::move(tmp).as_cell();
   if (res.is_null()) {
     throw VmError{Excno::type_chk, "not a cell"};
   }
@@ -371,6 +421,15 @@ Ref<Tuple> Stack::pop_tuple_range(unsigned max_len, unsigned min_len) {
   return res;
 }
 
+Ref<Atom> Stack::pop_atom() {
+  check_underflow(1);
+  auto res = pop().as_atom();
+  if (res.is_null()) {
+    throw VmError{Excno::type_chk, "not an atom"};
+  }
+  return res;
+}
+
 void Stack::push_int(td::RefInt256 val) {
   if (!val->signed_fits_bits(257)) {
     throw VmError{Excno::int_ov};
@@ -402,6 +461,10 @@ void Stack::push_cell(Ref<Cell> cell) {
   push(std::move(cell));
 }
 
+void Stack::push_maybe_cell(Ref<Cell> cell) {
+  push_maybe(std::move(cell));
+}
+
 void Stack::push_builder(Ref<CellBuilder> cb) {
   push(std::move(cb));
 }
@@ -424,6 +487,18 @@ void Stack::push_box(Ref<Box> box) {
 
 void Stack::push_tuple(Ref<Tuple> tuple) {
   push(std::move(tuple));
+}
+
+void Stack::push_tuple(const std::vector<StackEntry>& components) {
+  push(components);
+}
+
+void Stack::push_tuple(std::vector<StackEntry>&& components) {
+  push(std::move(components));
+}
+
+void Stack::push_atom(Ref<Atom> atom) {
+  push(std::move(atom));
 }
 
 Ref<Stack> Stack::split_top(unsigned top_cnt, unsigned drop_cnt) {
@@ -453,6 +528,10 @@ void Stack::dump(std::ostream& os, bool cr) const {
 }
 void Stack::push_cellslice(Ref<CellSlice> cs) {
   push(std::move(cs));
+}
+
+void Stack::push_maybe_cellslice(Ref<CellSlice> cs) {
+  push_maybe(std::move(cs));
 }
 
 }  // namespace vm

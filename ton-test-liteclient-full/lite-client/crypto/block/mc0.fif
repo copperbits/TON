@@ -1,3 +1,4 @@
+"TonUtil.fif" include
 "Asm.fif" include
 
 def? $1 { @' $1 } { "" } cond constant suffix 
@@ -12,11 +13,16 @@ wc_master setworkchain
 
 cr ."initial basechain state is:" cr dup <s csr. cr
 dup dup 31 boc+>B dup Bx. cr
-dup "basestate0" +suffix +".boc" B>file
-Bhash tuck ."file hash=" dup x. cr 256 u>B "basestate0" +suffix +".fhash" B>file
-hash tuck ."root hash=" dup x. cr 256 u>B "basestate0" +suffix +".rhash" B>file
+dup "basestate0" +suffix +".boc" tuck B>file
+."(Initial basechain state saved to file " type .")" cr
+Bhash dup =: basestate0_fhash
+."file hash=" dup x. space 256 u>B dup B>base64url type cr
+"basestate0" +suffix +".fhash" B>file
+hash dup =: basestate0_rhash
+."root hash=" dup x. space 256 u>B dup B>base64url type cr
+"basestate0" +suffix +".rhash" B>file
 
-now 0 2 60 0 add-std-workchain
+basestate0_rhash basestate0_fhash now 0 3 60 0 add-std-workchain
 config.workchains!
 
 // SmartContract #1 (Simple wallet)
@@ -37,21 +43,22 @@ config.workchains!
 }>c
 // code
 <b 0 32 u, 
-   newkeypair swap "wallet1" +suffix +".pk" B>file
+   "main-wallet" +suffix +".pk" load-generate-keypair drop
    B, 
 b> // data
 Libs{
   x{ABACABADABACABA} s>c public_lib
   x{1234} x{5678} |_ s>c private_lib
 }Libs  // libraries
-GR$1.7 // balance
+GR$1700000000 // balance
 0 // split_depth
 0 // ticktock
 2 // mode: create
 register_smc
 dup make_special dup constant smc1_addr  
-dup 256 u>B "wallet1" +suffix +".addr" B>file
-."wallet address = " x. cr
+Masterchain over 
+2dup ."wallet address = " .addr cr 2dup 6 .Addr cr
+"main-wallet" +suffix +".addr" save-address-verbose
 
 // SmartContract #2 (Simple money giver for test network)
 <{ SETCP0 DUP IFNOTRET INC 32 THROWIF  // return if recv_internal, fail unless recv_external
@@ -70,13 +77,12 @@ empty_cell    // libraries
 GR$1000000    // initial balance (1m test Grams)
 0 0 2 register_smc
 dup make_special dup constant smc2_addr
-dup 256 u>B "testgiver" +suffix +".addr" B>file
-."free test gram giver address = " x. cr
+Masterchain over 
+2dup ."free test gram giver address = " .addr cr 2dup 6 .Addr cr
+"testgiver" +suffix +".addr" save-address-verbose
 
 // SmartContract #3
-
 PROGRAM{
-  NEWPROC store_grams
   recv_internal x{} PROC
   run_ticktock PROC:<{
     c4 PUSHCTR CTOS 32 LDU 256 LDU ENDS
@@ -86,21 +92,17 @@ PROGRAM{
     // remaining 256 bits with an address have been fetched
     // create new empty message with 0.1 Grams to that address
     NEWC b{00100010011111111} STSLICECONST TUCK 256 STU
-    100000000 INT store_grams CALL  // store 0.1 Grams
+    100000000 INT STGRAMS  // store 0.1 Grams
     1 4 + 4 + 64 + 32 + 1+ 1+ INT STZEROES ENDC
     // send raw message from Cell
     ZERO SENDRAWMSG
-    -17 INT 256 STIR 130000000 INT store_grams CALL
+    -17 INT 256 STIR 130000000 INT STGRAMS
     107 INT STZEROES ENDC 
     ZERO // another message with 0.13 Grams to account -17
     NEWC b{11000100100000} "test" $>s |+ STSLICECONST
-    123456789 INT store_grams CALL
+    123456789 INT STGRAMS
     107 INT STZEROES "Hello, world!" $>s STSLICECONST ENDC
     ZERO SENDRAWMSG SENDRAWMSG // external message to address "test"
-  }>
-  store_grams PROC:<{
-    -1 INT UNTIL:<{ INC 2DUP 3 LSHIFT# POW2 LESS }>
-    ROT OVER 4 STUR SWAP 3 LSHIFT# STUX 
   }>
 }END>c
 // code
@@ -115,7 +117,7 @@ Libs{
 3 // ticktock: tick
 2 // mode: create
 register_smc
-dup make_special dup constant smc2_addr
+dup make_special dup constant smc3_addr
 ."address = " x. cr
 
 // Configuration Parameters
@@ -135,6 +137,12 @@ config.special!
 // mc-cc-lifetime sh-cc-lifetime sh-val-lifetime sh-val-num
 250 250 1000 7 config.catchain_params!
 
+128 *Ki 512 *Ki 1 *Mi triple  // [ underload soft hard ] : block bytes limit
+100000 500000 1000000 triple  // gas limits
+1000 5000 10000 triple        // lt limits
+triple dup untriple config.mc_block_limits!
+untriple config.block_limits!
+
 "validator-keys" +suffix +".pub" file>B
 { dup Blen } { 32 B| swap dup ."Validator public key = " Bx. cr
   17 add-validator } while drop
@@ -144,9 +152,13 @@ config.special!
 // 239 add-validator
 now dup 1000000 + 0 config.validators!
 
-// SmartContract #3 (Config)
-
-x{FF00} s>c // code
+// SmartContract #4 (Config)
+PROGRAM{
+  recv_internal x{} PROC
+  recv_external PROC:<{
+  }>
+}END>c
+// code
 <b x{11EF} s, configdict ref, b> // data
 empty_cell  // libraries
 1  // balance
@@ -159,6 +171,14 @@ dup set_config_smc
 create_state
 cr cr ."new state is:" cr dup <s csr. cr
 dup 31 boc+>B dup Bx. cr
-dup "zerostate" +suffix +".boc" B>file
-Bhash ."file hash=" dup x. cr 256 u>B "zerostate" +suffix +".fhash" B>file
-hash ."root hash=" dup x. cr 256 u>B "zerostate" +suffix +".rhash" B>file
+dup "zerostate" +suffix +".boc" tuck B>file
+."(Initial masterchain state saved to file " type .")" cr
+Bhash dup =: zerostate_fhash
+."file hash=" dup x. space 256 u>B dup B>base64url type cr
+"zerostate" +suffix +".fhash" B>file
+hash dup =: zerostate_rhash ."root hash=" dup x. space 256 u>B dup B>base64url type cr
+"zerostate" +suffix +".rhash" B>file
+basestate0_rhash ."Basestate0 root hash=" dup x. space 256 u>B B>base64url type cr
+basestate0_fhash ."Basestate0 file hash=" dup x. space 256 u>B B>base64url type cr
+zerostate_rhash ."Zerostate root hash=" dup x. space 256 u>B B>base64url type cr
+zerostate_fhash ."Zerostate file hash=" dup x. space 256 u>B B>base64url type cr

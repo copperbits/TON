@@ -33,6 +33,7 @@ class StackEntry;
 class Stack;
 class Continuation;
 class Box;
+class Atom;
 
 using Tuple = td::Cnt<std::vector<StackEntry>>;
 
@@ -48,12 +49,13 @@ class StackEntry {
     t_builder,
     t_slice,
     t_vmcont,
+    t_tuple,
     t_stack,
     t_string,
     t_bytes,
     t_bitstring,
     t_box,
-    t_tuple,
+    t_atom,
     t_object
   };
 
@@ -75,14 +77,16 @@ class StackEntry {
   StackEntry(td::RefInt256 int_ref) : ref(std::move(int_ref)), tp(t_int) {
   }
   StackEntry(std::string str, bool bytes = false) : ref(), tp(bytes ? t_bytes : t_string) {
-    auto cnt_str = new Cnt<std::string>{std::move(str)};
-    ref = Ref<Cnt<std::string>>{cnt_str};
+    ref = Ref<Cnt<std::string>>{true, std::move(str)};
   }
   StackEntry(Ref<Stack> stack_ref);
   StackEntry(Ref<Continuation> cont_ref);
   StackEntry(Ref<Box> box_ref);
   StackEntry(Ref<Tuple> tuple_ref);
-  StackEntry(const StackEntry& se) noexcept : ref(se.ref), tp(se.tp) {
+  StackEntry(const std::vector<StackEntry>& tuple_components);
+  StackEntry(std::vector<StackEntry>&& tuple_components);
+  StackEntry(Ref<Atom> atom_ref);
+  StackEntry(const StackEntry& se) : ref(se.ref), tp(se.tp) {
   }
   StackEntry(StackEntry&& se) noexcept : ref(std::move(se.ref)), tp(se.tp) {
     se.tp = t_null;
@@ -111,6 +115,12 @@ class StackEntry {
   }
   bool is_tuple() const {
     return tp == t_tuple;
+  }
+  bool is_atom() const {
+    return tp == t_atom;
+  }
+  bool is(int wanted) const {
+    return tp == wanted;
   }
   void swap(StackEntry& se) {
     ref.swap(se.ref);
@@ -147,6 +157,14 @@ class StackEntry {
   }
 
  public:
+  template <typename T>
+  static StackEntry maybe(Ref<T> ref) {
+    if (ref.is_null()) {
+      return {};
+    } else {
+      return ref;
+    }
+  }
   td::RefInt256 as_int() const & {
     return as<td::CntInt256, t_int>();
   }
@@ -192,6 +210,8 @@ class StackEntry {
   Ref<Tuple> as_tuple() &&;
   Ref<Tuple> as_tuple_range(unsigned max_len = 255, unsigned min_len = 0) const &;
   Ref<Tuple> as_tuple_range(unsigned max_len = 255, unsigned min_len = 0) &&;
+  Ref<Atom> as_atom() const &;
+  Ref<Atom> as_atom() &&;
   template <class T>
   Ref<T> as_object() const & {
     return dynamic_as<T, t_object>();
@@ -209,6 +229,13 @@ class StackEntry {
 inline void swap(StackEntry& se1, StackEntry& se2) {
   se1.swap(se2);
 }
+
+template <typename... Args>
+Ref<Tuple> make_tuple_ref(Args&&... args) {
+  return td::make_cnt_ref<std::vector<vm::StackEntry>>(std::vector<vm::StackEntry>{std::forward<Args>(args)...});
+}
+
+const StackEntry& tuple_index(const Tuple& tup, unsigned idx);
 
 class Stack : public td::CntObject {
   std::vector<StackEntry> stack;
@@ -375,6 +402,7 @@ class Stack : public td::CntObject {
     stack.reserve(cnt);
     return *this;
   }
+  void pop_null();
   td::RefInt256 pop_int();
   td::RefInt256 pop_int_finite();
   bool pop_bool();
@@ -382,14 +410,17 @@ class Stack : public td::CntObject {
   long long pop_long_range(long long max, long long min = 0);
   int pop_smallint_range(int max, int min = 0);
   Ref<Cell> pop_cell();
+  Ref<Cell> pop_maybe_cell();
   Ref<CellBuilder> pop_builder();
   Ref<CellSlice> pop_cellslice();
   Ref<Continuation> pop_cont();
   Ref<Box> pop_box();
   Ref<Tuple> pop_tuple();
   Ref<Tuple> pop_tuple_range(unsigned max_len = 255, unsigned min_len = 0);
+  Ref<Atom> pop_atom();
   std::string pop_string();
   std::string pop_bytes();
+  void push_null();
   void push_int(td::RefInt256 val);
   void push_int_quiet(td::RefInt256 val, bool quiet = true);
   void push_smallint(long long val);
@@ -397,11 +428,24 @@ class Stack : public td::CntObject {
   void push_string(std::string str);
   void push_bytes(std::string str);
   void push_cell(Ref<Cell> cell);
+  void push_maybe_cell(Ref<Cell> cell);
+  void push_maybe_cellslice(Ref<CellSlice> cs);
   void push_builder(Ref<CellBuilder> cb);
   void push_cellslice(Ref<CellSlice> cs);
   void push_cont(Ref<Continuation> cont);
   void push_box(Ref<Box> box);
   void push_tuple(Ref<Tuple> tuple);
+  void push_tuple(const std::vector<StackEntry>& components);
+  void push_tuple(std::vector<StackEntry>&& components);
+  void push_atom(Ref<Atom> atom);
+  template <typename T>
+  void push_maybe(Ref<T> val) {
+    if (val.is_null()) {
+      push({});
+    } else {
+      push(std::move(val));
+    }
+  }
   void dump(std::ostream& os, bool cr = true) const;
 };
 

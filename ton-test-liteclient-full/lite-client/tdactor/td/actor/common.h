@@ -82,10 +82,12 @@ class Scheduler {
       auto &scheduler = schedulers_[it];
       scheduler->start();
       if (it != 0) {
-        td::thread([&] {
+        auto thread = td::thread([&] {
           while (scheduler->run(10)) {
           }
-        }).detach();
+        });
+        thread.set_name(PSLICE() << "#" << it << ":io");
+        thread.detach();
       }
     }
   }

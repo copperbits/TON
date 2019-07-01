@@ -78,7 +78,6 @@ class AdnlExtClientImpl : public AdnlExtClient {
     }
   }
   void conn_ready(td::actor::ActorId<AdnlExtConnection> conn) {
-    LOG(ERROR) << "conn ready";
     if (!conn_.empty() && conn_.get() == conn) {
       callback_->on_ready();
     }

@@ -20,6 +20,7 @@ set (TON_CRYPTO_SOURCE
   openssl/residue.cpp
   openssl/rand.cpp
   vm/stack.cpp
+  vm/atom.cpp
   vm/continuation.cpp
   vm/dict.cpp
   vm/dispatch.cpp
@@ -59,7 +60,9 @@ set (TON_CRYPTO_SOURCE
   tl/tlblib.hpp
 
   vm/arithops.h
+  vm/atom.h
   vm/boc.h
+  vm/box.hpp
   vm/cellops.h
   vm/continuation.h
   vm/contops.h
@@ -238,10 +241,16 @@ target_include_directories(ton_block PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SO
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/block> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
 target_link_libraries(ton_block PUBLIC ton_crypto tdutils tdactor tl_api)
 
+set(TURN_OFF_LSAN cd .)
+if (TON_USE_ASAN AND NOT WIN32)
+  set(TURN_OFF_LSAN export LSAN_OPTIONS=detect_leaks=0)
+endif()
+
 if (NOT CMAKE_CROSSCOMPILING)
   set(GenerateTlbCmd tlbc)
   add_custom_target(tlb_generate_block
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/block
+    COMMAND ${TURN_OFF_LSAN}
     COMMAND ${GenerateTlbCmd} -o block-auto -n block::gen -z block.tlb
     COMMENT "Generate block tlb source files"
     DEPENDS tlbc block/block.tlb

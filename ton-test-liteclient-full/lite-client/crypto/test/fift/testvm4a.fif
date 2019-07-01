@@ -2,4 +2,4 @@
 239 dup dup * swap
 289 17 
 3
-x{8B0401E502C8CB0F028010F442} runvmcode drop dup csr.
+x{6D01E502C8CB0F028010F442} runvmcode drop dup <s csr.
