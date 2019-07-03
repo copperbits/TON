@@ -1,3 +1,3 @@
 # TON_Contracts
 
-Here is a floder with common reference TON contracts implementations
+Everything about TON contracts: documents, language and VM references, sample contract's code, contract code automation tools, etc.

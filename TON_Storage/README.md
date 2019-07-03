@@ -1,3 +1,3 @@
 # TON_Storage
 
-Storage relatet projects
+All solutions for TON data to be stored out of TON network

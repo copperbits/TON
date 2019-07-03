@@ -1,3 +1,3 @@
 # TON_Storage
 
-List of client implementations
+Lite- and full-clients: code and related documentation.

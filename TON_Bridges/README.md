@@ -1,3 +1,3 @@
 # TON_Storage
 
-Bridge list with other blockchains
+"Build bridges, not walls!" APIs, protocols, adapters to connect to other networks
