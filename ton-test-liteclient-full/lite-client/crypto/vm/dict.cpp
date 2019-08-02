@@ -2410,4 +2410,64 @@ bool AugmentedDictionary::check_for_each_extra(const foreach_extra_func_t& forea
   return DictionaryFixed::check_for_each(foreach_func, invert_first);
 }
 
+std::pair<Ref<CellSlice>, Ref<CellSlice>> AugmentedDictionary::dict_traverse_extra(
+    Ref<Cell> dict, td::BitPtr key_buffer, int n, const traverse_func_t& traverse_node) const {
+  int m = get_key_bits();
+  while (true) {
+    CHECK(dict.not_null());
+    LabelParser label{std::move(dict), n, 2};
+    label.extract_label_to(key_buffer);
+    key_buffer += label.l_bits;
+    n -= label.l_bits;
+    if (n <= 0) {
+      // reached a leaf, check it
+      assert(!n);
+      auto pair = decompose_value_extra(std::move(label.remainder));
+      if (pair.first.is_null()) {
+        throw VmError{Excno::dict_err, "invalid leaf value/extra in an augmented dictionary"};
+      }
+      int r = traverse_node(key_buffer - m, m, pair.second /* extra */, pair.first /* value */);
+      if (r < 0) {
+        throw CombineErrorValue{r};
+      } else if (r > 0) {
+        return pair;
+      } else {
+        return {};
+      }
+    }
+    // visit (traverse) fork
+    auto c1 = label.remainder.write().fetch_ref(), c2 = label.remainder.write().fetch_ref();
+    int r = traverse_node(key_buffer + n - m, m - n, std::move(label.remainder) /* extra */, {});
+    if (r < 0 || (r & 3) == 3) {
+      throw CombineErrorValue{r};
+    } else if (!(r & 3)) {
+      return {};
+    }
+    // r = 1 : visit only left, 2 = visit only right, 5 = visit right, then left, 6 = visit left, then right
+    ++key_buffer;
+    --n;
+    bool sw = r & 1;
+    if (r & 4) {
+      // have to visit both children in some order; do a recursive call to visit the first child
+      key_buffer[-1] = sw;
+      auto tmp = dict_traverse_extra(sw ? std::move(c2) : std::move(c1), key_buffer, n, traverse_node);
+      if (tmp.first.not_null()) {
+        return tmp;
+      }
+    }
+    // visit the remaining child
+    key_buffer[-1] = !sw;
+    dict = sw ? std::move(c1) : std::move(c2);
+  }
+}
+
+std::pair<Ref<CellSlice>, Ref<CellSlice>> AugmentedDictionary::traverse_extra(td::BitPtr key_buffer, int key_len,
+                                                                              const traverse_func_t& traverse_node) {
+  force_validate();
+  if (key_len != get_key_bits() || is_empty()) {
+    return {};
+  }
+  return dict_traverse_extra(get_root_cell(), key_buffer, key_len, traverse_node);
+}
+
 }  // namespace vm

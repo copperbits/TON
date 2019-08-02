@@ -32,15 +32,16 @@ def? $2 { @' $2 } { "new-wallet" } cond constant file-base
     }>
     ENDS
     INC NEWC 32 STU 256 STU ENDC c4 POPCTR
-}>c
+}>c // >libref
 // code
 <b 0 32 u, 
    file-base +".pk" load-generate-keypair
    constant wallet_pk
    B, 
 b> // data
-// no libraries
-<b b{00110} s, rot ref, swap ref, b>  // create StateInit
+null // no libraries
+// Libs{ x{ABACABADABACABA} drop x{AAAA} s>c public_lib x{1234} x{5678} |_ s>c public_lib }Libs
+<b b{0011} s, 3 roll ref, rot ref, swap dict, b>  // create StateInit
 dup ."StateInit: " <s csr. cr
 dup hash wc swap 2dup 2constant wallet_addr
 ."new wallet address = " 2dup .addr cr

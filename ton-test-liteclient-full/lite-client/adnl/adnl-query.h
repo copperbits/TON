@@ -1,11 +1,14 @@
 #pragma once
 
-#include "auto/tl/ton_api.h"
 #include "td/actor/actor.h"
+#include "common/bitstring.h"
+#include "td/utils/buffer.h"
 
 #include <functional>
 
 namespace ton {
+
+namespace adnl {
 
 class AdnlPeerPair;
 
@@ -40,5 +43,7 @@ class AdnlQuery : public td::actor::Actor {
   std::function<void(AdnlQueryId)> destroy_;
   AdnlQueryId id_;
 };
+
+}  // namespace adnl
 
 }  // namespace ton

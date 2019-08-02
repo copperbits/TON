@@ -2,12 +2,16 @@
 #include "block/block.h"
 #include "block/block-auto.h"
 #include "td/utils/bits.h"
+#include "td/utils/uint128.h"
 #include "ton/ton-shard.h"
 #include "vm/continuation.h"
-#include <absl/numeric/int128.h>
 
 namespace block {
 using td::Ref;
+
+Ref<vm::Cell> ComputePhaseConfig::lookup_library(td::ConstBitPtr key) const {
+  return libraries ? vm::lookup_library_in(key, libraries->get_root_cell()) : Ref<vm::Cell>{};
+}
 
 /*
  * 
@@ -21,19 +25,45 @@ bool Account::set_address(ton::WorkchainId wc, td::ConstBitPtr new_addr) {
   return true;
 }
 
+bool Account::set_split_depth(int new_split_depth) {
+  if (new_split_depth < 0 || new_split_depth > 30) {
+    return false;  // invalid value for split_depth
+  }
+  if (split_depth_set_) {
+    return split_depth_ == new_split_depth;
+  } else {
+    split_depth_ = (unsigned char)new_split_depth;
+    split_depth_set_ = true;
+    return true;
+  }
+}
+
+bool Account::check_split_depth(int split_depth) const {
+  return split_depth_set_ ? (split_depth == split_depth_) : (split_depth >= 0 && split_depth <= 30);
+}
+
+// initializes split_depth and addr_rewrite
 bool Account::parse_maybe_anycast(vm::CellSlice& cs) {
   int t = (int)cs.fetch_ulong(1);
-  if (t <= 0) {
-    split_depth = 0;
-    return t == 0;
+  if (t < 0) {
+    return false;
+  } else if (!t) {
+    return set_split_depth(0);
   }
   int depth;
-  if (!cs.fetch_uint_to(5, depth) || !cs.have(depth)) {
-    return false;
+  return cs.fetch_uint_leq(30, depth)                     // anycast_info$_ depth:(#<= 30)
+         && depth                                         // { depth >= 1 }
+         && cs.fetch_bits_to(addr_rewrite.bits(), depth)  // rewrite_pfx:(bits depth)
+         && set_split_depth(depth);
+}
+
+bool Account::store_maybe_anycast(vm::CellBuilder& cb) const {
+  if (!split_depth_set_ || !split_depth_) {
+    return cb.store_bool_bool(false);
   }
-  assert((unsigned)depth <= 31);
-  split_depth = (unsigned char)depth;
-  return cs.fetch_bits_to(addr_rewrite.bits(), depth);
+  return cb.store_bool_bool(true)                                    // just$1
+         && cb.store_uint_leq(30, split_depth_)                      // depth:(#<= 30)
+         && cb.store_bits_bool(addr_rewrite.cbits(), split_depth_);  // rewrite_pfx:(bits depth)
 }
 
 bool Account::unpack_address(vm::CellSlice& addr_cs) {
@@ -56,19 +86,17 @@ bool Account::unpack_address(vm::CellSlice& addr_cs) {
   if (new_wc == ton::workchainInvalid) {
     return false;
   }
-  td::bitstring::bits_memcpy(addr_rewrite.bits() + split_depth, addr_orig.cbits() + split_depth,
-                             addr_rewrite.size() - split_depth);
   if (workchain == ton::workchainInvalid) {
     workchain = new_wc;
     addr = addr_orig;
-    addr.bits().copy_from(addr_rewrite.cbits(), split_depth);
-  } else if (split_depth) {
+    addr.bits().copy_from(addr_rewrite.cbits(), split_depth_);
+  } else if (split_depth_) {
     ton::StdSmcAddress new_addr = addr_orig;
-    new_addr.bits().copy_from(addr_rewrite.cbits(), split_depth);
+    new_addr.bits().copy_from(addr_rewrite.cbits(), split_depth_);
     if (new_addr != addr) {
       LOG(ERROR) << "error unpacking account " << workchain << ":" << addr.to_hex()
                  << " : account header contains different address " << new_addr.to_hex() << " (with splitting depth "
-                 << (int)split_depth << ")";
+                 << (int)split_depth_ << ")";
       return false;
     }
   } else if (addr != addr_orig) {
@@ -80,6 +108,10 @@ bool Account::unpack_address(vm::CellSlice& addr_cs) {
     LOG(ERROR) << "error unpacking account " << workchain << ":" << addr.to_hex()
                << " : account header contains different workchain " << new_wc;
     return false;
+  }
+  addr_rewrite = addr.bits();  // initialize all 32 bits of addr_rewrite
+  if (!split_depth_) {
+    my_addr_exact = my_addr;
   }
   return true;
 }
@@ -110,19 +142,18 @@ bool Account::unpack_storage_info(vm::CellSlice& cs) {
   return (u != std::numeric_limits<td::uint64>::max());
 }
 
+// initializes split_depth (from account state - StateInit)
 bool Account::unpack_state(vm::CellSlice& cs) {
   block::gen::StateInit::Record state;
   if (!tlb::unpack_exact(cs, state)) {
     return false;
   }
+  int sd = 0;
   if (state.split_depth->size() == 6) {
-    int sd = (int)state.split_depth->prefetch_ulong(6) - 32;
-    if (split_depth && split_depth != sd) {
-      return false;
-    }
-    if (!split_depth) {
-      split_depth = (unsigned char)sd;
-    }
+    sd = (int)state.split_depth->prefetch_ulong(6) - 32;
+  }
+  if (!set_split_depth(sd)) {
+    return false;
   }
   if (state.special->size() > 1) {
     int z = (int)state.special->prefetch_ulong(3);
@@ -140,7 +171,7 @@ bool Account::unpack_state(vm::CellSlice& cs) {
 }
 
 bool Account::compute_my_addr(bool force) {
-  if (!force && my_addr.not_null()) {
+  if (!force && my_addr.not_null() && my_addr_exact.not_null()) {
     return true;
   }
   if (workchain == ton::workchainInvalid) {
@@ -148,28 +179,89 @@ bool Account::compute_my_addr(bool force) {
     return false;
   }
   vm::CellBuilder cb;
-  Ref<vm::Cell> cell;
-  // TODO: take into account non-zero `split_depth`
+  Ref<vm::Cell> cell, cell2;
   if (workchain >= -128 && workchain < 127) {
-    if (cb.store_long_bool(4, 3)                  // addr_std$10 anycast:(Maybe Anycast)
-        && cb.store_long_rchk_bool(workchain, 8)  // workchain_id:int8
-        && cb.store_bits_bool(addr)               // addr:bits256
-        && cb.finalize_to(cell)) {
-      my_addr = load_cell_slice_ref(std::move(cell));
-      return true;
+    if (!(cb.store_long_bool(2, 2)                             // addr_std$10
+          && store_maybe_anycast(cb)                           // anycast:(Maybe Anycast)
+          && cb.store_long_rchk_bool(workchain, 8)             // workchain_id:int8
+          && cb.store_bits_bool(addr_orig)                     // addr:bits256
+          && cb.finalize_to(cell) && cb.store_long_bool(4, 3)  // addr_std$10 anycast:(Maybe Anycast)
+          && cb.store_long_rchk_bool(workchain, 8)             // workchain_id:int8
+          && cb.store_bits_bool(addr)                          // addr:bits256
+          && cb.finalize_to(cell2))) {
+      return false;
     }
   } else {
-    if (cb.store_long_bool(0xd00, 12)              // addr_var$11 anycast:(Maybe Anycast) addr_len:(## 9)
-        && cb.store_long_rchk_bool(workchain, 32)  // workchain_id:int32
-        && cb.store_bits_bool(addr)                // addr:(bits addr_len)
-        && cb.finalize_to(cell)) {
-      my_addr = load_cell_slice_ref(std::move(cell));
-      return true;
+    if (!(cb.store_long_bool(3, 2)                             // addr_var$11
+          && store_maybe_anycast(cb)                           // anycast:(Maybe Anycast)
+          && cb.store_long_bool(256, 9)                        // addr_len:(## 9)
+          && cb.store_long_rchk_bool(workchain, 32)            // workchain_id:int32
+          && cb.store_bits_bool(addr_orig)                     // addr:(bits addr_len)
+          && cb.finalize_to(cell) && cb.store_long_bool(6, 3)  // addr_var$11 anycast:(Maybe Anycast)
+          && cb.store_long_bool(256, 9)                        // addr_len:(## 9)
+          && cb.store_long_rchk_bool(workchain, 32)            // workchain_id:int32
+          && cb.store_bits_bool(addr)                          // addr:(bits addr_len)
+          && cb.finalize_to(cell2))) {
+      return false;
     }
   }
-  return false;
+  my_addr = load_cell_slice_ref(std::move(cell));
+  my_addr_exact = load_cell_slice_ref(std::move(cell2));
+  return true;
 }
 
+bool Account::recompute_tmp_addr(Ref<vm::CellSlice>& tmp_addr, int split_depth,
+                                 td::ConstBitPtr orig_addr_rewrite) const {
+  if (!split_depth && my_addr_exact.not_null()) {
+    tmp_addr = my_addr_exact;
+    return true;
+  }
+  if (split_depth == split_depth_ && my_addr.not_null()) {
+    tmp_addr = my_addr;
+    return true;
+  }
+  if (split_depth < 0 || split_depth > 30) {
+    return false;
+  }
+  vm::CellBuilder cb;
+  bool std = (workchain >= -128 && workchain < 128);
+  if (!cb.store_long_bool(std ? 2 : 3, 2)) {  // addr_std$10 or addr_var$11
+    return false;
+  }
+  if (!split_depth) {
+    if (!cb.store_bool_bool(false)) {  // anycast:(Maybe Anycast)
+      return false;
+    }
+  } else if (!(cb.store_bool_bool(true)                             // just$1
+               && cb.store_long_bool(split_depth, 5)                // depth:(#<= 30)
+               && cb.store_bits_bool(addr.bits(), split_depth))) {  // rewrite_pfx:(bits depth)
+    return false;
+  }
+  if (std) {
+    if (!cb.store_long_rchk_bool(workchain, 8)) {  // workchain:int8
+      return false;
+    }
+  } else if (!(cb.store_long_bool(256, 9)                // addr_len:(## 9)
+               && cb.store_long_bool(workchain, 32))) {  // workchain:int32
+    return false;
+  }
+  Ref<vm::Cell> cell;
+  return cb.store_bits_bool(orig_addr_rewrite, split_depth)  // address:(bits addr_len) or bits256
+         && cb.store_bits_bool(addr.bits() + split_depth, 256 - split_depth) && cb.finalize_to(cell) &&
+         (tmp_addr = vm::load_cell_slice_ref(std::move(cell))).not_null();
+}
+
+bool Account::init_rewrite_addr(int split_depth, td::ConstBitPtr orig_addr_rewrite) {
+  if (split_depth_set_ || !created || !set_split_depth(split_depth)) {
+    return false;
+  }
+  addr_orig = addr;
+  addr_rewrite = addr.bits();
+  addr_orig.bits().copy_from(orig_addr_rewrite, split_depth);
+  return compute_my_addr(true);
+}
+
+// used to unpack previously existing accounts
 bool Account::unpack(Ref<vm::CellSlice> shard_account, Ref<vm::CellSlice> extra, ton::UnixTime now, bool special) {
   LOG(DEBUG) << "unpacking " << (special ? "special " : "") << "account " << addr.to_hex();
   if (shard_account.is_null()) {
@@ -199,15 +291,15 @@ bool Account::unpack(Ref<vm::CellSlice> shard_account, Ref<vm::CellSlice> extra,
     is_special = special;
     if (workchain != ton::workchainInvalid) {
       addr_orig = addr;
-      addr_rewrite.bits().copy_from(addr.cbits(), addr_rewrite.size());
+      addr_rewrite = addr.cbits();
     }
-    compute_my_addr();
-    return acc_cs.size_ext() == 1;
+    return compute_my_addr() && acc_cs.size_ext() == 1;
   }
   block::gen::Account::Record_account acc;
   block::gen::AccountStorage::Record storage;
   if (!(tlb::unpack_exact(acc_cs, acc) && (my_addr = acc.addr).not_null() && unpack_address(acc.addr.write()) &&
-        unpack_storage_info(acc.storage_stat.write()) && tlb::csr_unpack(std::move(acc.storage), storage) &&
+        compute_my_addr() && unpack_storage_info(acc.storage_stat.write()) &&
+        tlb::csr_unpack(std::move(acc.storage), storage) &&
         std::max(storage.last_trans_lt, 1ULL) > acc_info.last_trans_lt &&
         block::tlb::t_CurrencyCollection.unpack_special(storage.balance.write(), balance, extra_balance))) {
     return false;
@@ -246,19 +338,21 @@ bool Account::unpack(Ref<vm::CellSlice> shard_account, Ref<vm::CellSlice> extra,
   return true;
 }
 
+// used to initialize new accounts
 bool Account::init_new(ton::UnixTime now) {
   // only workchain and addr are initialized at this point
   if (workchain == ton::workchainInvalid) {
     return false;
   }
   addr_orig = addr;
+  addr_rewrite = addr.cbits();
   last_trans_lt_ = last_trans_end_lt_ = 0;
   last_trans_hash_.set_zero();
   now_ = now;
   last_paid = 0;
   storage_stat.clear();
   balance = due_payment = td::RefInt256{true, 0};
-  if (my_addr.is_null()) {
+  if (my_addr_exact.is_null()) {
     vm::CellBuilder cb;
     if (workchain >= -128 && workchain < 128) {
       CHECK(cb.store_long_bool(4, 3)                  // addr_std$10 anycast:(Maybe Anycast)
@@ -269,7 +363,10 @@ bool Account::init_new(ton::UnixTime now) {
             && cb.store_long_rchk_bool(workchain, 32)  // workchain:int32
             && cb.store_bits_bool(addr));              // address:(bits addr_len)
     }
-    my_addr = load_cell_slice_ref(cb.finalize());
+    my_addr_exact = load_cell_slice_ref(cb.finalize());
+  }
+  if (my_addr.is_null()) {
+    my_addr = my_addr_exact;
   }
   if (total_state.is_null()) {
     vm::CellBuilder cb;
@@ -277,7 +374,7 @@ bool Account::init_new(ton::UnixTime now) {
           && cb.finalize_to(total_state));
     orig_total_state = total_state;
   }
-  state_hash = addr;
+  state_hash = addr_orig;
   status = orig_status = acc_nonexist;
   created = true;
   return true;
@@ -338,6 +435,8 @@ Transaction::Transaction(const Account& _account, int ttype, ton::LogicalTime re
     , new_tock(_account.tock)
     , now(_now)
     , account(_account)
+    , my_addr(_account.my_addr)
+    , my_addr_exact(_account.my_addr_exact)
     , balance(_account.balance)
     , due_payment(_account.due_payment)
     , last_paid(_account.last_paid)
@@ -421,7 +520,7 @@ bool Transaction::unpack_input_msg(bool ihr_delivered, const ActionPhaseConfig* 
       auto fees_c = msg_prices.compute_fwd_ihr_fees(sstat.cells, sstat.bits, true);
       LOG(DEBUG) << "computed fwd fees = " << fees_c.first << " + " << fees_c.second;
 
-      if (account.is_special && false) {  // FIXME: remove '&& false' left here for debugging
+      if (account.is_special) {
         LOG(DEBUG) << "computed fwd fees set to zero for special account";
         fees_c.first = fees_c.second = 0;
       }
@@ -580,7 +679,7 @@ td::RefInt256 ComputePhaseConfig::compute_gas_price(td::uint64 gas_used) const {
 
 bool Transaction::compute_gas_limits(ComputePhase& cp, const ComputePhaseConfig& cfg) {
   // Compute gas limits
-  if (/*FIXME*/ 0 && account.is_special) {
+  if (account.is_special) {
     cp.gas_max = cfg.gas_limit;  // TODO: introduce special gas limits?
   } else {
     cp.gas_max = cfg.gas_bought_for(balance);
@@ -658,7 +757,7 @@ Ref<vm::Tuple> Transaction::prepare_vm_c7(const ComputePhaseConfig& cfg) const {
       td::make_refint(start_lt),                                          //   trans_lt:Integer
       std::move(rand_seed_int),                                           //   rand_seed:Integer
       vm::make_tuple_ref(balance, vm::StackEntry::maybe(extra_balance)),  //   balance_remaining:[Integer (Maybe Cell)]
-      account.my_addr);  //  myself:MsgAddressInt ] = SmartContractInfo;
+      my_addr);  //  myself:MsgAddressInt ] = SmartContractInfo;
   LOG(DEBUG) << "SmartContractInfo initialized with " << vm::StackEntry(tuple).to_string();
   return vm::make_tuple_ref(std::move(tuple));
 }
@@ -702,6 +801,34 @@ bool Transaction::unpack_msg_state(bool lib_only) {
   return true;
 }
 
+std::vector<Ref<vm::Cell>> Transaction::compute_vm_libraries(const ComputePhaseConfig& cfg) {
+  std::vector<Ref<vm::Cell>> lib_set;
+  if (in_msg_library.not_null()) {
+    lib_set.push_back(in_msg_library);
+  }
+  if (new_library.not_null()) {
+    lib_set.push_back(new_library);
+  }
+  auto global_libs = cfg.get_lib_root();
+  if (global_libs.not_null()) {
+    lib_set.push_back(std::move(global_libs));
+  }
+  return lib_set;
+}
+
+bool Transaction::check_in_msg_state_hash() {
+  CHECK(in_msg_state.not_null());
+  CHECK(new_split_depth >= 0 && new_split_depth < 32);
+  td::Bits256 in_state_hash = in_msg_state->get_hash().bits();
+  int d = new_split_depth;
+  if ((in_state_hash.bits() + d).compare(account.addr.bits() + d, 256 - d)) {
+    return false;
+  }
+  orig_addr_rewrite = in_state_hash.bits();
+  orig_addr_rewrite_set = true;
+  return account.recompute_tmp_addr(my_addr, d, orig_addr_rewrite.bits());
+}
+
 bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
   // TODO: add more skip verifications + sometimes use state from in_msg to re-activate
   // ...
@@ -719,11 +846,18 @@ bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
   } else {
     LOG(DEBUG) << "in_msg_state is null";
   }
-  if ((acc_status == Account::acc_uninit || acc_status == Account::acc_frozen) && in_msg_state.not_null() &&
-      account.state_hash == in_msg_state->get_hash().bits()) {
+  if (in_msg_state.not_null() &&
+      (acc_status == Account::acc_uninit ||
+       (acc_status == Account::acc_frozen && account.state_hash == in_msg_state->get_hash().bits()))) {
     use_msg_state = true;
-    if (!unpack_msg_state()) {
-      cp.skip_reason = ComputePhase::sk_no_state;
+    if (!(unpack_msg_state() && account.check_split_depth(new_split_depth))) {
+      LOG(DEBUG) << "cannot unpack in_msg_state, or it has bad split_depth; cannot init account state";
+      cp.skip_reason = ComputePhase::sk_bad_state;
+      return false;
+    }
+    if (acc_status == Account::acc_uninit && !check_in_msg_state_hash()) {
+      LOG(DEBUG) << "in_msg_state hash mismatch, cannot init account state";
+      cp.skip_reason = ComputePhase::sk_bad_state;
       return false;
     }
   } else if (acc_status != Account::acc_active) {
@@ -749,8 +883,9 @@ bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
   vm::GasLimits gas{(long long)cp.gas_limit, (long long)cp.gas_max, (long long)cp.gas_credit};
   LOG(DEBUG) << "creating VM";
 
-  vm::VmState vm{new_code, std::move(stack), gas, 1, new_data};
+  vm::VmState vm{new_code, std::move(stack), gas, 1, new_data, vm::VmLog(), compute_vm_libraries(cfg)};
   vm.set_c7(prepare_vm_c7(cfg));  // tuple with SmartContractInfo
+  // vm.incr_stack_trace(1);    // enable stack dump after each step
 
   LOG(DEBUG) << "starting VM";
   cp.vm_init_state_hash = vm.get_state_hash();
@@ -791,7 +926,7 @@ bool Transaction::prepare_compute_phase(const ComputePhaseConfig& cfg) {
     }
   }
   if (cp.accepted) {
-    if (/*FIXME*/ 0 && account.is_special) {
+    if (account.is_special) {
       cp.gas_fees = td::RefInt256{true, 0};
     } else {
       cp.gas_fees = cfg.compute_gas_price(cp.gas_used);
@@ -937,12 +1072,12 @@ int Transaction::try_action_set_code(vm::CellSlice& cs, ActionPhase& ap, const A
 // ihr_fwd_fees = ceil((msg_fwd_fees * ihr_price_factor)/2^16) nanograms
 // bits in the root cell of a message are not included in msg.bits (lump_price pays for them)
 td::uint64 MsgPrices::compute_fwd_fees(td::uint64 cells, td::uint64 bits) const {
-#if defined(ABSL_HAVE_INTRINSIC_INT128)
-  return lump_price + (td::uint64)((__int128(bit_price) * bits + __int128(cell_price) * cells + 0xffff) >> 16);
-#else
-  return lump_price +
-         (td::uint64)((absl::uint128(bit_price) * bits + absl::uint128(cell_price) * cells + 0xffff) >> 16);
-#endif
+  return lump_price + td::uint128(bit_price)
+                          .mult(bits)
+                          .add(td::uint128(cell_price).mult(cells))
+                          .add(td::uint128(0xffff))
+                          .shr(16)
+                          .lo();
 }
 
 std::pair<td::uint64, td::uint64> MsgPrices::compute_fwd_ihr_fees(td::uint64 cells, td::uint64 bits,
@@ -951,11 +1086,7 @@ std::pair<td::uint64, td::uint64> MsgPrices::compute_fwd_ihr_fees(td::uint64 cel
   if (ihr_disabled) {
     return std::pair<td::uint64, td::uint64>(fwd, 0);
   }
-#if defined(ABSL_HAVE_INTRINSIC_INT128)
-  return std::pair<td::uint64, td::uint64>(fwd, (td::uint64)((__int128(fwd) * ihr_factor) >> 16));
-#else
-  return std::pair<td::uint64, td::uint64>(fwd, (td::uint64)((absl::uint128(fwd) * ihr_factor) >> 16));
-#endif
+  return std::pair<td::uint64, td::uint64>(fwd, td::uint128(fwd).mult(ihr_factor).shr(16).lo());
 }
 
 td::RefInt256 MsgPrices::get_first_part(td::RefInt256 total) const {
@@ -963,11 +1094,7 @@ td::RefInt256 MsgPrices::get_first_part(td::RefInt256 total) const {
 }
 
 td::uint64 MsgPrices::get_first_part(td::uint64 total) const {
-#if defined(ABSL_HAVE_INTRINSIC_INT128)
-  return (td::uint64)((__int128(total) * first_frac) >> 16);
-#else
-  return (td::uint64)((absl::uint128(total) * first_frac) >> 16);
-#endif
+  return td::uint128(total).mult(first_frac).shr(16).lo();
 }
 
 td::RefInt256 MsgPrices::get_next_part(td::RefInt256 total) const {
@@ -978,14 +1105,14 @@ bool Transaction::check_replace_src_addr(Ref<vm::CellSlice>& src_addr) const {
   int t = (int)src_addr->prefetch_ulong(2);
   if (!t && src_addr->size_ext() == 2) {
     // addr_none$00  --> replace with the address of current smart contract
-    src_addr = account.my_addr;
+    src_addr = my_addr;
     return true;
   }
   if (t != 2) {
     // invalid address (addr_extern and addr_var cannot be source addresses)
     return false;
   }
-  if (src_addr->contents_equal(*account.my_addr)) {
+  if (src_addr->contents_equal(*my_addr) || src_addr->contents_equal(*my_addr_exact)) {
     // source address matches that of the current account
     return true;
   }
@@ -994,9 +1121,6 @@ bool Transaction::check_replace_src_addr(Ref<vm::CellSlice>& src_addr) const {
   return false;
 }
 
-// TODO: get the list of enabled workchains and their address length ranges from cfg
-// for now, accepts only 256-bit destination addresses in masterchain and basechain
-// (and all external addresses)
 bool Transaction::check_rewrite_dest_addr(Ref<vm::CellSlice>& dest_addr, const ActionPhaseConfig& cfg,
                                           bool* is_mc) const {
   if (!dest_addr->prefetch_ulong(1)) {
@@ -1006,21 +1130,68 @@ bool Transaction::check_rewrite_dest_addr(Ref<vm::CellSlice>& dest_addr, const A
     }
     return true;
   }
-  block::gen::MsgAddressInt::Record_addr_std rec;
-  if (!tlb::csr_unpack(dest_addr, rec)) {
-    // only standard internal addresses allowed at this moment
+  bool repack = false;
+  int tag = block::gen::t_MsgAddressInt.get_tag(*dest_addr);
+
+  block::gen::MsgAddressInt::Record_addr_var rec;
+
+  if (tag == block::gen::MsgAddressInt::addr_var) {
+    if (!tlb::csr_unpack(dest_addr, rec)) {
+      // cannot unpack addr_var
+      LOG(DEBUG) << "cannot unpack addr_var in a destination address";
+      return false;
+    }
+    if (rec.addr_len == 256 && rec.workchain_id >= -128 && rec.workchain_id < 128) {
+      LOG(DEBUG) << "destination address contains an addr_var to be repacked into addr_std";
+      repack = true;
+    }
+  } else if (tag == block::gen::MsgAddressInt::addr_std) {
+    block::gen::MsgAddressInt::Record_addr_std recs;
+    if (!tlb::csr_unpack(dest_addr, recs)) {
+      // cannot unpack addr_std
+      LOG(DEBUG) << "cannot unpack addr_std in a destination address";
+      return false;
+    }
+    rec.anycast = std::move(recs.anycast);
+    rec.addr_len = 256;
+    rec.workchain_id = recs.workchain_id;
+    rec.address = td::make_bitstring_ref(recs.address);
+  } else {
+    // unknown address format (not a MsgAddressInt)
+    LOG(DEBUG) << "destination address does not have a MsgAddressInt tag";
     return false;
+  }
+  if (rec.workchain_id != ton::masterchainId) {
+    // recover destination workchain info from configuration
+    auto it = cfg.workchains->find(rec.workchain_id);
+    if (it == cfg.workchains->end()) {
+      // undefined destination workchain
+      LOG(DEBUG) << "destination address contains unknown workchain_id " << rec.workchain_id;
+      return false;
+    }
+    if (!it->second->accept_msgs) {
+      // workchain does not accept new messages
+      LOG(DEBUG) << "destination address belongs to workchain " << rec.workchain_id << " not accepting new messages";
+      return false;
+    }
+    if (!it->second->is_valid_addr_len(rec.addr_len)) {
+      // invalid address length for specified workchain
+      LOG(DEBUG) << "destination address has length " << rec.addr_len << " invalid for destination workchain "
+                 << rec.workchain_id;
+      return false;
+    }
   }
   if (rec.anycast->size() > 1) {
     // destination address is an anycast
-    if (rec.workchain_id == -1) {
+    if (rec.workchain_id == ton::masterchainId) {
       // anycast addresses disabled in masterchain
+      LOG(DEBUG) << "masterchain destination address has an anycast field";
       return false;
     }
     vm::CellSlice cs{*rec.anycast};
     int d = (int)cs.fetch_ulong(6) - 32;
     if (d <= 0 || d > 30) {
-      // dummy rewrite
+      // invalid anycast prefix length
       return false;
     }
     unsigned pfx = (unsigned)cs.fetch_ulong(d);
@@ -1028,20 +1199,32 @@ bool Transaction::check_rewrite_dest_addr(Ref<vm::CellSlice>& dest_addr, const A
     if (pfx != my_pfx) {
       // rewrite destination address
       vm::CellBuilder cb;
-      CHECK(cb.store_long_bool(5, 3)                    // addr_std$10 anycast:(Maybe Anycast) ...
-            && cb.store_long_bool(d, 5)                 // depth:(#<= 30)
-            && cb.store_long_bool(my_pfx, d)            // rewrite_pfx:(bits depth)
-            && cb.store_long_bool(rec.workchain_id, 8)  // workchain_id:int8
-            && cb.store_bits_bool(rec.address)          // address:bits256
+      CHECK(cb.store_long_bool(32 + d, 6)     // just$1 depth:(#<= 30)
+            && cb.store_long_bool(my_pfx, d)  // rewrite_pfx:(bits depth)
             && (rec.anycast = load_cell_slice_ref(cb.finalize())).not_null());
-      CHECK(block::gen::t_MsgAddressInt.validate(*(rec.anycast)));
+      repack = true;
     }
   }
   if (is_mc) {
-    *is_mc = (rec.workchain_id == -1);
+    *is_mc = (rec.workchain_id == ton::masterchainId);
   }
-  // only basic workchain (0) and masterchain (-1) allowed
-  return (rec.workchain_id == 0 || rec.workchain_id == -1);
+  if (!repack) {
+    return true;
+  }
+  if (rec.addr_len == 256 && rec.workchain_id >= -128 && rec.workchain_id < 128) {
+    // repack as an addr_std
+    vm::CellBuilder cb;
+    CHECK(cb.store_long_bool(2, 2)                             // addr_std$10
+          && cb.append_cellslice_bool(std::move(rec.anycast))  // anycast:(Maybe Anycast) ...
+          && cb.store_long_bool(rec.workchain_id, 8)           // workchain_id:int8
+          && cb.append_bitstring(std::move(rec.address))       // address:bits256
+          && (dest_addr = load_cell_slice_ref(cb.finalize())).not_null());
+  } else {
+    // repack as an addr_var
+    CHECK(tlb::csr_pack(dest_addr, std::move(rec)));
+  }
+  CHECK(block::gen::t_MsgAddressInt.validate(*dest_addr));
+  return true;
 }
 
 int Transaction::try_action_send_msg(vm::CellSlice& cs, ActionPhase& ap, const ActionPhaseConfig& cfg) {
@@ -1466,8 +1649,8 @@ bool Transaction::compute_state() {
   } else if (acc_status == Account::acc_frozen) {
     if (was_frozen) {
       vm::CellBuilder cb2;
-      CHECK(account.split_depth ? cb2.store_long_bool(account.split_depth + 32, 6)  // _ ... = StateInit
-                                : cb2.store_long_bool(0, 1));                       // ... split_depth:(Maybe (## 5))
+      CHECK(account.split_depth_ ? cb2.store_long_bool(account.split_depth_ + 32, 6)  // _ ... = StateInit
+                                 : cb2.store_long_bool(0, 1));                        // ... split_depth:(Maybe (## 5))
       CHECK(ticktock ? cb2.store_long_bool(ticktock | 4, 3) : cb2.store_long_bool(0, 1));  // special:(Maybe TickTock)
       CHECK(cb2.store_maybe_ref(new_code) && cb2.store_maybe_ref(new_data) && cb2.store_maybe_ref(new_library));
       // code:(Maybe ^Cell) data:(Maybe ^Cell) library:(HashmapE 256 SimpleLib)
@@ -1494,8 +1677,8 @@ bool Transaction::compute_state() {
   } else {
     CHECK(acc_status == Account::acc_active && !was_frozen && !was_deleted);
     si_pos = cb.size_ext() + 1;
-    CHECK(account.split_depth ? cb.store_long_bool(account.split_depth + 96, 7)        // account_active$1 _:StateInit
-                              : cb.store_long_bool(2, 2));                             // ... split_depth:(Maybe (## 5))
+    CHECK(account.split_depth_ ? cb.store_long_bool(account.split_depth_ + 96, 7)      // account_active$1 _:StateInit
+                               : cb.store_long_bool(2, 2));                            // ... split_depth:(Maybe (## 5))
     CHECK(ticktock ? cb.store_long_bool(ticktock | 4, 3) : cb.store_long_bool(0, 1));  // special:(Maybe TickTock)
     CHECK(cb.store_maybe_ref(new_code) && cb.store_maybe_ref(new_data) && cb.store_maybe_ref(new_library));
     // code:(Maybe ^Cell) data:(Maybe ^Cell) library:(HashmapE 256 SimpleLib)
@@ -1810,6 +1993,13 @@ Ref<vm::Cell> Transaction::commit(Account& acc) {
   CHECK((const void*)&acc == (const void*)&account);
   // export all fields modified by the Transaction into original account
   // NB: this is the only method that modifies account
+  if (orig_addr_rewrite_set && new_split_depth >= 0 && acc.status == Account::acc_nonexist &&
+      acc_status == Account::acc_active) {
+    LOG(DEBUG) << "setting address rewriting info for newly-activated account " << acc.addr.to_hex()
+               << " with split_depth=" << new_split_depth
+               << ", orig_addr_rewrite=" << orig_addr_rewrite.bits().to_hex(new_split_depth);
+    CHECK(acc.init_rewrite_addr(new_split_depth, orig_addr_rewrite.bits()));
+  }
   acc.status = (acc_status == Account::acc_deleted ? Account::acc_nonexist : acc_status);
   acc.last_trans_lt_ = start_lt;
   acc.last_trans_end_lt_ = end_lt;
@@ -1824,6 +2014,8 @@ Ref<vm::Cell> Transaction::commit(Account& acc) {
   if (was_frozen) {
     acc.state_hash = frozen_hash;
   }
+  acc.my_addr = std::move(my_addr);
+  // acc.my_addr_exact = std::move(my_addr_exact);
   acc.code = std::move(new_code);
   acc.data = std::move(new_data);
   acc.library = std::move(new_library);

@@ -3,6 +3,8 @@
 
 namespace ton {
 
+namespace adnl {
+
 void AdnlExtClientImpl::alarm() {
   if (conn_.empty() || !conn_.is_alive()) {
     next_create_at_ = td::Timestamp::in(10.0);
@@ -50,9 +52,11 @@ td::actor::ActorOwn<AdnlExtClient> AdnlExtClient::create(AdnlNodeIdFull dst, td:
 }
 
 td::Status AdnlOutboundConnection::process_packet(td::BufferSlice data) {
-  TRY_RESULT(F, fetch_tl_object<ton_api::adnl_message_answer>(std::move(data), true));
+  TRY_RESULT(F, fetch_tl_object<lite_api::adnl_message_answer>(std::move(data), true));
   td::actor::send_closure(ext_client_, &AdnlExtClientImpl::answer_query, F->query_id_, std::move(F->answer_));
   return td::Status::OK();
 }
+
+}  // namespace adnl
 
 }  // namespace ton

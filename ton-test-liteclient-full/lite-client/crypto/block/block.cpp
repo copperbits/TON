@@ -591,7 +591,13 @@ const MsgAddressExt t_MsgAddressExt;
 
 const Anycast t_Anycast;
 
-const Maybe<Anycast> t_Maybe_Anycast;
+bool Maybe_Anycast::skip_get_depth(vm::CellSlice& cs, int& depth) const {
+  depth = 0;
+  bool have;
+  return cs.fetch_bool_to(have) && (!have || t_Anycast.skip_get_depth(cs, depth));
+}
+
+const Maybe_Anycast t_Maybe_Anycast;
 
 bool MsgAddressInt::validate_skip(vm::CellSlice& cs) const {
   if (!cs.have(3)) {
@@ -606,6 +612,22 @@ bool MsgAddressInt::validate_skip(vm::CellSlice& cs) const {
         int workchain_id = (int)cs.fetch_long(32);
         return cs.advance(addr_len) && (workchain_id < -0x80 || workchain_id > 0x7f || addr_len != 256) &&
                (workchain_id != 0 && workchain_id != -1);
+      }
+  }
+  return false;
+}
+
+bool MsgAddressInt::skip_get_depth(vm::CellSlice& cs, int& depth) const {
+  if (!cs.have(3)) {
+    return false;
+  }
+  switch (get_tag(cs)) {
+    case addr_std:
+      return cs.advance(2) && t_Maybe_Anycast.skip_get_depth(cs, depth) && cs.advance(8 + 256);
+    case addr_var:
+      if (cs.advance(2) && t_Maybe_Anycast.skip_get_depth(cs, depth) && cs.have(9 + 32)) {
+        int addr_len = (int)cs.fetch_ulong(9);
+        return cs.advance(32 + addr_len);
       }
   }
   return false;
@@ -779,8 +801,7 @@ unsigned long long VarUInteger::as_uint(const vm::CellSlice& cs) const {
 
 bool VarUInteger::store_integer_value(vm::CellBuilder& cb, const td::BigInt256& value) const {
   int k = value.bit_size(false);
-  return k <= (n - 1) * 8 && cb.store_long_bool((k + 7) >> 3, ln) &&
-         cb.store_int256_bool(value, (k + 7) & -8, false);
+  return k <= (n - 1) * 8 && cb.store_long_bool((k + 7) >> 3, ln) && cb.store_int256_bool(value, (k + 7) & -8, false);
 }
 
 unsigned VarUInteger::precompute_integer_size(const td::BigInt256& value) const {
@@ -1421,6 +1442,21 @@ bool Account::skip_copy_balance(vm::CellBuilder& cb, vm::CellSlice& cs) const {
   return false;
 }
 
+bool Account::skip_copy_depth_balance(vm::CellBuilder& cb, vm::CellSlice& cs) const {
+  int depth;
+  switch (get_tag(cs)) {
+    case account_none:
+      return allow_empty && cs.advance(1) && t_DepthBalanceInfo.null_value(cb);
+    case account:
+      return cs.advance(1)                                   // account$1
+             && t_MsgAddressInt.skip_get_depth(cs, depth)    // addr:MsgAddressInt
+             && cb.store_uint_leq(30, depth)                 // -> store split_depth:(#<= 30)
+             && t_StorageInfo.skip(cs)                       // storage_stat:StorageInfo
+             && t_AccountStorage.skip_copy_balance(cb, cs);  // storage:AccountStorage
+  }
+  return false;
+}
+
 const Account t_Account, t_AccountE{true};
 const RefTo<Account> t_Ref_Account;
 const ShardAccount t_ShardAccount;
@@ -1518,10 +1554,33 @@ bool HashmapAugE::extract_extra(vm::CellSlice& cs) const {
   return tag >= 0 && cs.advance_refs(tag) && root_type.aug.extra_type.extract(cs);
 }
 
+bool DepthBalanceInfo::skip(vm::CellSlice& cs) const {
+  return cs.advance(5) &&
+         t_CurrencyCollection.skip(
+             cs);  // depth_balance$_ split_depth:(#<= 30) balance:CurrencyCollection = DepthBalanceInfo;
+}
+
+bool DepthBalanceInfo::validate_skip(vm::CellSlice& cs) const {
+  return cs.fetch_ulong(5) <= 30 &&
+         t_CurrencyCollection.validate_skip(cs);  // depth_balance$_ split_depth:(#<= 30) balance:CurrencyCollection
+}
+
+bool DepthBalanceInfo::null_value(vm::CellBuilder& cb) const {
+  return cb.store_zeroes_bool(5) && t_CurrencyCollection.null_value(cb);
+}
+
+bool DepthBalanceInfo::add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const {
+  unsigned d1, d2;
+  return cs1.fetch_uint_leq(30, d1) && cs2.fetch_uint_leq(30, d2) && cb.store_uint_leq(30, std::max(d1, d2)) &&
+         t_CurrencyCollection.add_values(cb, cs1, cs2);
+}
+
+const DepthBalanceInfo t_DepthBalanceInfo;
+
 bool Aug_ShardAccounts::eval_leaf(vm::CellBuilder& cb, vm::CellSlice& cs) const {
   if (cs.have_refs()) {
     auto cs2 = load_cell_slice(cs.prefetch_ref());
-    return t_Account.skip_copy_balance(cb, cs2);
+    return t_Account.skip_copy_depth_balance(cb, cs2);
   } else {
     return false;
   }
@@ -2364,7 +2423,7 @@ bool BlockIdExt::pack(vm::CellBuilder& cb, const ton::BlockIdExt& data) const {
 const BlockIdExt t_BlockIdExt;
 
 bool ShardState::skip(vm::CellSlice& cs) const {
-  return get_tag(cs) == shard_state && cs.advance(64)  // shard_state#9023afdf blockchain_id:int32
+  return get_tag(cs) == shard_state && cs.advance(64)  // shard_state#9023afe1 blockchain_id:int32
          && t_ShardIdent.skip(cs)                      // shard_id:ShardIdent
          && cs.advance(32 + 32 + 32 + 64 +
                        32)  // seq_no:int32 vert_seq_no:# gen_utime:uint32 gen_lt:uint64 min_ref_mc_seqno:uint32
@@ -2448,6 +2507,24 @@ bool McStateExtra::validate_skip(vm::CellSlice& cs) const {
 }
 
 const McStateExtra t_McStateExtra;
+
+const KeyExtBlkRef t_KeyExtBlkRef;
+
+bool KeyMaxLt::add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const {
+  bool key1, key2;
+  unsigned long long lt1, lt2;
+  return cs1.fetch_bool_to(key1) && cs1.fetch_ulong_bool(64, lt1)     // cs1 => _ key:Bool max_end_lt:uint64 = KeyMaxLt;
+         && cs2.fetch_bool_to(key2) && cs2.fetch_ulong_bool(64, lt2)  // cs2 => _ key:Bool max_end_lt:uint64 = KeyMaxLt;
+         && cb.store_bool_bool(key1 | key2) && cb.store_long_bool(std::max(lt1, lt2), 64);
+}
+
+const KeyMaxLt t_KeyMaxLt;
+
+bool Aug_OldMcBlocksInfo::eval_leaf(vm::CellBuilder& cb, vm::CellSlice& cs) const {
+  return cs.have(65) && cb.append_bitslice(cs.prefetch_bits(65));  // copy first 1+64 bits
+};
+
+const Aug_OldMcBlocksInfo aug_OldMcBlocksInfo;
 
 }  // namespace tlb
 
@@ -2534,8 +2611,7 @@ bool check_one_config_param(Ref<vm::CellSlice> cs_ref, td::ConstBitPtr key, td::
   int idx = (int)key.get_int(32);
   if (!idx) {
     auto cs = load_cell_slice(std::move(cell));
-    return (cs.size_ext() == 256 &&
-            (relax_par0 || !td::bitstring::bits_memcmp(addr, cs.fetch_bits(256).get_bitptr(), 256)));
+    return cs.size_ext() == 256 && (relax_par0 || cs.fetch_bits(256) == addr);
   } else if (idx < 0) {
     return true;
   }
@@ -2624,8 +2700,7 @@ std::pair<int, int> perform_hypercube_routing(ton::AccountIdPrefixFull src, ton:
     return {-1, -1};
   }
   if (transit.workchain == ton::masterchainId || dest.workchain == ton::masterchainId) {
-    // !!!FIXME next line commented for DEBUG
-    // return {0, 96};  // route messages to/from masterchain directly
+    return {0, 96};  // route messages to/from masterchain directly
   }
   if (transit.workchain != dest.workchain) {
     return {used_dest_bits, 32};
@@ -2737,26 +2812,31 @@ td::Status unpack_block_prev_blk_ext(Ref<vm::Cell> block_root, const ton::BlockI
   return td::Status::OK();
 }
 
-std::unique_ptr<vm::Dictionary> get_prev_blocks_dict(Ref<vm::Cell> state_root) {
+std::unique_ptr<vm::AugmentedDictionary> get_prev_blocks_dict(Ref<vm::Cell> state_root) {
   block::gen::ShardStateUnsplit::Record info;
   block::gen::McStateExtra::Record extra_info;
   if (!(::tlb::unpack_cell(std::move(state_root), info) && info.custom->size_refs() &&
         ::tlb::unpack_cell(info.custom->prefetch_ref(), extra_info))) {
     return {};
   }
-  return std::make_unique<vm::Dictionary>(extra_info.r1.prev_blocks, 32);
+  return std::make_unique<vm::AugmentedDictionary>(extra_info.r1.prev_blocks, 32, block::tlb::aug_OldMcBlocksInfo);
 }
 
-bool get_old_mc_block_id(vm::Dictionary* prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
+bool get_old_mc_block_id(vm::AugmentedDictionary* prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
                          ton::LogicalTime* end_lt) {
   return prev_blocks_dict && get_old_mc_block_id(*prev_blocks_dict, seqno, blkid, end_lt);
 }
 
-bool get_old_mc_block_id(vm::Dictionary& prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
+bool get_old_mc_block_id(vm::AugmentedDictionary& prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
                          ton::LogicalTime* end_lt) {
-  auto val = prev_blocks_dict.lookup(td::BitArray<32>{seqno});
+  return unpack_old_mc_block_id(prev_blocks_dict.lookup(td::BitArray<32>{seqno}), seqno, blkid, end_lt);
+}
+
+bool unpack_old_mc_block_id(Ref<vm::CellSlice> old_blk_info, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
+                            ton::LogicalTime* end_lt) {
   block::gen::ExtBlkRef::Record data;
-  if (!(val.not_null() && ::tlb::csr_unpack(std::move(val), data) && data.seq_no == seqno)) {
+  if (!(old_blk_info.not_null() && old_blk_info.write().advance(1) &&
+        ::tlb::csr_unpack(std::move(old_blk_info), data) && data.seq_no == seqno)) {
     return false;
   }
   blkid.id = ton::BlockId{ton::masterchainId, ton::shardIdAll, seqno};
@@ -2768,17 +2848,18 @@ bool get_old_mc_block_id(vm::Dictionary& prev_blocks_dict, ton::BlockSeqno seqno
   return true;
 }
 
-bool check_old_mc_block_id(vm::Dictionary* prev_blocks_dict, const ton::BlockIdExt& blkid) {
+bool check_old_mc_block_id(vm::AugmentedDictionary* prev_blocks_dict, const ton::BlockIdExt& blkid) {
   return prev_blocks_dict && check_old_mc_block_id(*prev_blocks_dict, blkid);
 }
 
-bool check_old_mc_block_id(vm::Dictionary& prev_blocks_dict, const ton::BlockIdExt& blkid) {
+bool check_old_mc_block_id(vm::AugmentedDictionary& prev_blocks_dict, const ton::BlockIdExt& blkid) {
   if (!blkid.id.is_masterchain_ext()) {
     return false;
   }
   auto val = prev_blocks_dict.lookup(td::BitArray<32>{blkid.id.seqno});
   block::gen::ExtBlkRef::Record data;
-  if (!(val.not_null() && ::tlb::csr_unpack(std::move(val), data) && data.seq_no == blkid.id.seqno)) {
+  if (!(val.not_null() && val.write().advance(1) && ::tlb::csr_unpack(std::move(val), data) &&
+        data.seq_no == blkid.id.seqno)) {
     return false;
   }
   return blkid.root_hash == data.root_hash && blkid.file_hash == data.file_hash;

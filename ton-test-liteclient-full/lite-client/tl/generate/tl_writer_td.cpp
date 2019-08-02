@@ -18,7 +18,7 @@ int TD_TL_writer::get_max_arity() const {
 bool TD_TL_writer::is_built_in_simple_type(const std::string &name) const {
   return name == "True" || name == "Bool" || name == "Int" || name == "Long" || name == "Double" || name == "String" ||
          name == "Int32" || name == "Int53" || name == "Int64" || name == "Int128" || name == "Int256" ||
-         name == "Bytes" || name == "Function" || name == "Object";
+         name == "Bytes" || name == "SecureString" || name == "SecureBytes" || name == "Function" || name == "Object";
 }
 
 bool TD_TL_writer::is_built_in_complex_type(const std::string &name) const {
@@ -73,7 +73,7 @@ tl::TL_writer::Mode TD_TL_writer::get_storer_mode(int type) const {
 
 std::vector<std::string> TD_TL_writer::get_parsers() const {
   std::vector<std::string> parsers;
-  if (tl_name == "ton_api") {
+  if (tl_name == "ton_api" || tl_name == "lite_api") {
     parsers.push_back("td::TlParser");
   }
   return parsers;
@@ -81,7 +81,7 @@ std::vector<std::string> TD_TL_writer::get_parsers() const {
 
 std::vector<std::string> TD_TL_writer::get_storers() const {
   std::vector<std::string> storers;
-  if (tl_name == "ton_api") {
+  if (tl_name == "ton_api" || tl_name == "lite_api") {
     storers.push_back("td::TlStorerCalcLength");
     storers.push_back("td::TlStorerUnsafe");
   }
@@ -176,6 +176,12 @@ std::string TD_TL_writer::gen_type_name(const tl::tl_tree_type *tree_type) const
   if (name == "Bytes") {
     return bytes_type;
   }
+  if (name == "SecureString") {
+    return secure_string_type;
+  }
+  if (name == "SecureBytes") {
+    return secure_bytes_type;
+  }
   if (name == "Object") {
     return "object_ptr<" + gen_base_type_class_name(0) + ">";
   }
@@ -236,7 +242,8 @@ std::string TD_TL_writer::gen_constructor_parameter(int field_num, const std::st
     res += field_type;
   } else if (field_type == "td::Bits128 " || field_type == "td::Bits256 " || field_type == string_type + " ") {
     res += field_type + "const &";
-  } else if (field_type.compare(0, 11, "std::vector") == 0 || field_type == bytes_type + " ") {
+  } else if (field_type.compare(0, 11, "std::vector") == 0 || field_type == bytes_type + " " ||
+             field_type == secure_string_type + " " || field_type == secure_bytes_type + " ") {
     res += field_type + "&&";
   } else if (field_type.compare(0, 10, "object_ptr") == 0) {
     res += field_type + "&&";

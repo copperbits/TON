@@ -4,8 +4,8 @@
 #include "td/utils/port/stacktrace.h"
 #include "td/utils/port/StdStreams.h"
 
+#include "td/utils/common.h"
 #include "td/utils/format.h"
-#include "td/utils/logging.h"
 
 #if TD_PORT_POSIX
 #include <signal.h>

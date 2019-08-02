@@ -366,17 +366,20 @@ class VmState final : public VmStateInterface {
   VmLog log;
   GasLimits gas;
   std::vector<Ref<Cell>> libraries;
-  //TODO: Dictionary library;?
+  int stack_trace{0}, debug_off{0};
 
  public:
   static constexpr unsigned cell_load_gas_price = 100, cell_create_gas_price = 500, exception_gas_price = 10;
   VmState();
   VmState(Ref<CellSlice> _code);
-  VmState(Ref<CellSlice> _code, Ref<Stack> _stack, int flags = 0, Ref<Cell> _data = {}, VmLog log = {});
+  VmState(Ref<CellSlice> _code, Ref<Stack> _stack, int flags = 0, Ref<Cell> _data = {}, VmLog log = {},
+          std::vector<Ref<Cell>> _libraries = {});
   VmState(Ref<CellSlice> _code, Ref<Stack> _stack, const GasLimits& _gas, int flags = 0, Ref<Cell> _data = {},
-          VmLog log = {});
-  VmState(Ref<Cell> _code_cell, Ref<Stack> _stack, const GasLimits& _gas, int flags = 0, Ref<Cell> _data = {},
-          std::vector<Ref<Cell>> _libraries = {}, VmLog log = {});
+          VmLog log = {}, std::vector<Ref<Cell>> _libraries = {});
+  template <typename... Args>
+  VmState(Ref<Cell> code_cell, Args&&... args)
+      : VmState(convert_code_cell(std::move(code_cell)), std::forward<Args>(args)...) {
+  }
   bool set_gas_limits(long long _max, long long _limit, long long _credit = 0);
   bool final_gas_ok() const {
     return gas.final_ok();
@@ -391,7 +394,8 @@ class VmState final : public VmStateInterface {
     return gas;
   }
   void change_gas_limit(long long new_limit);
-  Ref<vm::Cell> load_library(
+  bool register_library_collection(Ref<Cell> lib);
+  Ref<Cell> load_library(
       td::ConstBitPtr hash) override;  // may throw a dictionary exception; returns nullptr if library is not found
   void register_cell_load() override;
   void register_cell_create() override;
@@ -400,6 +404,9 @@ class VmState final : public VmStateInterface {
   void force_cp(int new_cp);
   int get_cp() const {
     return cp;
+  }
+  int incr_stack_trace(int v) {
+    return stack_trace += v;
   }
   long long get_steps_count() const {
     return steps;
@@ -526,17 +533,20 @@ class VmState final : public VmStateInterface {
   int jump_to(Ref<Continuation> cont) {
     return cont->is_unique() ? cont.unique_write().jump_w(this) : cont->jump(this);
   }
+  static Ref<CellSlice> convert_code_cell(Ref<Cell> code_cell);
 
  private:
   void init_cregs(bool same_c3 = false, bool push_0 = true);
 };
 
 int run_vm_code(Ref<CellSlice> _code, Ref<Stack>& _stack, int flags = 0, Ref<Cell>* data_ptr = 0, VmLog log = {},
-                long long* steps = nullptr, GasLimits* gas_limits = nullptr);
+                long long* steps = nullptr, GasLimits* gas_limits = nullptr, std::vector<Ref<Cell>> libraries = {});
 int run_vm_code(Ref<CellSlice> _code, Stack& _stack, int flags = 0, Ref<Cell>* data_ptr = 0, VmLog log = {},
-                long long* steps = nullptr, GasLimits* gas_limits = nullptr);
+                long long* steps = nullptr, GasLimits* gas_limits = nullptr, std::vector<Ref<Cell>> libraries = {});
 
 ControlData* force_cdata(Ref<Continuation>& cont);
 ControlRegs* force_cregs(Ref<Continuation>& cont);
+
+Ref<vm::Cell> lookup_library_in(td::ConstBitPtr key, Ref<vm::Cell> lib_root);
 
 }  // namespace vm

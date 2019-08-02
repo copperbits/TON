@@ -15,6 +15,12 @@ void Atom::print_to(std::ostream& os) const {
   }
 }
 
+std::string Atom::make_name() const {
+  char buffer[16];
+  sprintf(buffer, "atom#%d", index_);
+  return buffer;
+}
+
 std::ostream& operator<<(std::ostream& os, const Atom& atom) {
   atom.print_to(os);
   return os;

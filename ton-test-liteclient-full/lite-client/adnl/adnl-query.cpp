@@ -3,6 +3,9 @@
 #include "td/utils/Random.h"
 
 namespace ton {
+
+namespace adnl {
+
 void AdnlQuery::alarm() {
   promise_.set_error(td::Status::Error(ErrorCode::timeout, "adnl query timeout"));
   stop();
@@ -18,5 +21,7 @@ AdnlQueryId AdnlQuery::random_query_id() {
   td::Random::secure_bytes(q_id.as_slice());
   return q_id;
 }
+
+}  // namespace adnl
 
 }  // namespace ton

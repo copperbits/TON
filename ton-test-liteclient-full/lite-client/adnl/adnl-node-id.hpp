@@ -5,6 +5,8 @@
 
 namespace ton {
 
+namespace adnl {
+
 class AdnlNodeIdShort {
  public:
   explicit AdnlNodeIdShort(const PublicKeyHash &hash) : hash_(hash) {
@@ -97,11 +99,13 @@ class AdnlNodeIdFull {
   PublicKey pub_;
 };
 
+}  // namespace adnl
+
 }  // namespace ton
 
 namespace td {
 
-inline StringBuilder &operator<<(StringBuilder &stream, const ton::AdnlNodeIdShort &value) {
+inline StringBuilder &operator<<(StringBuilder &stream, const ton::adnl::AdnlNodeIdShort &value) {
   return stream << value.bits256_value();
 }
 

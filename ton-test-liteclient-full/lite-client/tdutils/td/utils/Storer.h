@@ -10,6 +10,7 @@
 #include <limits>
 
 namespace td {
+
 class SliceStorer : public Storer {
   Slice slice;
 

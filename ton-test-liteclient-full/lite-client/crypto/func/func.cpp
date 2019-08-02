@@ -18,6 +18,7 @@
 #include "srcread.hpp"
 #include "lexer.hpp"
 #include "symtable.hpp"
+#include "func.h"
 
 namespace src {
 
@@ -34,56 +35,6 @@ int compute_symbol_subclass(std::string str) {
  *   KEYWORD DEFINITION
  * 
  */
-
-enum {
-  _Eof = -1,
-  _Ident = 0,
-  _Number,
-  _Return = 0x80,
-  _Var,
-  _Repeat,
-  _Do,
-  _While,
-  _Until,
-  _If,
-  _Then,
-  _Else,
-  _Elseif,
-  _Eq,
-  _Neq,
-  _Leq,
-  _Geq,
-  _Lshift,
-  _Rshift,
-  _RshiftR,
-  _RshiftC,
-  _DivR,
-  _DivC,
-  _DivMod,
-  _PlusLet,
-  _MinusLet,
-  _TimesLet,
-  _DivLet,
-  _DivRLet,
-  _DivCLet,
-  _ModLet,
-  _LshiftLet,
-  _RshiftLet,
-  _RshiftRLet,
-  _RshiftCLet,
-  _Int,
-  _Cell,
-  _Slice,
-  _Builder,
-  _Cont,
-  _Type,
-  _Mapsto,
-  _Extern,
-  _Operator,
-  _Infix,
-  _Infixl,
-  _Infixr
-};
 
 void define_keywords() {
   symbols.add_kw_char('+');
@@ -105,127 +56,67 @@ void define_keywords() {
   symbols.add_kw_char('&');
   symbols.add_kw_char('|');
 
-  symbols.add_keyword("==", _Eq);
-  symbols.add_keyword("!=", _Neq);
-  symbols.add_keyword("<=", _Leq);
-  symbols.add_keyword(">=", _Geq);
-  symbols.add_keyword("<<", _Lshift);
-  symbols.add_keyword(">>", _Rshift);
-  symbols.add_keyword(">>~", _RshiftR);
-  symbols.add_keyword(">>^", _RshiftC);
-  symbols.add_keyword("/~", _DivR);
-  symbols.add_keyword("/^", _DivC);
-  symbols.add_keyword("/%", _DivMod);
-  symbols.add_keyword("+=", _PlusLet);
-  symbols.add_keyword("-=", _MinusLet);
-  symbols.add_keyword("*=", _TimesLet);
-  symbols.add_keyword("/=", _DivLet);
-  symbols.add_keyword("%=", _ModLet);
-  symbols.add_keyword("/~=", _DivRLet);
-  symbols.add_keyword("/^=", _DivCLet);
-  symbols.add_keyword("<<=", _LshiftLet);
-  symbols.add_keyword(">>=", _RshiftLet);
-  symbols.add_keyword(">>~=", _RshiftRLet);
-  symbols.add_keyword(">>^=", _RshiftCLet);
+  using Kw = funC::Keyword;
+  symbols.add_keyword("==", Kw::_Eq);
+  symbols.add_keyword("!=", Kw::_Neq);
+  symbols.add_keyword("<=", Kw::_Leq);
+  symbols.add_keyword(">=", Kw::_Geq);
+  symbols.add_keyword("<<", Kw::_Lshift);
+  symbols.add_keyword(">>", Kw::_Rshift);
+  symbols.add_keyword(">>~", Kw::_RshiftR);
+  symbols.add_keyword(">>^", Kw::_RshiftC);
+  symbols.add_keyword("/~", Kw::_DivR);
+  symbols.add_keyword("/^", Kw::_DivC);
+  symbols.add_keyword("/%", Kw::_DivMod);
+  symbols.add_keyword("+=", Kw::_PlusLet);
+  symbols.add_keyword("-=", Kw::_MinusLet);
+  symbols.add_keyword("*=", Kw::_TimesLet);
+  symbols.add_keyword("/=", Kw::_DivLet);
+  symbols.add_keyword("%=", Kw::_ModLet);
+  symbols.add_keyword("/~=", Kw::_DivRLet);
+  symbols.add_keyword("/^=", Kw::_DivCLet);
+  symbols.add_keyword("<<=", Kw::_LshiftLet);
+  symbols.add_keyword(">>=", Kw::_RshiftLet);
+  symbols.add_keyword(">>~=", Kw::_RshiftRLet);
+  symbols.add_keyword(">>^=", Kw::_RshiftCLet);
 
-  symbols.add_keyword("return", _Return);
-  symbols.add_keyword("var", _Var);
-  symbols.add_keyword("repeat", _Repeat);
-  symbols.add_keyword("do", _Do);
-  symbols.add_keyword("while", _While);
-  symbols.add_keyword("until", _Until);
-  symbols.add_keyword("if", _If);
-  symbols.add_keyword("then", _Then);
-  symbols.add_keyword("else", _Else);
-  symbols.add_keyword("elseif", _Elseif);
+  symbols.add_keyword("return", Kw::_Return);
+  symbols.add_keyword("var", Kw::_Var);
+  symbols.add_keyword("repeat", Kw::_Repeat);
+  symbols.add_keyword("do", Kw::_Do);
+  symbols.add_keyword("while", Kw::_While);
+  symbols.add_keyword("until", Kw::_Until);
+  symbols.add_keyword("if", Kw::_If);
+  symbols.add_keyword("then", Kw::_Then);
+  symbols.add_keyword("else", Kw::_Else);
+  symbols.add_keyword("elseif", Kw::_Elseif);
 
-  symbols.add_keyword("int", _Int);
-  symbols.add_keyword("cell", _Cell);
-  symbols.add_keyword("slice", _Slice);
-  symbols.add_keyword("builder", _Builder);
-  symbols.add_keyword("cont", _Cont);
-  symbols.add_keyword("->", _Mapsto);
+  symbols.add_keyword("int", Kw::_Int);
+  symbols.add_keyword("cell", Kw::_Cell);
+  symbols.add_keyword("slice", Kw::_Slice);
+  symbols.add_keyword("builder", Kw::_Builder);
+  symbols.add_keyword("cont", Kw::_Cont);
+  symbols.add_keyword("->", Kw::_Mapsto);
 
-  symbols.add_keyword("extern", _Extern);
-  symbols.add_keyword("operator", _Operator);
-  symbols.add_keyword("infix", _Infix);
-  symbols.add_keyword("infixl", _Infixl);
-  symbols.add_keyword("infixr", _Infixr);
+  symbols.add_keyword("extern", Kw::_Extern);
+  symbols.add_keyword("operator", Kw::_Operator);
+  symbols.add_keyword("infix", Kw::_Infix);
+  symbols.add_keyword("infixl", Kw::_Infixl);
+  symbols.add_keyword("infixr", Kw::_Infixr);
 }
 
 }  // namespace src
 
 namespace funC {
+using src::Lexer;
+using src::symbols;
+using td::Ref;
 
 /*
  * 
  *   TYPE EXPRESSIONS
  * 
  */
-
-struct TypeExpr {
-  enum te_type { te_Unknown, te_Indirect, te_Atomic, te_Tensor, te_Map, te_Type } constr;
-  enum {
-    _Int = src::_Int,
-    _Cell = src::_Cell,
-    _Slice = src::_Slice,
-    _Builder = src::_Builder,
-    _Cont = src::_Cont,
-    _Type = src::_Type
-  };
-  int value;
-  int minw, maxw;
-  static constexpr int w_inf = 1023;
-  std::vector<TypeExpr*> args;
-  TypeExpr(te_type _constr, int _val = 0) : constr(_constr), value(_val), minw(0), maxw(w_inf) {
-  }
-  TypeExpr(te_type _constr, int _val, int width) : constr(_constr), value(_val), minw(width), maxw(width) {
-  }
-  TypeExpr(te_type _constr, std::vector<TypeExpr*> list)
-      : constr(_constr), value((int)list.size()), args(std::move(list)) {
-    compute_width();
-  }
-  TypeExpr(te_type _constr, std::initializer_list<TypeExpr*> list)
-      : constr(_constr), value((int)list.size()), args(std::move(list)) {
-    compute_width();
-  }
-  bool is_atomic() const {
-    return constr == te_Atomic;
-  }
-  bool is_atomic(int v) const {
-    return constr == te_Atomic && value == v;
-  }
-  bool is_int() const {
-    return is_atomic(_Int);
-  }
-  void compute_width();
-  bool recompute_width();
-  void show_width(std::ostream& os);
-  std::ostream& print(std::ostream& os, int prio = 0);
-  void replace_with(TypeExpr* te2);
-  int extract_components(std::vector<TypeExpr*>& comp_list);
-  static int holes;
-  static TypeExpr* new_hole() {
-    return new TypeExpr{te_Unknown, ++holes};
-  }
-  static TypeExpr* new_unit() {
-    return new TypeExpr{te_Tensor, 0, 0};
-  }
-  static TypeExpr* new_atomic(int value) {
-    return new TypeExpr{te_Atomic, value, 1};
-  }
-  static TypeExpr* new_map(TypeExpr* from, TypeExpr* to);
-  static TypeExpr* new_func() {
-    return new_map(new_hole(), new_hole());
-  }
-  static TypeExpr* new_tensor(std::vector<TypeExpr*> list, bool red = true) {
-    return red && list.size() == 1 ? list[0] : new TypeExpr{te_Tensor, std::move(list)};
-  }
-  static TypeExpr* new_tensor(std::initializer_list<TypeExpr*> list) {
-    return new TypeExpr{te_Tensor, std::move(list)};
-  }
-  static bool remove_indirect(TypeExpr*& te, TypeExpr* forbidden = nullptr);
-};
 
 int TypeExpr::holes = 0;  // not thread safe, but it is ok for now
 
@@ -502,33 +393,11 @@ void uniformize(TypeExpr*& te1, TypeExpr*& te2) {
   te1 = te2;
 }
 
-}  // namespace funC
-
-namespace funC {
-
-using td::Ref;
-using namespace src;
-using namespace sym;
-
 /*
  * 
  *   ABSTRACT CODE
  * 
  */
-
-struct TmpVar {
-  TypeExpr* v_type;
-  var_idx_t idx;
-  enum { _In = 1, _Named = 2, _Tmp = 4 };
-  int cls;
-  sym_idx_t name;
-  int coord;
-  std::unique_ptr<SrcLocation> where;
-  TmpVar(var_idx_t _idx, int _cls, TypeExpr* _type = 0, SymDef* sym = 0, const SrcLocation* loc = 0);
-  void show(std::ostream& os) const;
-  void dump(std::ostream& os) const;
-  void set_location(const SrcLocation& loc);
-};
 
 TmpVar::TmpVar(var_idx_t _idx, int _cls, TypeExpr* _type, SymDef* sym, const SrcLocation* loc)
     : v_type(_type), idx(_idx), cls(_cls), coord(0) {
@@ -570,9 +439,12 @@ void TmpVar::dump(std::ostream& os) const {
   os << std::endl;
 }
 
-void TmpVar::show(std::ostream& os) const {
+void TmpVar::show(std::ostream& os, int omit_idx) const {
   if (cls & _Named) {
     os << symbols.get_name(name);
+    if (omit_idx && (omit_idx >= 2 || (cls & _UniqueName))) {
+      return;
+    }
   }
   os << '_' << idx;
 }
@@ -581,86 +453,6 @@ std::ostream& operator<<(std::ostream& os, const TmpVar& var) {
   var.show(os);
   return os;
 }
-
-struct VarDescr {
-  var_idx_t idx;
-  enum { _Last = 1, _Unused = 2 };
-  int flags;
-  enum {
-    _Const = 16,
-    _Int = 32,
-    _Zero = 64,
-    _NonZero = 128,
-    _Pos = 256,
-    _Neg = 512,
-    _Bool = 1024,
-    _Bit = 2048,
-    _Finite = 4096,
-    _Nan = 8192,
-    _Even = 16384,
-    _Odd = 32768
-  };
-  static constexpr int ConstZero = _Int | _Zero | _Pos | _Neg | _Bool | _Bit | _Finite | _Even;
-  static constexpr int ConstOne = _Int | _NonZero | _Pos | _Bit | _Finite | _Odd;
-  static constexpr int ConstTrue = _Int | _NonZero | _Neg | _Bool | _Finite | _Odd;
-  int val;
-  td::RefInt256 int_const;
-  VarDescr(var_idx_t _idx = -1, int _flags = 0, int _val = 0) : idx(_idx), flags(_flags), val(_val) {
-  }
-  bool is_unused() const {
-    return flags & _Unused;
-  }
-  bool is_last() const {
-    return flags & _Last;
-  }
-  bool always_true() const {
-    return val & _NonZero;
-  }
-  bool always_false() const {
-    return val & _Zero;
-  }
-  bool always_nonzero() const {
-    return val & _NonZero;
-  }
-  bool always_zero() const {
-    return val & _Zero;
-  }
-  bool is_const() const {
-    return val & _Const;
-  }
-  bool is_int_const() const {
-    return (val & (_Int | _Const)) == (_Int | _Const);
-  }
-  bool always_nonpos() const {
-    return val & _Neg;
-  }
-  bool always_nonneg() const {
-    return val & _Pos;
-  }
-  bool always_pos() const {
-    return (val & (_Pos | _NonZero)) == (_Pos | _NonZero);
-  }
-  bool always_neg() const {
-    return (val & (_Neg | _NonZero)) == (_Neg | _NonZero);
-  }
-  bool always_finite() const {
-    return val & _Finite;
-  }
-  void unused() {
-    flags |= _Unused;
-  }
-  void clear_unused() {
-    flags &= ~_Unused;
-  }
-  void set_const(td::RefInt256 value);
-  void set_const_nan();
-  void operator|=(const VarDescr& y);
-  void operator&=(const VarDescr& y);
-  void set_value(const VarDescr& y);
-  void set_value(VarDescr&& y);
-  void clear_value();
-  void show_value(std::ostream& os) const;
-};
 
 void VarDescr::show_value(std::ostream& os) const {
   if (val & _Int) {
@@ -766,174 +558,6 @@ void VarDescr::clear_value() {
   val = 0;
   int_const.clear();
 }
-
-struct VarDescrList {
-  std::vector<VarDescr> list;
-  VarDescrList() : list() {
-  }
-  VarDescrList(const std::vector<VarDescr>& _list) : list(_list) {
-  }
-  VarDescrList(std::vector<VarDescr>&& _list) : list(std::move(_list)) {
-  }
-  std::size_t size() const {
-    return list.size();
-  }
-  VarDescr* operator[](var_idx_t idx);
-  const VarDescr* operator[](var_idx_t idx) const;
-  VarDescrList operator+(const VarDescrList& y) const;
-  VarDescrList& operator+=(const VarDescrList& y);
-  VarDescrList& clear_last();
-  VarDescrList& operator+=(const std::vector<var_idx_t>& idx_list);
-  VarDescrList& operator+=(var_idx_t idx);
-  VarDescrList& operator-=(const std::vector<var_idx_t>& idx_list);
-  VarDescrList& operator-=(var_idx_t idx);
-  std::size_t count(const std::vector<var_idx_t> idx_list) const;
-  VarDescr& add(var_idx_t idx);
-  VarDescr& add_newval(var_idx_t idx);
-  VarDescrList& operator&=(const VarDescrList& values);
-  VarDescrList& import_values(const VarDescrList& values);
-  VarDescrList operator|(const VarDescrList& y) const;
-  VarDescrList& operator|=(const VarDescrList& values);
-};
-
-struct CodeBlob;
-
-template <typename T>
-class ListIterator {
-  T* ptr;
-
- public:
-  ListIterator() : ptr(nullptr) {
-  }
-  ListIterator(T* _ptr) : ptr(_ptr) {
-  }
-  ListIterator& operator++() {
-    ptr = ptr->next.get();
-    return *this;
-  }
-  ListIterator& operator++(int) {
-    T* z = ptr;
-    ptr = ptr->next.get();
-    return ListIterator{z};
-  }
-  T& operator*() const {
-    return *ptr;
-  }
-  T* operator->() const {
-    return ptr;
-  }
-  bool operator==(const ListIterator& y) const {
-    return ptr == y.ptr;
-  }
-  bool operator!=(const ListIterator& y) const {
-    return ptr != y.ptr;
-  }
-};
-
-struct Stack;
-
-struct Op {
-  enum {
-    _Undef,
-    _Nop,
-    _Call,
-    _CallInd,
-    _Let,
-    _IntConst,
-    _GlobVar,
-    _Import,
-    _Return,
-    _If,
-    _While,
-    _Until,
-    _Repeat,
-    _Again
-  };
-  int cl;
-  enum { _Disabled = 1, _Reachable = 2, _NoReturn = 4 };
-  int flags;
-  std::unique_ptr<Op> next;
-  SymDef* fun_ref;
-  SrcLocation where;
-  VarDescrList var_info;
-  std::vector<VarDescr> args;
-  std::vector<var_idx_t> left, right;
-  std::unique_ptr<Op> block0, block1;
-  td::RefInt256 int_const;
-  Op(const SrcLocation& _where = {}, int _cl = _Undef) : cl(_cl), flags(0), fun_ref(nullptr), where(_where) {
-  }
-  Op(const SrcLocation& _where, int _cl, const std::vector<var_idx_t>& _left)
-      : cl(_cl), flags(0), fun_ref(nullptr), where(_where), left(_left) {
-  }
-  Op(const SrcLocation& _where, int _cl, std::vector<var_idx_t>&& _left)
-      : cl(_cl), flags(0), fun_ref(nullptr), where(_where), left(std::move(_left)) {
-  }
-  Op(const SrcLocation& _where, int _cl, const std::vector<var_idx_t>& _left, td::RefInt256 _const)
-      : cl(_cl), flags(0), fun_ref(nullptr), where(_where), left(_left), int_const(_const) {
-  }
-  Op(const SrcLocation& _where, int _cl, const std::vector<var_idx_t>& _left, const std::vector<var_idx_t>& _right,
-     SymDef* _fun = nullptr)
-      : cl(_cl), flags(0), fun_ref(_fun), where(_where), left(_left), right(_right) {
-  }
-  Op(const SrcLocation& _where, int _cl, std::vector<var_idx_t>&& _left, std::vector<var_idx_t>&& _right,
-     SymDef* _fun = nullptr)
-      : cl(_cl), flags(0), fun_ref(_fun), where(_where), left(std::move(_left)), right(std::move(_right)) {
-  }
-  bool disabled() const {
-    return flags & _Disabled;
-  }
-  bool enabled() const {
-    return !disabled();
-  }
-  void disable() {
-    flags |= _Disabled;
-  }
-  bool unreachable() {
-    return !(flags & _Reachable);
-  }
-  void flags_set_clear(int set, int clear);
-  void show(std::ostream& os, const std::vector<TmpVar>& vars, std::string pfx = "", int mode = 0) const;
-  void show_var_list(std::ostream& os, const std::vector<var_idx_t>& idx_list, const std::vector<TmpVar>& vars) const;
-  void show_var_list(std::ostream& os, const std::vector<VarDescr>& list, const std::vector<TmpVar>& vars) const;
-  static void show_block(std::ostream& os, const Op* block, const std::vector<TmpVar>& vars, std::string pfx = "",
-                         int mode = 0);
-  void split_vars(const std::vector<TmpVar>& vars);
-  static void split_var_list(std::vector<var_idx_t>& var_list, const std::vector<TmpVar>& vars);
-  bool compute_used_vars(const CodeBlob& code, bool edit);
-  bool std_compute_used_vars();
-  bool set_var_info(const VarDescrList& new_var_info);
-  bool set_var_info(VarDescrList&& new_var_info);
-  void prepare_args(VarDescrList values);
-  VarDescrList fwd_analyze(VarDescrList values);
-  bool set_noreturn(bool nr);
-  bool mark_noreturn();
-  bool noreturn() const {
-    return flags & _NoReturn;
-  }
-  bool is_empty() const {
-    return cl == _Nop && !next;
-  }
-  bool generate_code_step(Stack& stack);
-  bool generate_code_all(Stack& stack);
-  Op& last() {
-    return next ? next->last() : *this;
-  }
-  const Op& last() const {
-    return next ? next->last() : *this;
-  }
-  ListIterator<Op> begin() {
-    return ListIterator<Op>{this};
-  }
-  ListIterator<Op> end() const {
-    return ListIterator<Op>{};
-  }
-  ListIterator<const Op> cbegin() {
-    return ListIterator<const Op>{this};
-  }
-  ListIterator<const Op> cend() const {
-    return ListIterator<const Op>{};
-  }
-};
 
 ListIterator<Op> begin(const std::unique_ptr<Op>& op_list) {
   return ListIterator<Op>{op_list.get()};
@@ -1093,39 +717,39 @@ void Op::show(std::ostream& os, const std::vector<TmpVar>& vars, std::string pfx
       os << pfx << dis << "REPEAT ";
       show_var_list(os, left, vars);
       os << ' ';
-      show_block(os, block0.get(), vars, pfx, mode);
+      show_block(os, block0.get(), vars, pfx);
       os << std::endl;
       break;
     case _If:
       os << pfx << dis << "IF ";
       show_var_list(os, left, vars);
       os << ' ';
-      show_block(os, block0.get(), vars, pfx, mode);
+      show_block(os, block0.get(), vars, pfx);
       os << " ELSE ";
-      show_block(os, block1.get(), vars, pfx, mode);
+      show_block(os, block1.get(), vars, pfx);
       os << std::endl;
       break;
     case _While:
       os << pfx << dis << "WHILE ";
       show_var_list(os, left, vars);
       os << ' ';
-      show_block(os, block0.get(), vars, pfx, mode);
+      show_block(os, block0.get(), vars, pfx);
       os << " DO ";
-      show_block(os, block1.get(), vars, pfx, mode);
+      show_block(os, block1.get(), vars, pfx);
       os << std::endl;
       break;
     case _Until:
       os << pfx << dis << "UNTIL ";
       show_var_list(os, left, vars);
       os << ' ';
-      show_block(os, block0.get(), vars, pfx, mode);
+      show_block(os, block0.get(), vars, pfx);
       os << std::endl;
       break;
     case _Again:
       os << pfx << dis << "AGAIN ";
       show_var_list(os, left, vars);
       os << ' ';
-      show_block(os, block0.get(), vars, pfx, mode);
+      show_block(os, block0.get(), vars, pfx);
       os << std::endl;
       break;
     default:
@@ -1181,55 +805,6 @@ void Op::show_block(std::ostream& os, const Op* block, const std::vector<TmpVar>
   }
   os << pfx << "}";
 }
-
-typedef std::tuple<TypeExpr*, SymDef*, SrcLocation> FormalArg;
-typedef std::vector<FormalArg> FormalArgList;
-
-struct CodeBlob {
-  int var_cnt, in_var_cnt, op_cnt;
-  TypeExpr* ret_type;
-  std::string name;
-  SrcLocation loc;
-  std::vector<TmpVar> vars;
-  std::unique_ptr<Op> ops;
-  std::unique_ptr<Op>* cur_ops;
-  std::stack<std::unique_ptr<Op>*> cur_ops_stack;
-  CodeBlob(TypeExpr* ret = nullptr) : var_cnt(0), in_var_cnt(0), op_cnt(0), ret_type(ret), cur_ops(&ops) {
-  }
-  template <typename... Args>
-  Op& emplace_back(const Args&... args) {
-    Op& res = *(*cur_ops = std::make_unique<Op>(args...));
-    cur_ops = &(res.next);
-    return res;
-  }
-  bool import_params(FormalArgList arg_list);
-  var_idx_t create_var(int cls, TypeExpr* var_type = 0, SymDef* sym = 0, const SrcLocation* loc = 0);
-  int split_vars(bool strict = false);
-  bool compute_used_code_vars();
-  bool compute_used_code_vars(std::unique_ptr<Op>& ops, const VarDescrList& var_info, bool edit) const;
-  void print(std::ostream& os, int flags = 0) const;
-  void push_set_cur(std::unique_ptr<Op>& new_cur_ops) {
-    cur_ops_stack.push(cur_ops);
-    cur_ops = &new_cur_ops;
-  }
-  void close_blk(const SrcLocation& location) {
-    *cur_ops = std::make_unique<Op>(location, Op::_Nop);
-  }
-  void pop_cur() {
-    cur_ops = cur_ops_stack.top();
-    cur_ops_stack.pop();
-  }
-  void close_pop_cur(const SrcLocation& location) {
-    close_blk(location);
-    pop_cur();
-  }
-  void simplify_var_types();
-  void flags_set_clear(int set, int clear);
-  void prune_unreachable_code();
-  void fwd_analyze();
-  void mark_noreturn();
-  void generate_code(std::ostream& os, int mode = 0);
-};
 
 void CodeBlob::flags_set_clear(int set, int clear) {
   for (auto& op : ops) {
@@ -1290,48 +865,15 @@ bool CodeBlob::import_params(FormalArgList arg_list) {
  * 
  */
 
-struct CodeBlob;
-
-struct SymVal : sym::SymValBase {
-  TypeExpr* sym_type;
-  SymVal(int _type, int _idx, TypeExpr* _stype = nullptr) : sym::SymValBase(_type, _idx), sym_type(_stype) {
-  }
-  TypeExpr* get_type() const {
-    return sym_type;
-  }
-};
-
-struct SymValFunc : SymVal {
-  CodeBlob* code;
-  ~SymValFunc() override = default;
-  SymValFunc(int val, TypeExpr* _ft) : SymVal(_Func, val, _ft), code(nullptr) {
-  }
-};
-
 int glob_func_cnt, undef_func_cnt;
 std::vector<SymDef*> glob_func;
-
-typedef std::function<std::string(std::vector<VarDescr>&, std::vector<VarDescr>&, int)> compile_func_t;
-
-compile_func_t simple_compile(std::string str) {
-  return [str](std::vector<VarDescr>& out, std::vector<VarDescr>& in, int mode) -> std::string { return str; };
-}
-
-struct SymValBuiltinFunc : SymVal {
-  compile_func_t compile;
-  ~SymValBuiltinFunc() override = default;
-  SymValBuiltinFunc(TypeExpr* _ft, std::string _macro) : SymVal(_Func, -1, _ft), compile(simple_compile(_macro)) {
-  }
-  SymValBuiltinFunc(TypeExpr* _ft, const compile_func_t& _compile) : SymVal(_Func, -1, _ft), compile(_compile) {
-  }
-};
 
 SymDef* predefine_builtin_func(std::string name, TypeExpr* func_type) {
   sym_idx_t name_idx = symbols.lookup(name, 1);
   if (symbols.is_keyword(name_idx)) {
     std::cerr << "fatal: global function `" << name << "` already defined as a keyword" << std::endl;
   }
-  SymDef* def = define_global_symbol(name_idx, true);
+  SymDef* def = sym::define_global_symbol(name_idx, true);
   if (!def) {
     std::cerr << "fatal: global function `" << name << "` already defined" << std::endl;
     std::exit(1);
@@ -1339,12 +881,12 @@ SymDef* predefine_builtin_func(std::string name, TypeExpr* func_type) {
   return def;
 }
 
-void define_builtin_func(std::string name, TypeExpr* func_type, std::string macro) {
+void define_builtin_func(std::string name, TypeExpr* func_type, const AsmOp& macro) {
   SymDef* def = predefine_builtin_func(name, func_type);
   def->value = new SymValBuiltinFunc{func_type, macro};
 }
 
-void define_builtin_func(std::string name, TypeExpr* func_type, const compile_func_t func) {
+void define_builtin_func(std::string name, TypeExpr* func_type, const simple_compile_func_t func) {
   SymDef* def = predefine_builtin_func(name, func_type);
   def->value = new SymValBuiltinFunc{func_type, func};
 }
@@ -1354,64 +896,6 @@ void define_builtin_func(std::string name, TypeExpr* func_type, const compile_fu
  *   EXPRESSIONS
  * 
  */
-
-struct Expr {
-  enum { _None, _Apply, _VarApply, _TypeApply, _Tuple, _Const, _Var, _Glob, _Letop, _Hole, _Type };
-  int cls;
-  int val;
-  enum { _IsType = 1, _IsRvalue = 2, _IsLvalue = 4, _IsHole = 8, _IsNewVar = 16 };
-  int flags;
-  SrcLocation here;
-  td::RefInt256 intval;
-  SymDef* sym;
-  TypeExpr* e_type;
-  std::vector<Expr*> args;
-  Expr(int c = _None) : cls(c), val(0), flags(0), here(), sym(nullptr), e_type(nullptr) {
-  }
-  Expr(int c, const SrcLocation& loc) : cls(c), val(0), flags(0), here(loc), sym(nullptr), e_type(nullptr) {
-  }
-  Expr(int c, std::vector<Expr*> _args)
-      : cls(c), val(0), flags(0), here(), sym(nullptr), e_type(nullptr), args(std::move(_args)) {
-  }
-  Expr(int c, std::initializer_list<Expr*> _arglist)
-      : cls(c), val(0), flags(0), here(), sym(nullptr), e_type(nullptr), args(std::move(_arglist)) {
-  }
-  Expr(int c, sym_idx_t name_idx, std::initializer_list<Expr*> _arglist);
-  ~Expr() {
-    for (auto& arg_ptr : args) {
-      delete arg_ptr;
-    }
-  }
-  Expr* copy() const;
-  void pb_arg(Expr* expr) {
-    args.push_back(expr);
-  }
-  void set_val(int _val) {
-    val = _val;
-  }
-  bool is_rvalue() const {
-    return flags & _IsRvalue;
-  }
-  bool is_lvalue() const {
-    return flags & _IsLvalue;
-  }
-  bool is_type() const {
-    return flags & _IsType;
-  }
-  void chk_rvalue(const Lexem& lem) const;
-  void chk_lvalue(const Lexem& lem) const;
-  void chk_type(const Lexem& lem) const;
-  bool deduce_type(const Lexem& lem);
-  void set_location(const SrcLocation& loc) {
-    here = loc;
-  }
-  const SrcLocation& get_location() const {
-    return here;
-  }
-  int define_new_vars(CodeBlob& code);
-  int predefine_vars();
-  std::vector<var_idx_t> pre_compile(CodeBlob& code) const;
-};
 
 Expr* Expr::copy() const {
   auto res = new Expr{*this};
@@ -1423,7 +907,7 @@ Expr* Expr::copy() const {
 
 Expr::Expr(int c, sym_idx_t name_idx, std::initializer_list<Expr*> _arglist)
     : cls(c), val(0), sym(nullptr), e_type(nullptr), args(std::move(_arglist)) {
-  sym = lookup_symbol(name_idx);
+  sym = sym::lookup_symbol(name_idx);
   if (!sym) {
   }
 }
@@ -1548,9 +1032,9 @@ int Expr::predefine_vars() {
     case _Var:
       if (!sym) {
         assert(val < 0 && here.defined());
-        sym = define_symbol(~val, false, here);
+        sym = sym::define_symbol(~val, false, here);
         if (!sym) {
-          throw ParseError{here, std::string{"redefined variable `"} + symbols.get_name(~val) + "`"};
+          throw src::ParseError{here, std::string{"redefined variable `"} + symbols.get_name(~val) + "`"};
         }
         sym->value = new SymVal{SymVal::_Var, -1, e_type};
         return 1;
@@ -1593,7 +1077,7 @@ std::vector<var_idx_t> Expr::pre_compile(CodeBlob& code) const {
         std::vector<var_idx_t> res = args[1]->pre_compile(code);
         std::vector<var_idx_t> tfunc = args[0]->pre_compile(code);
         if (tfunc.size() != 1) {
-          throw Fatal{"stack tuple used as a function"};
+          throw src::Fatal{"stack tuple used as a function"};
         }
         res.push_back(tfunc[0]);
         var_idx_t rv = code.create_var(TmpVar::_Tmp, e_type, nullptr, &here);
@@ -1621,7 +1105,7 @@ std::vector<var_idx_t> Expr::pre_compile(CodeBlob& code) const {
     }
     default:
       std::cerr << "expression constructor is " << cls << std::endl;
-      throw Fatal{"cannot compile expression with unknown constructor"};
+      throw src::Fatal{"cannot compile expression with unknown constructor"};
   }
 }
 
@@ -1713,7 +1197,7 @@ FormalArg parse_formal_arg(Lexer& lex, int fa_idx) {
     lex.expect(_Ident, "formal parameter name");
   }
   loc = lex.cur().loc;
-  SymDef* new_sym_def = define_symbol(lex.cur().val, true, loc);
+  SymDef* new_sym_def = sym::define_symbol(lex.cur().val, true, loc);
   if (new_sym_def->value) {
     lex.cur().error_at("redefined formal parameter `", "`");
   }
@@ -1765,11 +1249,11 @@ bool check_global_func(const Lexem& cur, sym_idx_t func_name = 0) {
   if (!func_name) {
     func_name = cur.val;
   }
-  SymDef* def = lookup_symbol(func_name);
+  SymDef* def = sym::lookup_symbol(func_name);
   if (!def) {
     cur.loc.show_error(std::string{"undefined function `"} + symbols.get_name(func_name) +
                        "`, defining a global function of unknown type");
-    def = define_global_symbol(func_name, 0, cur.loc);
+    def = sym::define_global_symbol(func_name, 0, cur.loc);
     assert(def && "cannot define global function");
     ++undef_func_cnt;
     make_new_glob_func(def, TypeExpr::new_hole());  // was: ... ::new_func()
@@ -1869,10 +1353,10 @@ Expr* parse_expr100(Lexer& lex, CodeBlob& code, bool nv) {
       res->flags = Expr::_IsLvalue | Expr::_IsNewVar;
       // std::cerr << "defined new variable " << lex.cur().str << " : " << res->e_type << std::endl;
     } else {
-      res->sym = lookup_symbol(lex.cur().val);
+      res->sym = sym::lookup_symbol(lex.cur().val);
       if (!res->sym) {
         check_global_func(lex.cur());
-        res->sym = lookup_symbol(lex.cur().val);
+        res->sym = sym::lookup_symbol(lex.cur().val);
       }
       SymVal* val = nullptr;
       if (res->sym) {
@@ -2134,7 +1618,7 @@ blk_fl::val parse_stmt(Lexer& lex, CodeBlob& code);
 
 blk_fl::val parse_block_stmt(Lexer& lex, CodeBlob& code) {
   lex.expect('{');
-  open_scope(lex);
+  sym::open_scope(lex);
   blk_fl::val res = blk_fl::init;
   bool warned = false;
   while (lex.tp() != '}') {
@@ -2144,7 +1628,7 @@ blk_fl::val parse_block_stmt(Lexer& lex, CodeBlob& code) {
     }
     blk_fl::combine(res, parse_stmt(lex, code));
   }
-  close_scope(lex);
+  sym::close_scope(lex);
   lex.expect('}');
   return res;
 }
@@ -2313,10 +1797,10 @@ CodeBlob* parse_func_body(Lexer& lex, FormalArgList arg_list, TypeExpr* ret_type
 
 void parse_func_def(Lexer& lex) {
   SrcLocation loc{lex.cur().loc};
-  open_scope(lex);
+  sym::open_scope(lex);
   auto ret_type = parse_type(lex);
   if (lex.tp() != _Ident) {
-    throw ParseError{lex.cur().loc, "function name identifier expected"};
+    throw src::ParseError{lex.cur().loc, "function name identifier expected"};
   }
   Lexem func_name = lex.cur();
   lex.next();
@@ -2326,7 +1810,7 @@ void parse_func_def(Lexer& lex) {
   }
   TypeExpr* func_type = TypeExpr::new_map(extract_total_arg_type(arg_list), ret_type);
   std::cerr << "function " << func_name.str << " : " << func_type << std::endl;
-  SymDef* func_sym = define_global_symbol(func_name.val, 0, loc);
+  SymDef* func_sym = sym::define_global_symbol(func_name.val, 0, loc);
   assert(func_sym);
   SymValFunc* func_sym_val = dynamic_cast<SymValFunc*>(func_sym->value);
   if (func_sym->value) {
@@ -2357,11 +1841,11 @@ void parse_func_def(Lexer& lex) {
     func_sym_val->code = code;
   }
   std::cerr << "new type of function " << func_name.str << " : " << func_type << std::endl;
-  close_scope(lex);
+  sym::close_scope(lex);
 }
 
-bool parse_source(std::istream* is, const FileDescr* fdescr) {
-  SourceReader reader{is, fdescr};
+bool parse_source(std::istream* is, const src::FileDescr* fdescr) {
+  src::SourceReader reader{is, fdescr};
   Lexer lex{reader, true};
   while (lex.tp() != _Eof) {
     parse_func_def(lex);
@@ -2371,18 +1855,110 @@ bool parse_source(std::istream* is, const FileDescr* fdescr) {
 
 bool parse_source_file(const char* filename) {
   if (!filename || !*filename) {
-    throw Fatal{"source file name is an empty string"};
+    throw src::Fatal{"source file name is an empty string"};
   }
-  FileDescr* cur_source = new FileDescr{filename};
+  src::FileDescr* cur_source = new src::FileDescr{filename};
   std::ifstream ifs{filename};
   if (ifs.fail()) {
-    throw Fatal{std::string{"cannot open source file `"} + filename + "`"};
+    throw src::Fatal{std::string{"cannot open source file `"} + filename + "`"};
   }
   return parse_source(&ifs, cur_source);
 }
 
 bool parse_source_stdin() {
-  return parse_source(&std::cin, new FileDescr{"stdin", true});
+  return parse_source(&std::cin, new src::FileDescr{"stdin", true});
+}
+
+/*
+ * 
+ *   ASM-OP LIST FUNCTIONS
+ * 
+ */
+
+void AsmOp::out(std::ostream& os) const {
+  if (!op.empty()) {
+    os << op;
+    return;
+  }
+  switch (t) {
+    case a_none:
+      break;
+    case a_xchg:
+      if (!a && !(b & -2)) {
+        os << (b ? "SWAP" : "NOP");
+        break;
+      }
+      os << "s" << a << " s" << b << " XCHG";
+      break;
+    case a_push:
+      if (!(a & -2)) {
+        os << (a ? "OVER" : "DUP");
+        break;
+      }
+      os << "s" << a << " PUSH";
+      break;
+    case a_pop:
+      if (!(a & -2)) {
+        os << (a ? "NIP" : "DROP");
+        break;
+      }
+      os << "s" << a << " POP";
+      break;
+    default:
+      throw src::Fatal{"unknown assembler operation"};
+  }
+}
+
+void AsmOp::out_indent_nl(std::ostream& os, bool no_eol) const {
+  for (int i = 0; i < indent; i++) {
+    os << "  ";
+  }
+  out(os);
+  if (!no_eol) {
+    os << std::endl;
+  }
+}
+
+std::string AsmOp::to_string() const {
+  if (!op.empty()) {
+    return op;
+  } else {
+    std::ostringstream os;
+    out(os);
+    return os.str();
+  }
+}
+
+void AsmOpList::show_var(std::ostream& os, var_idx_t idx) const {
+  if (!var_names_ || (unsigned)idx >= var_names_->size()) {
+    os << '_' << idx;
+  } else {
+    var_names_->at(idx).show(os, 2);
+  }
+}
+
+void AsmOpList::out(std::ostream& os, int mode) const {
+  if (!(mode & 2)) {
+    for (const auto& op : list_) {
+      os << op;
+    }
+  } else {
+    std::size_t n = list_.size();
+    for (std::size_t i = 0; i < n; i++) {
+      const auto& op = list_[i];
+      if (!op.is_comment() && i + 1 < n && list_[i + 1].is_comment()) {
+        op.out_indent_nl(os, true);
+        os << '\t';
+        do {
+          i++;
+        } while (i + 1 < n && list_[i + 1].is_comment());
+        list_[i].out(os);
+        os << std::endl;
+      } else {
+        op.out_indent_nl(os, false);
+      }
+    }
+  }
 }
 
 /*
@@ -2575,142 +2151,159 @@ int is_neg_pow2(td::RefInt256 x) {
   return sgn(x) < 0 ? is_pos_pow2(-x) : 0;
 }
 
-std::string exec_op(std::string op, int mode) {
-  return mode ? op + "\n" : "";
+AsmOp exec_op(std::string op) {
+  return AsmOp::Custom(op);
 }
 
-std::string exec_arg_op(std::string op, long long arg, int mode) {
-  if (!mode) {
-    return "";
-  }
+AsmOp exec_op(std::string op, int args, int retv = 1) {
+  return AsmOp::Custom(op, args, retv);
+}
+
+AsmOp exec_arg_op(std::string op, long long arg) {
   std::ostringstream os;
-  os << arg << ' ' << op << "\n";
-  return os.str();
+  os << arg << ' ' << op;
+  return AsmOp::Custom(os.str());
 }
 
-std::string exec_arg_op(std::string op, td::RefInt256 arg, int mode) {
-  if (!mode) {
-    return "";
-  }
+AsmOp exec_arg_op(std::string op, long long arg, int args, int retv = 1) {
   std::ostringstream os;
-  os << arg << ' ' << op << "\n";
-  return os.str();
+  os << arg << ' ' << op;
+  return AsmOp::Custom(os.str(), args, retv);
 }
 
-std::string push_const(td::RefInt256 x, int mode) {
-  if (!mode) {
-    return "";
-  }
+AsmOp exec_arg_op(std::string op, td::RefInt256 arg) {
+  std::ostringstream os;
+  os << arg << ' ' << op;
+  return AsmOp::Custom(os.str());
+}
+
+AsmOp exec_arg_op(std::string op, td::RefInt256 arg, int args, int retv = 1) {
+  std::ostringstream os;
+  os << arg << ' ' << op;
+  return AsmOp::Custom(os.str(), args, retv);
+}
+
+AsmOp AsmOp::Const(int arg, std::string push_op) {
+  std::ostringstream os;
+  os << arg << ' ' << push_op;
+  return AsmOp::Custom(os.str());
+}
+
+AsmOp push_const(td::RefInt256 x) {
+  return AsmOp::IntConst(std::move(x));
+}
+
+AsmOp AsmOp::IntConst(td::RefInt256 x) {
   if (x->signed_fits_bits(8)) {
-    return dec_string(std::move(x)) + " PUSHINT\n";
+    return AsmOp::Const(dec_string(std::move(x)) + " PUSHINT");
   }
   if (!x->is_valid()) {
-    return "PUSHNAN\n";
+    return AsmOp::Const("PUSHNAN");
   }
   int k = is_pos_pow2(x);
   if (k >= 0) {
-    return exec_arg_op("PUSHPOW2", k, mode);
+    return AsmOp::Const(k, "PUSHPOW2");
   }
   k = is_pos_pow2(x + 1);
   if (k >= 0) {
-    return exec_arg_op("PUSHPOW2DEC", k, mode);
+    return AsmOp::Const(k, "PUSHPOW2DEC");
   }
   k = is_pos_pow2(-x);
   if (k >= 0) {
-    return exec_arg_op("PUSHNEGPOW2", k, mode);
+    return AsmOp::Const(k, "PUSHNEGPOW2");
   }
-  return exec_arg_op("PUSHINT", x, mode);
+  return AsmOp::Const(dec_string(std::move(x)) + " PUSHINT");
 }
 
-std::string compile_add(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int mode) {
+AsmOp compile_add(std::vector<VarDescr>& res, std::vector<VarDescr>& args) {
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (x.is_int_const() && y.is_int_const()) {
     r.set_const(x.int_const + y.int_const);
     x.unused();
     y.unused();
-    return push_const(r.int_const, mode);
+    return push_const(r.int_const);
   }
   r.val = emulate_add(x.val, y.val);
   if (y.is_int_const() && y.int_const->signed_fits_bits(8)) {
     y.unused();
     if (y.always_zero()) {
-      return "";
+      return AsmOp::Nop();
     }
     if (*y.int_const == 1) {
-      return exec_op("INC", mode);
+      return exec_op("INC", 1);
     }
     if (*y.int_const == -1) {
-      return exec_op("DEC", mode);
+      return exec_op("DEC", 1);
     }
-    return exec_arg_op("ADDCONST", y.int_const, mode);
+    return exec_arg_op("ADDCONST", y.int_const, 1);
   }
   if (x.is_int_const() && x.int_const->signed_fits_bits(8)) {
     x.unused();
     if (x.always_zero()) {
-      return "";
+      return AsmOp::Nop();
     }
     if (*x.int_const == 1) {
-      return exec_op("INC", mode);
+      return exec_op("INC", 1);
     }
     if (*x.int_const == -1) {
-      return exec_op("DEC", mode);
+      return exec_op("DEC", 1);
     }
-    return exec_arg_op("ADDCONST", x.int_const, mode);
+    return exec_arg_op("ADDCONST", x.int_const, 1);
   }
-  return exec_op("ADD", mode);
+  return exec_op("ADD", 2);
 }
 
-std::string compile_sub(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int mode) {
+AsmOp compile_sub(std::vector<VarDescr>& res, std::vector<VarDescr>& args) {
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (x.is_int_const() && y.is_int_const()) {
     r.set_const(x.int_const - y.int_const);
     x.unused();
     y.unused();
-    return push_const(r.int_const, mode);
+    return push_const(r.int_const);
   }
   r.val = emulate_sub(x.val, y.val);
   if (y.is_int_const() && (-y.int_const)->signed_fits_bits(8)) {
     y.unused();
     if (y.always_zero()) {
-      return "";
+      return {};
     }
     if (*y.int_const == 1) {
-      return exec_op("DEC", mode);
+      return exec_op("DEC", 1);
     }
     if (*y.int_const == -1) {
-      return exec_op("INC", mode);
+      return exec_op("INC", 1);
     }
-    return exec_arg_op("ADDCONST", -y.int_const, mode);
+    return exec_arg_op("ADDCONST", -y.int_const, 1);
   }
   if (x.always_zero()) {
     x.unused();
-    return exec_op("NEGATE", mode);
+    return exec_op("NEGATE", 1);
   }
-  return exec_op("SUB", mode);
+  return exec_op("SUB", 2);
 }
 
-std::string compile_negate(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int mode) {
+AsmOp compile_negate(std::vector<VarDescr>& res, std::vector<VarDescr>& args) {
   assert(res.size() == 1 && args.size() == 1);
   VarDescr &r = res[0], &x = args[0];
   if (x.is_int_const()) {
     r.set_const(-x.int_const);
     x.unused();
-    return push_const(r.int_const, mode);
+    return push_const(r.int_const);
   }
   r.val = emulate_negate(x.val);
-  return exec_op("NEGATE", mode);
+  return exec_op("NEGATE", 1);
 }
 
-std::string compile_mul(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int mode) {
+AsmOp compile_mul(std::vector<VarDescr>& res, std::vector<VarDescr>& args) {
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (x.is_int_const() && y.is_int_const()) {
     r.set_const(x.int_const * y.int_const);
     x.unused();
     y.unused();
-    return push_const(r.int_const, mode);
+    return push_const(r.int_const);
   }
   r.val = emulate_mul(x.val, y.val);
   if (y.is_int_const()) {
@@ -2720,19 +2313,19 @@ std::string compile_mul(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
       if (y.always_zero() && x.always_finite()) {
         // dubious optimization: NaN * 0 = ?
         r.set_const(y.int_const);
-        return push_const(r.int_const, mode);
+        return push_const(r.int_const);
       }
       if (*y.int_const == 1 && x.always_finite()) {
-        return "";
+        return AsmOp::Nop();
       }
       if (*y.int_const == -1) {
-        return exec_op("NEGATE", mode);
+        return exec_op("NEGATE", 1);
       }
-      return exec_arg_op("MULCONST", y.int_const, mode);
+      return exec_arg_op("MULCONST", y.int_const, 1);
     }
     if (k >= 0) {
       y.unused();
-      return exec_arg_op("LSHIFT#", k, mode);
+      return exec_arg_op("LSHIFT#", k, 1);
     }
   }
   if (x.is_int_const()) {
@@ -2742,25 +2335,25 @@ std::string compile_mul(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
       if (x.always_zero() && y.always_finite()) {
         // dubious optimization: NaN * 0 = ?
         r.set_const(x.int_const);
-        return push_const(r.int_const, mode);
+        return push_const(r.int_const);
       }
       if (*x.int_const == 1 && y.always_finite()) {
-        return "";
+        return AsmOp::Nop();
       }
       if (*x.int_const == -1) {
-        return exec_op("NEGATE", mode);
+        return exec_op("NEGATE", 1);
       }
-      return exec_arg_op("MULCONST", x.int_const, mode);
+      return exec_arg_op("MULCONST", x.int_const, 1);
     }
     if (k >= 0) {
       x.unused();
-      return exec_arg_op("LSHIFT#", k, mode);
+      return exec_arg_op("LSHIFT#", k, 1);
     }
   }
-  return exec_op("MUL", mode);
+  return exec_op("MUL", 2);
 }
 
-std::string compile_lshift(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int mode) {
+AsmOp compile_lshift(std::vector<VarDescr>& res, std::vector<VarDescr>& args) {
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (y.is_int_const()) {
@@ -2769,12 +2362,12 @@ std::string compile_lshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
       r.set_const_nan();
       x.unused();
       y.unused();
-      return push_const(r.int_const, mode);
+      return push_const(r.int_const);
     } else if (x.is_int_const()) {
       r.set_const(x.int_const << (int)yv);
       x.unused();
       y.unused();
-      return push_const(r.int_const, mode);
+      return push_const(r.int_const);
     }
   }
   r.val = emulate_lshift(x.val, y.val);
@@ -2783,26 +2376,26 @@ std::string compile_lshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
     if (!k /* && x.always_finite() */) {
       // dubious optimization: what if x=NaN ?
       y.unused();
-      return "";
+      return AsmOp::Nop();
     }
     y.unused();
-    return exec_arg_op("LSHIFT#", k, mode);
+    return exec_arg_op("LSHIFT#", k, 1);
   }
   if (x.is_int_const()) {
     auto xv = x.int_const->to_long();
     if (xv == 1) {
       x.unused();
-      return exec_op("POW2", mode);
+      return exec_op("POW2", 1);
     }
     if (xv == -1) {
       x.unused();
-      return exec_op("NEGPOW2", mode);
+      return exec_op("NEGPOW2", 1);
     }
   }
-  return exec_op("LSHIFT", mode);
+  return exec_op("LSHIFT", 2);
 }
 
-std::string compile_rshift(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int mode, int round_mode) {
+AsmOp compile_rshift(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int round_mode) {
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (y.is_int_const()) {
@@ -2811,12 +2404,12 @@ std::string compile_rshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
       r.set_const_nan();
       x.unused();
       y.unused();
-      return push_const(r.int_const, mode);
+      return push_const(r.int_const);
     } else if (x.is_int_const()) {
       r.set_const(td::rshift(x.int_const, (int)yv, round_mode));
       x.unused();
       y.unused();
-      return push_const(r.int_const, mode);
+      return push_const(r.int_const);
     }
   }
   r.val = emulate_rshift(x.val, y.val);
@@ -2826,22 +2419,22 @@ std::string compile_rshift(std::vector<VarDescr>& res, std::vector<VarDescr>& ar
     if (!k /* && x.always_finite() */) {
       // dubious optimization: what if x=NaN ?
       y.unused();
-      return "";
+      return AsmOp::Nop();
     }
     y.unused();
-    return exec_arg_op(rshift + "#", k, mode);
+    return exec_arg_op(rshift + "#", k, 1);
   }
-  return exec_op(rshift, mode);
+  return exec_op(rshift, 2);
 }
 
-std::string compile_div(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int mode, int round_mode) {
+AsmOp compile_div(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int round_mode) {
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (x.is_int_const() && y.is_int_const()) {
     r.set_const(div(x.int_const, y.int_const, round_mode));
     x.unused();
     y.unused();
-    return push_const(r.int_const, mode);
+    return push_const(r.int_const);
   }
   r.val = emulate_div(x.val, y.val);
   if (y.is_int_const()) {
@@ -2849,15 +2442,15 @@ std::string compile_div(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
       x.unused();
       y.unused();
       r.set_const(div(y.int_const, y.int_const));
-      return push_const(r.int_const, mode);
+      return push_const(r.int_const);
     }
     if (*y.int_const == 1 && x.always_finite()) {
       y.unused();
-      return "";
+      return AsmOp::Nop();
     }
     if (*y.int_const == -1) {
       y.unused();
-      return exec_op("NEGATE", mode);
+      return exec_op("NEGATE", 1);
     }
     int k = is_pos_pow2(y.int_const);
     if (k > 0) {
@@ -2866,24 +2459,24 @@ std::string compile_div(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
       if (round_mode >= 0) {
         op += (round_mode > 0 ? 'C' : 'R');
       }
-      return exec_arg_op(op + '#', k, mode);
+      return exec_arg_op(op + '#', k, 1);
     }
   }
   std::string op = "DIV";
   if (round_mode >= 0) {
     op += (round_mode > 0 ? 'C' : 'R');
   }
-  return exec_op(op, mode);
+  return exec_op(op, 2);
 }
 
-std::string compile_mod(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int mode, int round_mode) {
+AsmOp compile_mod(std::vector<VarDescr>& res, std::vector<VarDescr>& args, int round_mode) {
   assert(res.size() == 1 && args.size() == 2);
   VarDescr &r = res[0], &x = args[0], &y = args[1];
   if (x.is_int_const() && y.is_int_const()) {
     r.set_const(mod(x.int_const, y.int_const, round_mode));
     x.unused();
     y.unused();
-    return push_const(r.int_const, mode);
+    return push_const(r.int_const);
   }
   r.val = emulate_mod(x.val, y.val);
   if (y.is_int_const()) {
@@ -2891,13 +2484,13 @@ std::string compile_mod(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
       x.unused();
       y.unused();
       r.set_const(mod(y.int_const, y.int_const));
-      return push_const(r.int_const, mode);
+      return push_const(r.int_const);
     }
     if ((*y.int_const == 1 || *y.int_const == -1) && x.always_finite()) {
       x.unused();
       y.unused();
       r.set_const(td::RefInt256{true, 0});
-      return push_const(r.int_const, mode);
+      return push_const(r.int_const);
     }
     int k = is_pos_pow2(y.int_const);
     if (k > 0) {
@@ -2906,14 +2499,14 @@ std::string compile_mod(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
       if (round_mode >= 0) {
         op += (round_mode > 0 ? 'C' : 'R');
       }
-      return exec_arg_op(op + '#', k, mode);
+      return exec_arg_op(op + '#', k, 1);
     }
   }
   std::string op = "MOD";
   if (round_mode >= 0) {
     op += (round_mode > 0 ? 'C' : 'R');
   }
-  return exec_op(op, mode);
+  return exec_op(op, 2);
 }
 
 void define_builtins() {
@@ -2928,47 +2521,47 @@ void define_builtins() {
   define_builtin_func("_-_", arith_bin_op, compile_sub);
   define_builtin_func("-_", arith_un_op, compile_negate);
   define_builtin_func("_*_", arith_bin_op, compile_mul);
-  define_builtin_func("_/_", arith_bin_op, std::bind(compile_div, _1, _2, _3, -1));
-  define_builtin_func("_/~_", arith_bin_op, std::bind(compile_div, _1, _2, _3, 0));
-  define_builtin_func("_/^_", arith_bin_op, std::bind(compile_div, _1, _2, _3, 1));
-  define_builtin_func("_%_", arith_bin_op, std::bind(compile_mod, _1, _2, _3, -1));
-  define_builtin_func("_%~_", arith_bin_op, std::bind(compile_mod, _1, _2, _3, 0));
-  define_builtin_func("_%^_", arith_bin_op, std::bind(compile_mod, _1, _2, _3, -1));
-  define_builtin_func("_/%_", TypeExpr::new_map(Int2, Int2), "DIVMOD\n");
+  define_builtin_func("_/_", arith_bin_op, std::bind(compile_div, _1, _2, -1));
+  define_builtin_func("_/~_", arith_bin_op, std::bind(compile_div, _1, _2, 0));
+  define_builtin_func("_/^_", arith_bin_op, std::bind(compile_div, _1, _2, 1));
+  define_builtin_func("_%_", arith_bin_op, std::bind(compile_mod, _1, _2, -1));
+  define_builtin_func("_%~_", arith_bin_op, std::bind(compile_mod, _1, _2, 0));
+  define_builtin_func("_%^_", arith_bin_op, std::bind(compile_mod, _1, _2, -1));
+  define_builtin_func("_/%_", TypeExpr::new_map(Int2, Int2), AsmOp::Custom("DIVMOD", 2, 2));
   define_builtin_func("_<<_", arith_bin_op, compile_lshift);
-  define_builtin_func("_>>_", arith_bin_op, std::bind(compile_rshift, _1, _2, _3, -1));
-  define_builtin_func("_>>~_", arith_bin_op, std::bind(compile_rshift, _1, _2, _3, 0));
-  define_builtin_func("_>>^_", arith_bin_op, std::bind(compile_rshift, _1, _2, _3, 1));
-  define_builtin_func("_&_", arith_bin_op, "AND\n");
-  define_builtin_func("_|_", arith_bin_op, "OR\n");
-  define_builtin_func("_^_", arith_bin_op, "XOR\n");
+  define_builtin_func("_>>_", arith_bin_op, std::bind(compile_rshift, _1, _2, -1));
+  define_builtin_func("_>>~_", arith_bin_op, std::bind(compile_rshift, _1, _2, 0));
+  define_builtin_func("_>>^_", arith_bin_op, std::bind(compile_rshift, _1, _2, 1));
+  define_builtin_func("_&_", arith_bin_op, AsmOp::Custom("AND", 2));
+  define_builtin_func("_|_", arith_bin_op, AsmOp::Custom("OR", 2));
+  define_builtin_func("_^_", arith_bin_op, AsmOp::Custom("XOR", 2));
   define_builtin_func("^_+=_", arith_bin_op, compile_add);
   define_builtin_func("^_-=_", arith_bin_op, compile_sub);
   define_builtin_func("^_*=_", arith_bin_op, compile_mul);
-  define_builtin_func("^_/=_", arith_bin_op, std::bind(compile_div, _1, _2, _3, -1));
-  define_builtin_func("^_/~=_", arith_bin_op, std::bind(compile_div, _1, _2, _3, 0));
-  define_builtin_func("^_/^=_", arith_bin_op, std::bind(compile_div, _1, _2, _3, 1));
-  define_builtin_func("^_%=_", arith_bin_op, std::bind(compile_mod, _1, _2, _3, -1));
-  define_builtin_func("^_%~=_", arith_bin_op, std::bind(compile_mod, _1, _2, _3, 0));
-  define_builtin_func("^_%^=_", arith_bin_op, std::bind(compile_mod, _1, _2, _3, 1));
+  define_builtin_func("^_/=_", arith_bin_op, std::bind(compile_div, _1, _2, -1));
+  define_builtin_func("^_/~=_", arith_bin_op, std::bind(compile_div, _1, _2, 0));
+  define_builtin_func("^_/^=_", arith_bin_op, std::bind(compile_div, _1, _2, 1));
+  define_builtin_func("^_%=_", arith_bin_op, std::bind(compile_mod, _1, _2, -1));
+  define_builtin_func("^_%~=_", arith_bin_op, std::bind(compile_mod, _1, _2, 0));
+  define_builtin_func("^_%^=_", arith_bin_op, std::bind(compile_mod, _1, _2, 1));
   define_builtin_func("^_<<=_", arith_bin_op, compile_lshift);
-  define_builtin_func("^_>>=_", arith_bin_op, std::bind(compile_rshift, _1, _2, _3, -1));
-  define_builtin_func("^_>>~=_", arith_bin_op, std::bind(compile_rshift, _1, _2, _3, 0));
-  define_builtin_func("^_>>^=_", arith_bin_op, std::bind(compile_rshift, _1, _2, _3, 1));
-  define_builtin_func("^_&=_", arith_bin_op, "AND\n");
-  define_builtin_func("^_|=_", arith_bin_op, "OR\n");
-  define_builtin_func("^_^=_", arith_bin_op, "XOR\n");
-  define_builtin_func("muldivr", TypeExpr::new_map(Int3, Int), "MULDIVR\n");
-  define_builtin_func("muldiv", TypeExpr::new_map(Int3, Int), "MULDIV\n");
-  define_builtin_func("muldivmod", TypeExpr::new_map(Int3, Int2), "MULDIVMOD\n");
-  define_builtin_func("_==_", arith_bin_op, "EQ\n");
-  define_builtin_func("_!=_", arith_bin_op, "NEQ\n");
-  define_builtin_func("_<_", arith_bin_op, "LESS\n");
-  define_builtin_func("_>_", arith_bin_op, "GREATER\n");
-  define_builtin_func("_<=_", arith_bin_op, "LEQ\n");
-  define_builtin_func("_>=_", arith_bin_op, "GEQ\n");
-  define_builtin_func("true", Int, "TRUE\n");
-  define_builtin_func("false", Int, "FALSE\n");
+  define_builtin_func("^_>>=_", arith_bin_op, std::bind(compile_rshift, _1, _2, -1));
+  define_builtin_func("^_>>~=_", arith_bin_op, std::bind(compile_rshift, _1, _2, 0));
+  define_builtin_func("^_>>^=_", arith_bin_op, std::bind(compile_rshift, _1, _2, 1));
+  define_builtin_func("^_&=_", arith_bin_op, AsmOp::Custom("AND", 2));
+  define_builtin_func("^_|=_", arith_bin_op, AsmOp::Custom("OR", 2));
+  define_builtin_func("^_^=_", arith_bin_op, AsmOp::Custom("XOR", 2));
+  define_builtin_func("muldivr", TypeExpr::new_map(Int3, Int), AsmOp::Custom("MULDIVR", 3));
+  define_builtin_func("muldiv", TypeExpr::new_map(Int3, Int), AsmOp::Custom("MULDIV", 3));
+  define_builtin_func("muldivmod", TypeExpr::new_map(Int3, Int2), AsmOp::Custom("MULDIVMOD", 3, 2));
+  define_builtin_func("_==_", arith_bin_op, AsmOp::Custom("EQ", 2));
+  define_builtin_func("_!=_", arith_bin_op, AsmOp::Custom("NEQ", 2));
+  define_builtin_func("_<_", arith_bin_op, AsmOp::Custom("LESS", 2));
+  define_builtin_func("_>_", arith_bin_op, AsmOp::Custom("GREATER", 2));
+  define_builtin_func("_<=_", arith_bin_op, AsmOp::Custom("LEQ", 2));
+  define_builtin_func("_>=_", arith_bin_op, AsmOp::Custom("GEQ", 2));
+  define_builtin_func("true", Int, AsmOp::Const("TRUE"));
+  define_builtin_func("false", Int, AsmOp::Const("FALSE"));
 }
 
 /*
@@ -2982,7 +2575,7 @@ int CodeBlob::split_vars(bool strict) {
   for (int j = 0; j < var_cnt; j++) {
     TmpVar& var = vars[j];
     if (strict && var.v_type->minw != var.v_type->maxw) {
-      throw ParseError{var.where.get(), "variable does not have fixed width, cannot manipulate it"};
+      throw src::ParseError{var.where.get(), "variable does not have fixed width, cannot manipulate it"};
     }
     std::vector<TypeExpr*> comp_types;
     int k = var.v_type->extract_components(comp_types);
@@ -3000,7 +2593,8 @@ int CodeBlob::split_vars(bool strict) {
       n += k;
       ++changes;
     } else if (strict && var.v_type->minw != 1) {
-      throw ParseError{var.where.get(), "cannot work with variable or variable component of width greater than one"};
+      throw src::ParseError{var.where.get(),
+                            "cannot work with variable or variable component of width greater than one"};
     }
   }
   if (!changes) {
@@ -3442,7 +3036,7 @@ bool Op::compute_used_vars(const CodeBlob& code, bool edit) {
     }
     default:
       std::cerr << "fatal: unknown operation <??" << cl << ">\n";
-      throw ParseError{where, "unknown operation"};
+      throw src::ParseError{where, "unknown operation"};
   }
 }
 
@@ -3563,7 +3157,7 @@ bool prune_unreachable(std::unique_ptr<Op>& ops) {
     }
     default:
       std::cerr << "fatal: unknown operation <??" << op.cl << ">\n";
-      throw ParseError{op.where, "unknown operation in prune_unreachable()"};
+      throw src::ParseError{op.where, "unknown operation in prune_unreachable()"};
   }
   if (reach) {
     return prune_unreachable(op.next);
@@ -3577,7 +3171,7 @@ bool prune_unreachable(std::unique_ptr<Op>& ops) {
 
 void CodeBlob::prune_unreachable_code() {
   if (prune_unreachable(ops)) {
-    throw ParseError{loc, "control reaches end of function"};
+    throw src::ParseError{loc, "control reaches end of function"};
   }
 }
 
@@ -3643,7 +3237,7 @@ VarDescrList Op::fwd_analyze(VarDescrList values) {
         for (var_idx_t i : left) {
           res.emplace_back(i);
         }
-        func->compile(res, args, 0);  // abstract interpretation of res := f (args)
+        func->compile(res, args);  // abstract interpretation of res := f (args)
         int j = 0;
         for (var_idx_t i : left) {
           values.add_newval(i).set_value(res[j++]);
@@ -3726,7 +3320,7 @@ VarDescrList Op::fwd_analyze(VarDescrList values) {
     }
     default:
       std::cerr << "fatal: unknown operation <??" << cl << ">\n";
-      throw ParseError{where, "unknown operation in fwd_analyze()"};
+      throw src::ParseError{where, "unknown operation in fwd_analyze()"};
   }
   if (next) {
     return next->fwd_analyze(std::move(values));
@@ -3775,7 +3369,7 @@ bool Op::mark_noreturn() {
       return set_noreturn(next->mark_noreturn());
     default:
       std::cerr << "fatal: unknown operation <??" << cl << ">\n";
-      throw ParseError{where, "unknown operation in mark_noreturn()"};
+      throw src::ParseError{where, "unknown operation in mark_noreturn()"};
   }
 }
 
@@ -3788,79 +3382,6 @@ void CodeBlob::mark_noreturn() {
  *   GENERATE CODE
  * 
  */
-
-typedef std::vector<var_idx_t> StackLayout;
-
-struct Stack {
-  StackLayout s;
-  std::ostream& os;
-  enum { _StkCmt = 1, _Shown = 256, _Garbage = -0x10000 };
-  int mode;
-  Stack(std::ostream& _os, int _mode = 0) : os(_os), mode(_mode) {
-  }
-  Stack(std::ostream& _os, const StackLayout& _s, int _mode = 0) : s(_s), os(_os), mode(_mode) {
-  }
-  Stack(std::ostream& _os, StackLayout&& _s, int _mode = 0) : s(std::move(_s)), os(_os), mode(_mode) {
-  }
-  int depth() const {
-    return (int)s.size();
-  }
-  var_idx_t& operator[](int i) {
-    return s[depth() - i - 1];
-  }
-  var_idx_t operator[](int i) const {
-    return s[depth() - i - 1];
-  }
-  var_idx_t& at(int i);
-  var_idx_t at(int i) const;
-  var_idx_t get(int i) const;
-  int find(var_idx_t var, int from = 0) const;
-  int find(var_idx_t var, int from, int to) const;
-  void validate(int i) const {
-    assert(i >= 0 && i < depth());
-  }
-  void modified() {
-    mode &= ~_Shown;
-  }
-  void issue_pop(int i);
-  void issue_push(int i);
-  void issue_xchg(int i, int j);
-  int drop_vars_except(const VarDescrList& var_info, int excl_var = 0x80000000);
-  void forget_var(var_idx_t idx);
-  void push_new_var(var_idx_t idx);
-  void assign_var(var_idx_t new_idx, var_idx_t old_idx);
-  void do_copy_var(var_idx_t new_idx, var_idx_t old_idx);
-  void enforce_state(const StackLayout& req_stack);
-  void rearrange_top(const StackLayout& top, std::vector<bool> last);
-  void rearrange_top(var_idx_t top, bool last);
-  void show(int _mode);
-  void show() {
-    show(mode);
-  }
-  void opt_show() {
-    if ((mode & (_StkCmt | _Shown)) == _StkCmt) {
-      show(mode);
-    }
-  }
-  bool operator==(const Stack& y) const& {
-    return s == y.s;
-  }
-};
-
-var_idx_t& Stack::at(int i) {
-  validate(i);
-  return operator[](i);
-}
-
-var_idx_t Stack::at(int i) const {
-  validate(i);
-  return operator[](i);
-}
-
-var_idx_t Stack::get(int i) const {
-  validate(i);
-  return operator[](i);
-}
 
 int Stack::find(var_idx_t var, int from) const {
   for (int i = from; i < depth(); i++) {
@@ -3882,7 +3403,7 @@ int Stack::find(var_idx_t var, int from, int to) const {
 
 void Stack::issue_pop(int i) {
   validate(i);
-  os << 's' << i << " POP\n";
+  o << AsmOp::Pop(i);
   at(i) = get(0);
   s.pop_back();
   modified();
@@ -3890,7 +3411,7 @@ void Stack::issue_pop(int i) {
 
 void Stack::issue_push(int i) {
   validate(i);
-  os << 's' << i << " PUSH\n";
+  o << AsmOp::Push(i);
   s.push_back(get(i));
   modified();
 }
@@ -3899,7 +3420,7 @@ void Stack::issue_xchg(int i, int j) {
   validate(i);
   validate(j);
   if (i != j && get(i) != get(j)) {
-    os << 's' << i << " s" << j << " XCHG\n";
+    o << AsmOp::Xchg(i, j);
     std::swap(at(i), at(j));
     modified();
   }
@@ -3925,11 +3446,12 @@ int Stack::drop_vars_except(const VarDescrList& var_info, int excl_var) {
 }
 
 void Stack::show(int flags) {
-  os << "//";
+  std::ostringstream os;
   for (var_idx_t i : s) {
-    os << " _" << i;
+    os << ' ';
+    o.show_var(os, i);
   }
-  os << std::endl;
+  o << AsmOp::Comment(os.str());
   mode |= _Shown;
 }
 
@@ -4052,7 +3574,7 @@ bool Op::generate_code_step(Stack& stack) {
       return false;
     }
     case _IntConst: {
-      stack.os << push_const(int_const, stack.mode);
+      stack.o << push_const(int_const);
       stack.push_new_var(left[0]);
       return true;
     }
@@ -4104,7 +3626,7 @@ bool Op::generate_code_step(Stack& stack) {
         assert(stack.s[k + i] == right1[i]);
       }
       if (cl == _CallInd) {
-        stack.os << (int)right.size() - 1 << " CALLARGS\n";
+        stack.o << exec_arg_op("CALLARGS", (int)right.size() - 1, -1, (int)right.size() - 1);
       } else {
         auto func = dynamic_cast<const SymValBuiltinFunc*>(fun_ref->value);
         if (func) {
@@ -4113,10 +3635,10 @@ bool Op::generate_code_step(Stack& stack) {
           for (var_idx_t i : left) {
             res.emplace_back(i);
           }
-          stack.os << func->compile(res, args, 1);  // compile res := f (args)
+          stack.o << func->compile(res, args);  // compile res := f (args)
         } else {
           std::string name = symbols.get_name(fun_ref->sym_idx);
-          stack.os << name << " CALLDICT\n";
+          stack.o << AsmOp::Custom(name + " CALLDICT", (int)right.size());
         }
       }
       stack.s.resize(k);
@@ -4138,89 +3660,113 @@ bool Op::generate_code_step(Stack& stack) {
       if (block1->is_empty()) {
         // if (left) block0; ...
         if (block0->noreturn()) {
-          stack.os << "IFJMP:<{\n";
+          stack.o << "IFJMP:<{";
+          stack.o.indent();
           Stack stack_copy{stack};
           block0->generate_code_all(stack_copy);
-          stack.os << "}>\n";
+          stack.o.undent();
+          stack.o << "}>";
           return true;
         }
-        stack.os << "IF:<{\n";
+        stack.o << "IF:<{";
+        stack.o.indent();
         Stack stack_copy{stack};
         block0->generate_code_all(stack_copy);
         stack_copy.drop_vars_except(var_info);
         stack_copy.opt_show();
         if (stack_copy == stack) {
-          stack.os << "}>\n";
+          stack.o.undent();
+          stack.o << "}>";
           return true;
         }
         stack_copy.drop_vars_except(next->var_info);
         stack_copy.opt_show();
         if (stack_copy == stack) {
-          stack.os << "}>\n";
+          stack.o.undent();
+          stack.o << "}>";
           return true;
         }
-        stack.os << "}>ELSE<{\n";
+        stack.o.undent();
+        stack.o << "}>ELSE<{";
+        stack.o.indent();
         stack.enforce_state(stack_copy.s);
         stack.opt_show();
-        stack.os << "}>\n";
+        stack.o.undent();
+        stack.o << "}>";
         return true;
       }
       if (block0->is_empty()) {
         // if (!left) block1; ...
         if (block1->noreturn()) {
-          stack.os << "IFNOTJMP:<{\n";
+          stack.o << "IFNOTJMP:<{";
+          stack.o.indent();
           Stack stack_copy{stack};
           block1->generate_code_all(stack_copy);
-          stack.os << "}>\n";
+          stack.o.undent();
+          stack.o << "}>";
           return true;
         }
-        stack.os << "IFNOT:<{\n";
+        stack.o << "IFNOT:<{";
+        stack.o.indent();
         Stack stack_copy{stack};
         block1->generate_code_all(stack_copy);
         stack_copy.drop_vars_except(var_info);
         stack_copy.opt_show();
         if (stack_copy == stack) {
-          stack.os << "}>\n";
+          stack.o.undent();
+          stack.o << "}>";
           return true;
         }
         stack_copy.drop_vars_except(next->var_info);
         stack_copy.opt_show();
         if (stack_copy == stack) {
-          stack.os << "}>\n";
+          stack.o.undent();
+          stack.o << "}>";
           return true;
         }
-        stack.os << "}>ELSE<{\n";
+        stack.o.undent();
+        stack.o << "}>ELSE<{";
+        stack.o.indent();
         stack.enforce_state(stack_copy.s);
         stack.opt_show();
-        stack.os << "}>\n";
+        stack.o.undent();
+        stack.o << "}>";
         return true;
       }
       if (block0->noreturn()) {
-        stack.os << "IFJMP:<{\n";
+        stack.o << "IFJMP:<{";
+        stack.o.indent();
         Stack stack_copy{stack};
         block0->generate_code_all(stack_copy);
-        stack.os << "}>\n";
+        stack.o.undent();
+        stack.o << "}>";
         block1->generate_code_all(stack);
         return true;
       }
       if (block1->noreturn()) {
-        stack.os << "IFNOTJMP:<{\n";
+        stack.o << "IFNOTJMP:<{";
+        stack.o.indent();
         Stack stack_copy{stack};
         block1->generate_code_all(stack_copy);
-        stack.os << "}>\n";
+        stack.o.undent();
+        stack.o << "}>";
         block0->generate_code_all(stack);
         return true;
       }
-      stack.os << "IF:<{\n";
+      stack.o << "IF:<{";
+      stack.o.indent();
       Stack stack_copy{stack};
       block0->generate_code_all(stack_copy);
       stack_copy.drop_vars_except(next->var_info);
       stack_copy.opt_show();
-      stack.os << "}>ELSE<{\n";
+      stack.o.undent();
+      stack.o << "}>ELSE<{";
+      stack.o.indent();
       block1->generate_code_all(stack);
       stack.enforce_state(stack_copy.s);
       stack.opt_show();
-      stack.os << "}>\n";
+      stack.o.undent();
+      stack.o << "}>";
       return true;
     }
     case _Repeat: {
@@ -4232,15 +3778,17 @@ bool Op::generate_code_step(Stack& stack) {
       stack.s.pop_back();
       stack.modified();
       if (!next->is_empty()) {
-        stack.os << "REPEAT:<{\n";
+        stack.o << "REPEAT:<{";
+        stack.o.indent();
         StackLayout layout1 = stack.s;
         block0->generate_code_all(stack);
         stack.enforce_state(std::move(layout1));
         stack.opt_show();
-        stack.os << "}>\n";
+        stack.o.undent();
+        stack.o << "}>";
         return true;
       } else {
-        stack.os << "REPEATEND\n";
+        stack.o << "REPEATEND";
         StackLayout layout1 = stack.s;
         block0->generate_code_all(stack);
         stack.enforce_state(std::move(layout1));
@@ -4252,15 +3800,17 @@ bool Op::generate_code_step(Stack& stack) {
       stack.drop_vars_except(block0->var_info);
       stack.opt_show();
       if (!next->is_empty()) {
-        stack.os << "AGAIN:<{\n";
+        stack.o << "AGAIN:<{";
+        stack.o.indent();
         StackLayout layout1 = stack.s;
         block0->generate_code_all(stack);
         stack.enforce_state(std::move(layout1));
         stack.opt_show();
-        stack.os << "}>\n";
+        stack.o.undent();
+        stack.o << "}>";
         return true;
       } else {
-        stack.os << "AGAINEND\n";
+        stack.o << "AGAINEND";
         StackLayout layout1 = stack.s;
         block0->generate_code_all(stack);
         stack.enforce_state(std::move(layout1));
@@ -4272,18 +3822,20 @@ bool Op::generate_code_step(Stack& stack) {
       // stack.drop_vars_except(block0->var_info);
       // stack.opt_show();
       if (!next->is_empty()) {
-        stack.os << "UNTIL:<{\n";
+        stack.o << "UNTIL:<{";
+        stack.o.indent();
         StackLayout layout1 = stack.s;
         block0->generate_code_all(stack);
         layout1.push_back(left[0]);
         stack.enforce_state(std::move(layout1));
         stack.opt_show();
-        stack.os << "}>\n";
+        stack.o.undent();
+        stack.o << "}>";
         stack.s.pop_back();
         stack.modified();
         return true;
       } else {
-        stack.os << "UNTILEND\n";
+        stack.o << "UNTILEND";
         StackLayout layout1 = stack.s;
         block0->generate_code_all(stack);
         layout1.push_back(left[0]);
@@ -4299,20 +3851,26 @@ bool Op::generate_code_step(Stack& stack) {
       stack.opt_show();
       StackLayout layout1 = stack.s;
       bool next_empty = next->is_empty();
-      stack.os << (next_empty ? "WHILEEND:<{\n" : "WHILE:<{\n");
+      stack.o << (next_empty ? "WHILEEND:<{" : "WHILE:<{");
+      stack.o.indent();
       block0->generate_code_all(stack);
       stack.rearrange_top(x, !next->var_info[x] && !block1->var_info[x]);
       stack.opt_show();
       stack.s.pop_back();
       stack.modified();
+      stack.o.undent();
       Stack stack_copy{stack};
-      stack.os << (next_empty ? "}>\n" : "}>DO<{\n");
+      stack.o << (next_empty ? "}>" : "}>DO<{");
+      if (!next_empty) {
+        stack.o.indent();
+      }
       stack_copy.opt_show();
       block1->generate_code_all(stack_copy);
       stack_copy.enforce_state(std::move(layout1));
       stack_copy.opt_show();
       if (!next_empty) {
-        stack.os << "}>\n";
+        stack.o.undent();
+        stack.o << "}>";
         return true;
       } else {
         return false;
@@ -4320,7 +3878,7 @@ bool Op::generate_code_step(Stack& stack) {
     }
     default:
       std::cerr << "fatal: unknown operation <??" << cl << ">\n";
-      throw ParseError{where, "unknown operation in generate_code()"};
+      throw src::ParseError{where, "unknown operation in generate_code()"};
   }
 }
 
@@ -4332,13 +3890,19 @@ bool Op::generate_code_all(Stack& stack) {
   }
 }
 
-void CodeBlob::generate_code(std::ostream& os, int mode) {
-  Stack stack{os, mode};
+void CodeBlob::generate_code(AsmOpList& out, int mode) {
+  Stack stack{out, mode};
   assert(ops && ops->cl == Op::_Import);
   for (var_idx_t x : ops->left) {
     stack.push_new_var(x);
   }
   ops->generate_code_all(stack);
+}
+
+void CodeBlob::generate_code(std::ostream& os, int mode, int indent) {
+  AsmOpList out_list(indent, &vars);
+  generate_code(out_list, mode);
+  out_list.out(os, mode);
 }
 
 void generate_output_func(SymDef* func_sym) {
@@ -4362,7 +3926,7 @@ void generate_output_func(SymDef* func_sym) {
     code.mark_noreturn();
     code.print(std::cerr, 7);
     std::cerr << "\n---------- resulting code for " << name << " -------------\n";
-    code.generate_code(std::cout, 1);
+    code.generate_code(std::cout, Stack::_StkCmt | Stack::_CptStkCmt);
     std::cerr << "--------------\n";
   }
 }
@@ -4372,7 +3936,7 @@ int generate_output() {
   for (SymDef* func_sym : glob_func) {
     try {
       generate_output_func(func_sym);
-    } catch (Error& err) {
+    } catch (src::Error& err) {
       std::cerr << "cannot generate code for function `" << symbols.get_name(func_sym->sym_idx) << "`:\n"
                 << err << std::endl;
       ++errors;
@@ -4407,7 +3971,7 @@ int main(int argc, char* const argv[]) {
     }
   }
 
-  funC::define_keywords();
+  src::define_keywords();
   funC::define_builtins();
 
   int ok = 0, proc = 0;
@@ -4421,16 +3985,16 @@ int main(int argc, char* const argv[]) {
       proc++;
     }
     if (ok < proc) {
-      throw funC::Fatal{"output code generation omitted because of errors"};
+      throw src::Fatal{"output code generation omitted because of errors"};
     }
     if (!proc) {
-      throw funC::Fatal{"no source files, no output"};
+      throw src::Fatal{"no source files, no output"};
     }
     funC::generate_output();
-  } catch (funC::Fatal& fatal) {
+  } catch (src::Fatal& fatal) {
     std::cerr << "fatal: " << fatal << std::endl;
     std::exit(1);
-  } catch (funC::Error& error) {
+  } catch (src::Error& error) {
     std::cerr << error << std::endl;
     std::exit(1);
   } catch (funC::UniformizeError& unif_err) {

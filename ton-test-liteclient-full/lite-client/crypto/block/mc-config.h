@@ -283,6 +283,11 @@ struct WorkchainInfo : public td::CntObject {
   bool is_valid() const {
     return workchain != ton::workchainInvalid;
   }
+  bool is_valid_addr_len(int addr_len) const {
+    return addr_len >= min_addr_len && addr_len <= max_addr_len &&
+           (addr_len == min_addr_len || addr_len == max_addr_len ||
+            (addr_len_step > 0 && !((addr_len - min_addr_len) % addr_len_step)));
+  }
   bool unpack(ton::WorkchainId wc, vm::CellSlice& cs);
 };
 
@@ -322,6 +327,7 @@ class ShardConfig {
   std::vector<ton::BlockId> get_intersecting_shard_hash_ids(ton::ShardIdFull myself) const;
   std::vector<ton::BlockId> get_neighbor_shard_hash_ids(ton::ShardIdFull myself) const;
   std::vector<ton::BlockId> get_proper_neighbor_shard_hash_ids(ton::ShardIdFull myself) const;
+  static std::unique_ptr<vm::Dictionary> extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root);
   bool process_shard_hashes(std::function<int(McShardHash&)> func);
   bool process_sibling_shard_hashes(std::function<int(McShardHash&, const McShardHash*)> func);
   // may become non-static const in the future
@@ -353,7 +359,7 @@ class ShardConfig {
   bool set_shard_info(ton::ShardIdFull shard, Ref<vm::Cell> value);
 };
 
-class Config : public ShardConfig {
+class Config {
   enum {
     default_mc_catchain_lifetime = 200,
     default_shard_catchain_lifetime = 200,
@@ -362,46 +368,21 @@ class Config : public ShardConfig {
   };
 
  public:
-  enum {
-    needStateRoot = 1,
-    needLibraries = 2,
-    needStateExtraRoot = 4,
-    needShardHashes = 8,
-    needValidatorSet = 16,
-    needSpecialSmc = 32,
-    needAccountsRoot = 64,
-    needPrevBlocks = 128,
-    needWorkchainInfo = 256
-  };
+  enum { needValidatorSet = 16, needSpecialSmc = 32, needWorkchainInfo = 256 };
   int mode{0};
   ton::BlockIdExt block_id;
-  int vert_seqno{-1};
-  int global_id_{0};
-  ton::UnixTime utime{0};
-  ton::LogicalTime lt{0};
-  ton::BlockSeqno min_ref_mc_seqno_{~0U};
-  ton::CatchainSeqno cc_seqno_{std::numeric_limits<td::uint32>::max()};
-  int shard_cc_updated{-1};
-  bool nx_cc_updated;
+  static constexpr ton::LogicalTime lt_align = 1000000, max_lt_growth = 10 * lt_align - 1;
 
  private:
-  Ref<vm::Cell> state_root;
-  Ref<vm::Cell> lib_root_;
-  Ref<vm::Cell> state_extra_root;
-  Ref<vm::CellSlice> accounts_root;
-  Ref<vm::Cell> shard_hashes;
   td::BitArray<256> config_addr;
   Ref<vm::Cell> config_root;
-  ton::ZeroStateIdExt zerostate_id_;
   std::unique_ptr<vm::Dictionary> config_dict;
   std::unique_ptr<ValidatorSet> cur_validators;
-  std::unique_ptr<vm::Dictionary> shard_hashes_dict;
-  std::unique_ptr<vm::Dictionary> special_smc_dict;
-  std::unique_ptr<vm::AugmentedDictionary> accounts_dict;
-  std::unique_ptr<vm::Dictionary> prev_blocks_dict_;
   std::unique_ptr<vm::Dictionary> workchains_dict_;
-  std::unique_ptr<vm::Dictionary> libraries_dict_;
   WorkchainSet workchains_;
+
+ protected:
+  std::unique_ptr<vm::Dictionary> special_smc_dict;
 
  public:
   Ref<vm::Cell> get_config_param(int idx) const;
@@ -411,29 +392,17 @@ class Config : public ShardConfig {
   bool is_masterchain() const {
     return block_id.is_masterchain();
   }
-  static constexpr ton::LogicalTime lt_align = 1000000, max_lt_growth = 10 * lt_align - 1;
-  td::Result<std::vector<ton::StdSmcAddress>> get_special_smartcontracts() const;
-  td::Result<std::vector<std::pair<ton::StdSmcAddress, int>>> get_special_ticktock_smartcontracts(
-      int tick_tock = 3) const;
+  bool set_block_id_ext(const ton::BlockIdExt& block_id_ext);
+  td::Result<std::vector<ton::StdSmcAddress>> get_special_smartcontracts(bool without_config = false) const;
   bool is_special_smartcontract(const ton::StdSmcAddress& addr) const;
-  int get_smc_tick_tock(td::ConstBitPtr smc_addr) const;
-  std::unique_ptr<vm::AugmentedDictionary> create_accounts_dict() const;
-  const vm::AugmentedDictionary& get_accounts_dict() const;
-  static td::Result<std::unique_ptr<Config>> extract_config(std::shared_ptr<vm::StaticBagOfCellsDb> static_boc,
-                                                            int mode = 0);
-  static td::Result<std::unique_ptr<Config>> extract_config(Ref<vm::Cell> mc_state_root, int mode = 0);
   static td::Result<std::unique_ptr<ValidatorSet>> unpack_validator_set(Ref<vm::Cell> valset_root);
   td::Result<std::vector<StoragePrices>> get_storage_prices() const;
   static CatchainValidatorsConfig unpack_catchain_validators_config(Ref<vm::Cell> cell);
   CatchainValidatorsConfig get_catchain_validators_config() const;
-  static std::unique_ptr<vm::Dictionary> extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root);
+  td::Status visit_validator_params() const;
   td::Result<std::unique_ptr<BlockLimits>> get_block_limits(bool is_masterchain = false) const;
   auto get_mc_block_limits() const {
     return get_block_limits(true);
-  }
-  bool set_block_id_ext(const ton::BlockIdExt& block_id_ext);
-  ton::ZeroStateIdExt get_zerostate_id() const {
-    return zerostate_id_;
   }
   static td::Result<std::pair<WorkchainSet, std::unique_ptr<vm::Dictionary>>> unpack_workchain_list_ext(
       Ref<vm::Cell> cell);
@@ -442,26 +411,106 @@ class Config : public ShardConfig {
     return workchains_;
   }
   Ref<WorkchainInfo> get_workchain_info(ton::WorkchainId workchain_id) const;
-  bool rotated_all_shards() const;
+  std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> compute_validator_set(
+      ton::ShardIdFull shard, const block::ValidatorSet& vset, ton::UnixTime time, ton::CatchainSeqno cc_seqno) const;
+  static std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> do_compute_validator_set(
+      const block::CatchainValidatorsConfig& ccv_conf, ton::ShardIdFull shard, const block::ValidatorSet& vset,
+      ton::UnixTime time, ton::CatchainSeqno cc_seqno);
+
+  static td::Result<std::unique_ptr<Config>> unpack_config(Ref<vm::Cell> mc_state_root,
+                                                           const td::Bits256& config_addr = td::Bits256::zero(),
+                                                           int mode = 0);
+  static td::Result<std::unique_ptr<Config>> unpack_config(Ref<vm::CellSlice> config_csr, int mode = 0);
+  static td::Result<std::unique_ptr<Config>> extract_from_key_block(Ref<vm::Cell> key_block_root, int mode = 0);
+
+ protected:
+  Config(int _mode) : mode(_mode) {
+    config_addr.set_zero();
+  }
+  Config(Ref<vm::Cell> config_root, const td::Bits256& config_addr = td::Bits256::zero(), int _mode = 0);
+  td::Status unpack_wrapped(Ref<vm::CellSlice> config_csr);
+  td::Status unpack(Ref<vm::CellSlice> config_csr);
+  td::Status unpack_wrapped();
+  td::Status unpack();
+};
+
+class ConfigInfo : public Config, public ShardConfig {
+ public:
+  enum {
+    needStateRoot = 1,
+    needLibraries = 2,
+    needStateExtraRoot = 4,
+    needShardHashes = 8,
+    needAccountsRoot = 64,
+    needPrevBlocks = 128
+  };
+  int vert_seqno{-1};
+  int global_id_{0};
+  ton::UnixTime utime{0};
+  ton::LogicalTime lt{0};
+  ton::BlockSeqno min_ref_mc_seqno_{~0U};
+  ton::CatchainSeqno cc_seqno_{std::numeric_limits<td::uint32>::max()};
+  int shard_cc_updated{-1};
+  bool nx_cc_updated;
+  bool is_key_state_{false};
+
+ private:
+  Ref<vm::Cell> state_root;
+  Ref<vm::Cell> lib_root_;
+  Ref<vm::Cell> state_extra_root;
+  Ref<vm::CellSlice> accounts_root;
+  ton::ZeroStateIdExt zerostate_id_;
+  ton::BlockIdExt last_key_block_;
+  ton::LogicalTime last_key_block_lt_;
+  Ref<vm::Cell> shard_hashes;
+  std::unique_ptr<vm::Dictionary> shard_hashes_dict;
+  std::unique_ptr<vm::AugmentedDictionary> accounts_dict;
+  std::unique_ptr<vm::AugmentedDictionary> prev_blocks_dict_;
+  std::unique_ptr<vm::Dictionary> libraries_dict_;
+
+ public:
+  bool set_block_id_ext(const ton::BlockIdExt& block_id_ext);
+  bool rotated_all_shards() const {
+    return nx_cc_updated;
+  }
   int get_global_blockchain_id() const {
     return global_id_;
+  }
+  ton::ZeroStateIdExt get_zerostate_id() const {
+    return zerostate_id_;
   }
   Ref<vm::Cell> lookup_library(const ton::Bits256& root_hash) const {
     return lookup_library(root_hash.bits());
   }
   Ref<vm::Cell> lookup_library(td::ConstBitPtr root_hash) const;
+  Ref<vm::Cell> get_libraries_root() const {
+    return lib_root_;
+  }
+  bool is_key_state() const {
+    return is_key_state_;
+  }
+  ton::CatchainSeqno get_shard_cc_seqno(ton::ShardIdFull shard) const;
+  bool get_last_key_block(ton::BlockIdExt& blkid, ton::LogicalTime& blklt, bool strict = false) const;
   bool get_old_mc_block_id(ton::BlockSeqno seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt = nullptr) const;
   bool check_old_mc_block_id(const ton::BlockIdExt& blkid, bool strict = false) const;
-  ton::CatchainSeqno get_shard_cc_seqno(ton::ShardIdFull shard) const;
-  std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> compute_validator_set(
+  // returns block with min seqno and req_lt <= block.end_lt
+  bool get_mc_block_by_lt(ton::LogicalTime lt, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt = nullptr) const;
+  bool get_prev_key_block(ton::BlockSeqno req_seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt = nullptr) const;
+  bool get_next_key_block(ton::BlockSeqno req_seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt = nullptr) const;
+  td::Result<std::vector<std::pair<ton::StdSmcAddress, int>>> get_special_ticktock_smartcontracts(
+      int tick_tock = 3) const;
+  int get_smc_tick_tock(td::ConstBitPtr smc_addr) const;
+  std::unique_ptr<vm::AugmentedDictionary> create_accounts_dict() const;
+  const vm::AugmentedDictionary& get_accounts_dict() const;
+  std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> compute_validator_set_cc(
       ton::ShardIdFull shard, const block::ValidatorSet& vset, ton::UnixTime time,
       ton::CatchainSeqno& cc_seqno_delta) const;
-  static std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> do_compute_validator_set(
-      const block::CatchainValidatorsConfig& ccv_conf, ton::ShardIdFull shard, const block::ValidatorSet& vset,
-      ton::UnixTime time, ton::CatchainSeqno cc_seqno);
+  static td::Result<std::unique_ptr<ConfigInfo>> extract_config(std::shared_ptr<vm::StaticBagOfCellsDb> static_boc,
+                                                                int mode = 0);
+  static td::Result<std::unique_ptr<ConfigInfo>> extract_config(Ref<vm::Cell> mc_state_root, int mode = 0);
 
  private:
-  Config(Ref<vm::Cell> mc_state_root, int _mode = 0);
+  ConfigInfo(Ref<vm::Cell> mc_state_root, int _mode = 0);
   td::Status unpack_wrapped();
   td::Status unpack();
   void reset_mc_hash();

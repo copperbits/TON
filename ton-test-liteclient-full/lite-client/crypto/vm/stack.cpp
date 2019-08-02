@@ -12,7 +12,7 @@ template class td::Ref<td::Cnt<std::vector<vm::StackEntry>>>;
 
 namespace vm {
 
-struct from_object_t from_object;
+// from_object_t from_object{};
 
 const char* exception_messages[(int)(Excno::total)] = {
     "normal termination",   "alternative termination", "stack underflow",  "stack overflow", "integer overflow",
@@ -124,7 +124,7 @@ void StackEntry::print_list(std::ostream& os) const {
         unsigned c = 0;
         for (const auto& entry : tuple) {
           if (c++) {
-            os << ", ";
+            os << " ";
           }
           entry.print_list(os);
         }
@@ -430,6 +430,10 @@ Ref<Atom> Stack::pop_atom() {
   return res;
 }
 
+void Stack::push_null() {
+  push({});
+}
+
 void Stack::push_int(td::RefInt256 val) {
   if (!val->signed_fits_bits(257)) {
     throw VmError{Excno::int_ov};
@@ -453,8 +457,16 @@ void Stack::push_string(std::string str) {
   push(std::move(str));
 }
 
+void Stack::push_string(td::Slice slice) {
+  push(slice.str());
+}
+
 void Stack::push_bytes(std::string str) {
   push(std::move(str), true);
+}
+
+void Stack::push_bytes(td::Slice slice) {
+  push(slice.str(), true);
 }
 
 void Stack::push_cell(Ref<Cell> cell) {

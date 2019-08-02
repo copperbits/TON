@@ -4,7 +4,7 @@ char disable_linker_warning_about_empty_file_wineventpoll_cpp TD_UNUSED;
 
 #ifdef TD_POLL_WINEVENT
 
-#include "td/utils/logging.h"
+#include "td/utils/common.h"
 
 namespace td {
 namespace detail {

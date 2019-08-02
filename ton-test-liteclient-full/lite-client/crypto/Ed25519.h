@@ -1,7 +1,7 @@
 #pragma once
 
 #include "td/utils/common.h"
-#include "td/utils/Slice.h"
+#include "td/utils/SharedSlice.h"
 #include "td/utils/Status.h"
 
 #if TD_HAVE_OPENSSL
@@ -14,39 +14,39 @@ class Ed25519 {
    public:
     static constexpr size_t LENGTH = 32;
 
-    explicit PublicKey(Slice octet_string);
+    explicit PublicKey(SecureString octet_string);
 
-    string as_octet_string() const;
+    SecureString as_octet_string() const;
 
     Status verify_signature(Slice data, Slice signature) const;
 
    private:
-    string octet_string_;
+    SecureString octet_string_;
   };
 
   class PrivateKey {
    public:
     static constexpr size_t LENGTH = 32;
 
-    explicit PrivateKey(Slice octet_string);
+    explicit PrivateKey(SecureString octet_string);
 
-    string as_octet_string() const;
+    SecureString as_octet_string() const;
 
     Result<PublicKey> get_public_key() const;
 
-    Result<string> sign(Slice data) const;
+    Result<SecureString> sign(Slice data) const;
 
-    Result<string> as_pem(Slice password) const;
+    Result<SecureString> as_pem(Slice password) const;
 
     static Result<PrivateKey> from_pem(Slice pem, Slice password);
 
    private:
-    string octet_string_;
+    SecureString octet_string_;
   };
 
   static Result<PrivateKey> generate_private_key();
 
-  static Result<string> compute_shared_secret(const PublicKey &public_key, const PrivateKey &private_key);
+  static Result<SecureString> compute_shared_secret(const PublicKey &public_key, const PrivateKey &private_key);
 };
 
 }  // namespace td

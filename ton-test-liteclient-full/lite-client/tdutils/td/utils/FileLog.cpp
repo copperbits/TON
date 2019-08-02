@@ -11,28 +11,47 @@
 
 namespace td {
 
-Status FileLog::init(string path, int64 rotate_threshold) {
+Status FileLog::init(string path, int64 rotate_threshold, bool redirect_stderr) {
   if (path == path_) {
     set_rotate_threshold(rotate_threshold);
     return Status::OK();
+  }
+  if (path.empty()) {
+    return Status::Error("Log file path can't be empty");
   }
 
   TRY_RESULT(fd, FileFd::open(path, FileFd::Create | FileFd::Write | FileFd::Append));
 
   fd_.close();
   fd_ = std::move(fd);
-  if (!Stderr().empty()) {
+  if (!Stderr().empty() && redirect_stderr) {
     fd_.get_native_fd().duplicate(Stderr().get_native_fd()).ignore();
   }
 
-  path_ = std::move(path);
-  size_ = fd_.get_size();
+  auto r_path = realpath(path, true);
+  if (r_path.is_error()) {
+    path_ = std::move(path);
+  } else {
+    path_ = r_path.move_as_ok();
+  }
+  TRY_RESULT(size, fd_.get_size());
+  size_ = size;
   rotate_threshold_ = rotate_threshold;
+  redirect_stderr_ = redirect_stderr;
   return Status::OK();
 }
 
 Slice FileLog::get_path() const {
   return path_;
+}
+
+vector<string> FileLog::get_file_paths() {
+  vector<string> result;
+  if (!path_.empty()) {
+    result.push_back(path_);
+    result.push_back(PSTRING() << path_ << ".old");
+  }
+  return result;
 }
 
 void FileLog::set_rotate_threshold(int64 rotate_threshold) {
@@ -48,7 +67,7 @@ void FileLog::append(CSlice cslice, int log_level) {
   while (!slice.empty()) {
     auto r_size = fd_.write(slice);
     if (r_size.is_error()) {
-      process_fatal_error(r_size.error().message());
+      process_fatal_error(PSLICE() << r_size.error() << " in " << __FILE__ << " at " << __LINE__);
     }
     auto written = r_size.ok();
     size_ += static_cast<int64>(written);
@@ -61,7 +80,7 @@ void FileLog::append(CSlice cslice, int log_level) {
   if (size_ > rotate_threshold_) {
     auto status = rename(path_, PSLICE() << path_ << ".old");
     if (status.is_error()) {
-      process_fatal_error(status.message());
+      process_fatal_error(PSLICE() << status.error() << " in " << __FILE__ << " at " << __LINE__);
     }
     do_rotate();
   }
@@ -81,10 +100,10 @@ void FileLog::do_rotate() {
   fd_.close();
   auto r_fd = FileFd::open(path_, FileFd::Create | FileFd::Truncate | FileFd::Write);
   if (r_fd.is_error()) {
-    process_fatal_error(r_fd.error().message());
+    process_fatal_error(PSLICE() << r_fd.error() << " in " << __FILE__ << " at " << __LINE__);
   }
   fd_ = r_fd.move_as_ok();
-  if (!Stderr().empty()) {
+  if (!Stderr().empty() && redirect_stderr_) {
     fd_.get_native_fd().duplicate(Stderr().get_native_fd()).ignore();
   }
   size_ = 0;

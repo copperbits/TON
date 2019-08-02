@@ -12,6 +12,8 @@
 
 namespace ton {
 
+namespace adnl {
+
 class AdnlExtConnection : public td::actor::Actor, public td::ObserverBase {
  public:
   class Callback {
@@ -133,5 +135,7 @@ class AdnlExtConnection : public td::actor::Actor, public td::ObserverBase {
     }
   }
 };
+
+}  // namespace adnl
 
 }  // namespace ton

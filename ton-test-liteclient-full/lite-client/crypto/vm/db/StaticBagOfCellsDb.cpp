@@ -91,7 +91,7 @@ class DataCellCacheMutex {
 
  private:
   td::RwMutex cells_rw_mutex_;
-  absl::flat_hash_map<int, Ref<DataCell>> cells_;
+  td::HashMap<int, Ref<DataCell>> cells_;
 };
 
 class DataCellCacheTdlib {
@@ -192,6 +192,7 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
  public:
   explicit StaticBagOfCellsDbLazyImpl(std::unique_ptr<BlobView> data, StaticBagOfCellsDbLazy::Options options)
       : data_(std::move(data)), options_(std::move(options)) {
+    get_thread_safe_counter().add(1);
   }
   td::Result<size_t> get_root_count() override {
     TRY_STATUS(check_status());
@@ -213,6 +214,7 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
 
   ~StaticBagOfCellsDbLazyImpl() {
     //LOG(ERROR) << deserialize_cell_cnt_ << " " << deserialize_cell_hash_cnt_;
+    get_thread_safe_counter().add(-1);
   }
 
  private:
@@ -240,6 +242,11 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
   std::atomic<bool> has_error_{false};
   std::mutex status_mutex_;
   td::Status status_;
+
+  static td::NamedThreadSafeCounter::CounterRef get_thread_safe_counter() {
+    static auto res = td::NamedThreadSafeCounter::get_default().get_counter("StaticBagOfCellsDbLazy");
+    return res;
+  }
 
   td::Status check_status() TD_WARN_UNUSED_RESULT {
     if (has_error_.load(std::memory_order_relaxed)) {
@@ -381,7 +388,7 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
       CellSerializationInfo cell_info;
       TRY_STATUS(cell_info.init(cell, info_.ref_byte_size));
       index_offset_ += cell_info.end_offset;
-      CHECK((unsigned)info_.offset_byte_size <= 8) << info_.offset_byte_size;
+      LOG_CHECK((unsigned)info_.offset_byte_size <= 8) << info_.offset_byte_size;
       td::uint8 tmp[8];
       info_.write_offset(tmp, index_offset_);
       auto guard = index_data_rw_mutex_.lock_write();

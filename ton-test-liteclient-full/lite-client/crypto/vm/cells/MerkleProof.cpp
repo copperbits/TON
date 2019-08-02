@@ -2,8 +2,8 @@
 #include "vm/cells/CellBuilder.h"
 #include "vm/cells/CellSlice.h"
 
-#include <absl/container/flat_hash_set.h>
-#include <absl/container/flat_hash_map.h>
+#include "td/utils/HashMap.h"
+#include "td/utils/HashSet.h"
 
 namespace vm {
 namespace detail {
@@ -25,8 +25,8 @@ class MerkleProofImpl {
 
  private:
   using Key = std::pair<Cell::Hash, int>;
-  absl::flat_hash_map<Key, Ref<Cell>> cells_;
-  absl::flat_hash_set<Cell::Hash> visited_cells_;
+  td::HashMap<Key, Ref<Cell>> cells_;
+  td::HashSet<Cell::Hash> visited_cells_;
   CellUsageTree *usage_tree_{nullptr};
   MerkleProof::IsPrunnedFunction is_prunned_;
 
@@ -168,9 +168,9 @@ class MerkleProofCombine {
   };
 
   using Key = std::pair<Cell::Hash, int>;
-  absl::flat_hash_map<Cell::Hash, Info> cells_;
-  absl::flat_hash_map<Key, Ref<Cell>> create_A_res_;
-  absl::flat_hash_set<Key> visited_;
+  td::HashMap<Cell::Hash, Info> cells_;
+  td::HashMap<Key, Ref<Cell>> create_A_res_;
+  td::HashSet<Key> visited_;
 
   void dfs(Ref<Cell> cell, int merkle_depth) {
     if (!visited_.emplace(cell->get_hash(), merkle_depth).second) {

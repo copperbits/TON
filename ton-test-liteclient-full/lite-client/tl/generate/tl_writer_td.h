@@ -17,10 +17,17 @@ class TD_TL_writer : public tl::TL_writer {
  protected:
   const std::string string_type;
   const std::string bytes_type;
+  const std::string secure_string_type;
+  const std::string secure_bytes_type;
 
  public:
-  TD_TL_writer(const std::string &tl_name, const std::string &string_type, const std::string &bytes_type)
-      : TL_writer(tl_name), string_type(string_type), bytes_type(bytes_type) {
+  TD_TL_writer(const std::string &tl_name, const std::string &string_type, const std::string &bytes_type,
+               const std::string &secure_string_type, const std::string &secure_bytes_type)
+      : TL_writer(tl_name)
+      , string_type(string_type)
+      , bytes_type(bytes_type)
+      , secure_string_type(secure_string_type)
+      , secure_bytes_type(secure_bytes_type) {
   }
 
   int get_max_arity() const override;

@@ -11,7 +11,6 @@
 #include "ton/ton-types.h"
 #include "block/block.h"
 #include "block/mc-config.h"
-#include <absl/numeric/int128.h>
 
 namespace block {
 using td::Ref;
@@ -83,6 +82,7 @@ struct ComputePhaseConfig {
   static constexpr td::uint64 gas_infty = (1ULL << 63) - 1;
   td::RefInt256 gas_price256;
   td::RefInt256 max_gas_threshold;
+  std::unique_ptr<vm::Dictionary> libraries;
   td::BitArray<256> block_rand_seed;
   ComputePhaseConfig(td::uint64 _gas_price = 0, td::uint64 _gas_limit = 0, td::uint64 _gas_credit = 0)
       : gas_price(_gas_price), gas_limit(_gas_limit), gas_credit(_gas_credit) {
@@ -94,6 +94,13 @@ struct ComputePhaseConfig {
   void set_gas_price(td::uint64 _gas_price) {
     gas_price = _gas_price;
     compute_threshold();
+  }
+  Ref<vm::Cell> lookup_library(td::ConstBitPtr key) const;
+  Ref<vm::Cell> lookup_library(const td::Bits256& key) const {
+    return lookup_library(key.bits());
+  }
+  Ref<vm::Cell> get_lib_root() const {
+    return libraries ? libraries->get_root_cell() : Ref<vm::Cell>{};
   }
 };
 
@@ -124,6 +131,7 @@ struct ActionPhaseConfig {
   int max_actions{255};
   MsgPrices fwd_std;
   MsgPrices fwd_mc;  // from/to masterchain
+  const WorkchainSet* workchains{nullptr};
   const MsgPrices& fetch_msg_prices(bool is_masterchain) const {
     return is_masterchain ? fwd_mc : fwd_std;
   }
@@ -199,14 +207,16 @@ struct Account {
   bool tick{false};
   bool tock{false};
   bool created{false};
-  unsigned char split_depth{0};
+  bool split_depth_set_{false};
+  unsigned char split_depth_{0};
   int verbosity{3 * 0};
   ton::UnixTime now_{0};
   ton::WorkchainId workchain{ton::workchainInvalid};
-  td::BitArray<32> addr_rewrite;  // rewrite (anycast) data, split_depth bits
-  ton::StdSmcAddress addr;        // rewritten address (by replacing a prefix of `addr_orig` with `addr_rewrite`)
-  ton::StdSmcAddress addr_orig;   // address indicated in smart-contract data
-  Ref<vm::CellSlice> my_addr;     // address as stored in the smart contract (MsgAddressInt)
+  td::BitArray<32> addr_rewrite;     // rewrite (anycast) data, split_depth bits
+  ton::StdSmcAddress addr;           // rewritten address (by replacing a prefix of `addr_orig` with `addr_rewrite`)
+  ton::StdSmcAddress addr_orig;      // address indicated in smart-contract data
+  Ref<vm::CellSlice> my_addr;        // address as stored in the smart contract (MsgAddressInt)
+  Ref<vm::CellSlice> my_addr_exact;  // exact address without anycast info
   ton::LogicalTime last_trans_end_lt_;
   ton::LogicalTime last_trans_lt_;
   ton::Bits256 last_trans_hash_;
@@ -223,12 +233,15 @@ struct Account {
   Ref<vm::Cell> code, data, library, orig_library;
   std::vector<LtCellRef> transactions;
   Account() = default;
-  Account(ton::WorkchainId wc, td::ConstBitPtr _addr, int depth = 0)
-      : split_depth((unsigned char)depth), workchain(wc), addr(_addr) {
+  Account(ton::WorkchainId wc, td::ConstBitPtr _addr) : workchain(wc), addr(_addr) {
+  }
+  Account(ton::WorkchainId wc, td::ConstBitPtr _addr, int depth)
+      : split_depth_set_(true), split_depth_((unsigned char)depth), workchain(wc), addr(_addr) {
   }
   bool set_address(ton::WorkchainId wc, td::ConstBitPtr new_addr);
   bool unpack(Ref<vm::CellSlice> account, Ref<vm::CellSlice> extra, ton::UnixTime now, bool special = false);
   bool init_new(ton::UnixTime now);
+  bool recompute_tmp_addr(Ref<vm::CellSlice>& tmp_addr, int split_depth, td::ConstBitPtr orig_addr_rewrite) const;
   td::RefInt256 compute_storage_fees(ton::UnixTime now, const std::vector<block::StoragePrices>& pricing) const;
   bool is_masterchain() const {
     return workchain == ton::masterchainId;
@@ -242,11 +255,18 @@ struct Account {
   bool libraries_changed() const;
   bool create_account_block(vm::CellBuilder& cb);  // stores an AccountBlock with all transactions
 
+ protected:
+  friend class Transaction;
+  bool set_split_depth(int split_depth);
+  bool check_split_depth(int split_depth) const;
+  bool init_rewrite_addr(int split_depth, td::ConstBitPtr orig_addr_rewrite);
+
  private:
   bool unpack_address(vm::CellSlice& addr_cs);
   bool unpack_storage_info(vm::CellSlice& cs);
   bool unpack_state(vm::CellSlice& cs);
   bool parse_maybe_anycast(vm::CellSlice& cs);
+  bool store_maybe_anycast(vm::CellBuilder& cb) const;
   bool compute_my_addr(bool force = false);
 };
 
@@ -272,6 +292,7 @@ struct Transaction {
   bool in_msg_extern{false};
   bool use_msg_state{false};
   bool is_first{false};
+  bool orig_addr_rewrite_set{false};
   bool new_tick;
   bool new_tock;
   signed char new_split_depth{-1};
@@ -279,7 +300,8 @@ struct Transaction {
   int acc_status;
   int verbosity{3 * 0};
   int in_msg_type{0};
-  const Account& account;  // only `commit` method modifies the account
+  const Account& account;                     // only `commit` method modifies the account
+  Ref<vm::CellSlice> my_addr, my_addr_exact;  // almost the same as in account.*
   ton::LogicalTime start_lt, end_lt;
   td::RefInt256 balance, due_payment, msg_balance_remaining;
   td::RefInt256 in_fwd_fee, msg_fwd_fees, total_fees{true, 0};
@@ -294,6 +316,7 @@ struct Transaction {
   Ref<vm::CellSlice> in_msg_body;
   Ref<vm::Cell> in_msg_library;
   td::BitArray<256> frozen_hash;
+  td::BitArray<32> orig_addr_rewrite;
   std::vector<Ref<vm::Cell>> out_msgs;
   std::unique_ptr<StoragePhase> storage_phase;
   std::unique_ptr<CreditPhase> credit_phase;
@@ -304,10 +327,12 @@ struct Transaction {
   Transaction(const Account& _account, int ttype, ton::LogicalTime req_start_lt, ton::UnixTime _now,
               Ref<vm::Cell> _inmsg = {});
   bool unpack_input_msg(bool ihr_delivered, const ActionPhaseConfig* cfg);
+  bool check_in_msg_state_hash();
   bool prepare_storage_phase(const StoragePhaseConfig& cfg, bool force_collect = true);
   bool prepare_credit_phase();
   bool compute_gas_limits(ComputePhase& cp, const ComputePhaseConfig& cfg);
   Ref<vm::Stack> prepare_vm_stack(ComputePhase& cp);
+  std::vector<Ref<vm::Cell>> compute_vm_libraries(const ComputePhaseConfig& cfg);
   bool prepare_compute_phase(const ComputePhaseConfig& cfg);
   bool prepare_action_phase(const ActionPhaseConfig& cfg);
   bool prepare_bounce_phase(const ActionPhaseConfig& cfg);

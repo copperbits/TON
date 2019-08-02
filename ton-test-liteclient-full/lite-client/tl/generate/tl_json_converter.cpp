@@ -36,12 +36,13 @@ void gen_to_json_constructor(StringBuilder &sb, const T *constructor, bool is_he
       sb << "  if (object." << field << ") {\n  ";
     }
     auto object = PSTRING() << "object." << tl::simple::gen_cpp_field_name(arg.name);
-    if (arg.type->type == tl::simple::Type::Bytes) {
+    if (arg.type->type == tl::simple::Type::Bytes || arg.type->type == tl::simple::Type::SecureBytes) {
       object = PSTRING() << "JsonBytes{" << object << "}";
     } else if (arg.type->type == tl::simple::Type::Int64) {
       object = PSTRING() << "JsonInt64{" << object << "}";
     } else if (arg.type->type == tl::simple::Type::Vector &&
-               arg.type->vector_value_type->type == tl::simple::Type::Bytes) {
+               (arg.type->vector_value_type->type == tl::simple::Type::Bytes ||
+                arg.type->vector_value_type->type == tl::simple::Type::SecureBytes)) {
       object = PSTRING() << "JsonVectorBytes(" << object << ")";
     } else if (arg.type->type == tl::simple::Type::Vector &&
                arg.type->vector_value_type->type == tl::simple::Type::Int64) {

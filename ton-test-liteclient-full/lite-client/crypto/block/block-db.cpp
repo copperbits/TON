@@ -48,7 +48,7 @@ td::Result<td::BufferSlice> load_binary_file(std::string filename, td::int64 max
   //TODO: use td::read_file
   auto res = [&]() -> td::Result<td::BufferSlice> {
     TRY_RESULT(fd, td::FileFd::open(filename, td::FileFd::Read));
-    auto stat = fd.stat();
+    TRY_RESULT(stat, fd.stat());
     if (!stat.is_reg_) {
       return td::Status::Error("file is not regular");
     }

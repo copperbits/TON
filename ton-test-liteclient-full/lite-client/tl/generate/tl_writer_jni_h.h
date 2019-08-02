@@ -10,8 +10,9 @@ namespace td {
 class TD_TL_writer_jni_h : public TD_TL_writer_h {
  public:
   TD_TL_writer_jni_h(const std::string &tl_name, const std::string &string_type, const std::string &bytes_type,
+                     const std::string &secure_string_type, const std::string &secure_bytes_type,
                      const std::vector<std::string> &ext_include)
-      : TD_TL_writer_h(tl_name, string_type, bytes_type, ext_include) {
+      : TD_TL_writer_h(tl_name, string_type, bytes_type, secure_string_type, secure_bytes_type, ext_include) {
   }
 
   bool is_built_in_simple_type(const std::string &name) const override;

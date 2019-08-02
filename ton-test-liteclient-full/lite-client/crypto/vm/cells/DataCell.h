@@ -159,7 +159,7 @@ class DataCell : public Cell {
   std::string serialize() const;
   std::string to_hex() const;
   static td::int64 get_total_data_cells() {
-    return total_data_cells.sum();
+    return get_thread_safe_counter().sum();
   }
 
   template <class StorerT>
@@ -173,7 +173,10 @@ class DataCell : public Cell {
   static constexpr auto max_storage_size = max_refs * sizeof(void*) + (max_level + 1) * hash_bytes + max_bytes;
 
  private:
-  static td::ThreadSafeCounter total_data_cells;
+  static td::NamedThreadSafeCounter::CounterRef get_thread_safe_counter() {
+    static auto res = td::NamedThreadSafeCounter::get_default().get_counter("DataCell");
+    return res;
+  }
   static std::unique_ptr<DataCell> create_empty_data_cell(Info info);
 
   const Hash do_get_hash(td::uint32 level) const override;

@@ -120,7 +120,7 @@ int exec_ed25519_check_signature(VmState* st) {
   if (!key_int->export_bytes(key, 32, false)) {
     throw VmError{Excno::range_chk, "Ed25519 public key must fit in an unsigned 256-bit integer"};
   }
-  td::Ed25519::PublicKey pub_key{td::Slice{key, 32}};
+  td::Ed25519::PublicKey pub_key{td::SecureString(td::Slice{key, 32})};
   auto res = pub_key.verify_signature(td::Slice{hash, 32}, td::Slice{signature, 64});
   stack.push_bool(res.is_ok());
   return 0;
@@ -134,7 +134,7 @@ void register_ton_crypto_ops(OpcodeTable& cp0) {
 }
 
 int exec_load_var_integer(VmState* st, int len_bits, bool sgnd, bool quiet) {
-  if (len_bits == 4 && sgnd) {
+  if (len_bits == 4 && !sgnd) {
     VM_LOG(st) << "execute LDGRAMS" << (quiet ? "Q" : "");
   } else {
     VM_LOG(st) << "execute LDVAR" << (sgnd ? "" : "U") << "INT" << (1 << len_bits) << (quiet ? "Q" : "");
@@ -160,7 +160,7 @@ int exec_load_var_integer(VmState* st, int len_bits, bool sgnd, bool quiet) {
 }
 
 int exec_store_var_integer(VmState* st, int len_bits, bool sgnd, bool quiet) {
-  if (len_bits == 4 && sgnd) {
+  if (len_bits == 4 && !sgnd) {
     VM_LOG(st) << "execute STGRAMS" << (quiet ? "Q" : "");
   } else {
     VM_LOG(st) << "execute STVAR" << (sgnd ? "" : "U") << "INT" << (1 << len_bits) << (quiet ? "Q" : "");
@@ -338,10 +338,10 @@ int exec_parse_message_addr(VmState* st, bool quiet) {
 
 void register_ton_currency_address_ops(OpcodeTable& cp0) {
   using namespace std::placeholders;
-  cp0.insert(OpcodeInstr::mksimple(0xfa00, 16, "LDGRAMS", std::bind(exec_load_var_integer, _1, 4, true, false)))
-      .insert(OpcodeInstr::mksimple(0xfa01, 16, "LDVARINT16", std::bind(exec_load_var_integer, _1, 4, false, false)))
-      .insert(OpcodeInstr::mksimple(0xfa02, 16, "STGRAMS", std::bind(exec_store_var_integer, _1, 4, true, false)))
-      .insert(OpcodeInstr::mksimple(0xfa03, 16, "STVARINT16", std::bind(exec_store_var_integer, _1, 4, false, false)))
+  cp0.insert(OpcodeInstr::mksimple(0xfa00, 16, "LDGRAMS", std::bind(exec_load_var_integer, _1, 4, false, false)))
+      .insert(OpcodeInstr::mksimple(0xfa01, 16, "LDVARINT16", std::bind(exec_load_var_integer, _1, 4, true, false)))
+      .insert(OpcodeInstr::mksimple(0xfa02, 16, "STGRAMS", std::bind(exec_store_var_integer, _1, 4, false, false)))
+      .insert(OpcodeInstr::mksimple(0xfa03, 16, "STVARINT16", std::bind(exec_store_var_integer, _1, 4, true, false)))
       .insert(OpcodeInstr::mksimple(0xfa40, 16, "LDMSGADDR", std::bind(exec_load_message_addr, _1, false)))
       .insert(OpcodeInstr::mksimple(0xfa41, 16, "LDMSGADDRQ", std::bind(exec_load_message_addr, _1, true)))
       .insert(OpcodeInstr::mksimple(0xfa42, 16, "PARSEMSGADDR", std::bind(exec_parse_message_addr, _1, false)))

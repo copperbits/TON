@@ -19,7 +19,7 @@ char *str_dup(Slice str) {
   return res;
 }
 
-string implode(vector<string> v, char delimiter) {
+string implode(const vector<string> &v, char delimiter) {
   string result;
   for (auto &str : v) {
     if (!result.empty()) {
@@ -118,6 +118,73 @@ string url_encode(Slice str) {
   }
   CHECK(result.size() == length);
   return result;
+}
+
+namespace {
+
+template <class F>
+string x_decode(Slice s, F &&f) {
+  string res;
+  for (size_t n = s.size(), i = 0; i < n; i++) {
+    if (i + 1 < n && f(s[i])) {
+      res.append(static_cast<unsigned char>(s[i + 1]), s[i]);
+      i++;
+      continue;
+    }
+    res.push_back(s[i]);
+  }
+  return res;
+}
+
+template <class F>
+string x_encode(Slice s, F &&f) {
+  string res;
+  for (size_t n = s.size(), i = 0; i < n; i++) {
+    res.push_back(s[i]);
+    if (f(s[i])) {
+      unsigned char cnt = 1;
+      while (cnt < 250 && i + cnt < n && s[i + cnt] == s[i]) {
+        cnt++;
+      }
+      res.push_back(static_cast<char>(cnt));
+      i += cnt - 1;
+    }
+  }
+  return res;
+}
+
+bool is_zero(unsigned char c) {
+  return c == 0;
+}
+
+bool is_zero_or_one(unsigned char c) {
+  return c == 0 || c == 0xff;
+}
+
+}  // namespace
+
+string buffer_to_hex(Slice buffer) {
+  const char *hex = "0123456789ABCDEF";
+  std::string res(2 * buffer.size(), '\0');
+  for (std::size_t i = 0; i < buffer.size(); i++) {
+    auto c = buffer.ubegin()[i];
+    res[2 * i] = hex[c & 15];
+    res[2 * i + 1] = hex[c >> 4];
+  }
+  return res;
+}
+
+std::string zero_encode(Slice data) {
+  return x_encode(data, is_zero);
+}
+std::string zero_decode(Slice data) {
+  return x_decode(data, is_zero);
+}
+std::string zero_one_encode(Slice data) {
+  return x_encode(data, is_zero_or_one);
+}
+std::string zero_one_decode(Slice data) {
+  return x_decode(data, is_zero_or_one);
 }
 
 }  // namespace td

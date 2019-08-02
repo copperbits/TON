@@ -1,10 +1,10 @@
 #pragma once
 
 #include "crypto/common/bitstring.h"
-#include "td/utils/int_types.h"
-#include "td/utils/Slice.h"
 #include "td/utils/buffer.h"
 #include "td/utils/bits.h"
+#include "td/utils/Slice.h"
+#include "td/utils/UInt.h"
 
 namespace ton {
 
@@ -17,7 +17,7 @@ using Bits256 = td::BitArray<256>;  // was: td::UInt256
 using BlockHash = Bits256;
 using RootHash = Bits256;
 using FileHash = Bits256;
-using NodeIdShort = Bits256;    // compatible with AdnlNodeIdShort
+using NodeIdShort = Bits256;    // compatible with adnl::AdnlNodeIdShort
 using StdSmcAddress = Bits256;  // masterchain / base workchain smart-contract addresses
 using UnixTime = td::uint32;
 using LogicalTime = td::uint64;
@@ -220,7 +220,8 @@ struct BlockIdExt {
     return !(id == b.id && root_hash == b.root_hash && file_hash == b.file_hash);
   }
   bool operator<(const BlockIdExt& b) const {
-    return id < b.id || (id == b.id && file_hash < b.file_hash);
+    return id < b.id || (id == b.id && root_hash < b.root_hash) ||
+           (id == b.id && root_hash == b.root_hash && file_hash < b.file_hash);
   }
   ShardIdFull shard_full() const {
     return ShardIdFull(id);
@@ -294,7 +295,6 @@ struct ReceivedBlock {
 struct BlockBroadcast {
   BlockIdExt block_id;
   std::vector<BlockSignature> signatures;
-  BlockIdExt masterchain_block_id;
   CatchainSeqno catchain_seqno;
   td::uint32 validator_set_hash;
   td::BufferSlice data;

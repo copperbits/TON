@@ -190,6 +190,8 @@ class CppTypeCode {
   void generate_cons_tag_info(std::ostream& os, std::string nl, int options = 0);
   void generate_skip_method(std::ostream& os, int options = 0);
   void generate_skip_cons_method(std::ostream& os, std::string nl, int cidx, int options);
+  void generate_cons_tag_check(std::ostream& os, std::string nl, int cidx, bool force = false);
+  void generate_check_tag_method(std::ostream& os);
   void generate_unpack_method(std::ostream& os, ConsRecord& rec, int options);
   void generate_pack_method(std::ostream& os, ConsRecord& rec, int options);
   void generate_ext_fetch_to(std::ostream& os, int options);

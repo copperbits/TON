@@ -12,9 +12,11 @@ class FileLog : public LogInterface {
   static constexpr int64 DEFAULT_ROTATE_THRESHOLD = 10 * (1 << 20);
 
  public:
-  Status init(string path, int64 rotate_threshold = DEFAULT_ROTATE_THRESHOLD);
+  Status init(string path, int64 rotate_threshold = DEFAULT_ROTATE_THRESHOLD, bool redirect_stderr = true);
 
   Slice get_path() const;
+
+  vector<string> get_file_paths() override;
 
   void set_rotate_threshold(int64 rotate_threshold);
 
@@ -29,6 +31,7 @@ class FileLog : public LogInterface {
   string path_;
   int64 size_ = 0;
   int64 rotate_threshold_ = 0;
+  bool redirect_stderr_;
 
   void do_rotate();
 };

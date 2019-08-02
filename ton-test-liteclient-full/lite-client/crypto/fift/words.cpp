@@ -305,6 +305,10 @@ void interpret_xor(vm::Stack& stack) {
   stack.push_int(stack.pop_int() ^ stack.pop_int());
 }
 
+void interpret_has_type(vm::Stack& stack, int t) {
+  stack.push_bool(stack.pop_chk().type() == t);
+}
+
 void interpret_drop(vm::Stack& stack) {
   stack.check_underflow(1);
   stack.pop();
@@ -419,6 +423,67 @@ void interpret_exch2(vm::Stack& stack) {
 
 void interpret_depth(vm::Stack& stack) {
   stack.push_smallint(stack.depth());
+}
+
+void interpret_xchg0(vm::Stack& stack, int x) {
+  stack.check_underflow_p(x);
+  std::swap(stack.tos(), stack.at(x));
+}
+
+void interpret_xchg(vm::Stack& stack, int x, int y) {
+  stack.check_underflow_p(x, y);
+  std::swap(stack.at(x), stack.at(y));
+}
+
+void interpret_push(vm::Stack& stack, int x) {
+  stack.check_underflow_p(x);
+  stack.push(stack.fetch(x));
+}
+
+void interpret_pop(vm::Stack& stack, int x) {
+  stack.check_underflow_p(x);
+  std::swap(stack.tos(), stack.at(x));
+  stack.pop();
+}
+
+Ref<StackWord> dup_word_def{true, interpret_dup}, over_word_def{true, interpret_over},
+    drop_word_def{true, interpret_drop}, nip_word_def{true, interpret_nip}, swap_word_def{true, interpret_swap};
+
+void interpret_make_xchg(vm::Stack& stack) {
+  using namespace std::placeholders;
+  int y = stack.pop_smallint_range(255), x = stack.pop_smallint_range(255);
+  if (x > y) {
+    std::swap(x, y);
+  }
+  if (x) {
+    stack.push_object(td::Ref<StackWord>{true, std::bind(interpret_xchg, _1, x, y)});
+  } else if (y <= 1) {
+    stack.push_object(y ? swap_word_def : Dictionary::nop_word_def);
+  } else {
+    stack.push_object(td::Ref<StackWord>{true, std::bind(interpret_xchg0, _1, y)});
+  }
+}
+
+void interpret_make_push(vm::Stack& stack) {
+  int x = stack.pop_smallint_range(255);
+  if (x <= 1) {
+    stack.push_object(x ? over_word_def : dup_word_def);
+  } else {
+    stack.push_object(td::Ref<StackWord>{true, std::bind(interpret_push, std::placeholders::_1, x)});
+  }
+}
+
+void interpret_make_pop(vm::Stack& stack) {
+  int x = stack.pop_smallint_range(255);
+  if (x <= 1) {
+    stack.push_object(x ? nip_word_def : drop_word_def);
+  } else {
+    stack.push_object(td::Ref<StackWord>{true, std::bind(interpret_pop, std::placeholders::_1, x)});
+  }
+}
+
+void interpret_is_string(vm::Stack& stack) {
+  stack.push_bool(stack.pop().type() == vm::StackEntry::t_string);
 }
 
 int make_utf8_char(char buffer[4], int x) {
@@ -762,13 +827,20 @@ void interpret_store_ref(vm::Stack& stack) {
   stack.push(std::move(cb));
 }
 
-void interpret_store_end(vm::Stack& stack) {
-  stack.push_cell(stack.pop_builder()->finalize_copy());
+void interpret_store_end(vm::Stack& stack, bool special) {
+  auto cell = stack.pop_builder()->finalize_copy(special);
+  if (cell.is_null()) {
+    throw IntError{"invalid special cell constructed"};
+  }
+  stack.push_cell(std::move(cell));
 }
 
 void interpret_from_cell(vm::Stack& stack) {
   auto cell = stack.pop_cell();
-  Ref<vm::CellSlice> cs{true, vm::NoVm(), std::move(cell)};
+  Ref<vm::CellSlice> cs{true};
+  if (!cs.unique_write().load(vm::NoVmOrd(), std::move(cell))) {
+    throw IntError{"deserializing a special cell as ordinary"};
+  }
   stack.push(cs);
 }
 
@@ -922,6 +994,17 @@ void interpret_tuple_push(vm::Stack& stack) {
   stack.push_tuple(std::move(tuple));
 }
 
+void interpret_tuple_pop(vm::Stack& stack) {
+  auto tuple = stack.pop_tuple();
+  if (tuple->empty()) {
+    throw IntError{"empty tuple"};
+  }
+  auto val = tuple->back();
+  tuple.write().pop_back();
+  stack.push_tuple(std::move(tuple));
+  stack.push(std::move(val));
+}
+
 void interpret_tuple_len(vm::Stack& stack) {
   stack.push_smallint(stack.pop_tuple()->size());
 }
@@ -933,6 +1016,17 @@ void interpret_tuple_index(vm::Stack& stack) {
     throw vm::VmError{vm::Excno::range_chk, "array index out of range"};
   }
   stack.push((*tuple)[idx]);
+}
+
+void interpret_tuple_set(vm::Stack& stack) {
+  auto idx = stack.pop_long_range(std::numeric_limits<long long>::max());
+  auto val = stack.pop_chk();
+  auto tuple = stack.pop_tuple();
+  if ((std::size_t)idx >= tuple->size()) {
+    throw vm::VmError{vm::Excno::range_chk, "array index out of range"};
+  }
+  tuple.write()[idx] = std::move(val);
+  stack.push_tuple(std::move(tuple));
 }
 
 void interpret_make_tuple(vm::Stack& stack) {
@@ -999,6 +1093,10 @@ void interpret_atom(vm::Stack& stack) {
   }
 }
 
+void interpret_atom_name(vm::Stack& stack) {
+  stack.push_string(stack.pop_atom()->name_ext());
+}
+
 void interpret_atom_anon(vm::Stack& stack) {
   stack.push_atom(vm::Atom::anon());
 }
@@ -1007,7 +1105,7 @@ void interpret_is_atom(vm::Stack& stack) {
   stack.push_bool(stack.pop().is_atom());
 }
 
-bool are_eq(vm::StackEntry x, vm::StackEntry y) {
+bool are_eqv(vm::StackEntry x, vm::StackEntry y) {
   if (x.type() != y.type()) {
     return false;
   }
@@ -1018,14 +1116,21 @@ bool are_eq(vm::StackEntry x, vm::StackEntry y) {
       return std::move(x).as_atom() == std::move(y).as_atom();
     case vm::StackEntry::t_int:
       return !td::cmp(std::move(x).as_int(), std::move(y).as_int());
+    case vm::StackEntry::t_string:
+      return std::move(x).as_string() == std::move(y).as_string();
     default:
       return false;
   }
 }
 
+void interpret_is_eqv(vm::Stack& stack) {
+  auto y = stack.pop(), x = stack.pop();
+  stack.push_bool(are_eqv(std::move(x), std::move(y)));
+}
+
 void interpret_is_eq(vm::Stack& stack) {
   auto y = stack.pop(), x = stack.pop();
-  stack.push_bool(are_eq(std::move(x), std::move(y)));
+  stack.push_bool(x == y);
 }
 
 // BoC (de)serialization
@@ -1123,7 +1228,7 @@ void interpret_priv_key_to_pub(vm::Stack& stack) {
   if (str.size() != 32) {
     throw IntError{"Ed25519 private key must be exactly 32 bytes long"};
   }
-  td::Ed25519::PrivateKey priv_key{td::Slice{str}};
+  td::Ed25519::PrivateKey priv_key{td::SecureString{str}};
   auto pub_key = priv_key.get_public_key();
   if (!pub_key.is_ok()) {
     throw fift::IntError{pub_key.error().to_string()};
@@ -1137,7 +1242,7 @@ void interpret_ed25519_sign(vm::Stack& stack) {
   if (key.size() != 32) {
     throw IntError{"Ed25519 private key must be exactly 32 bytes long"};
   }
-  td::Ed25519::PrivateKey priv_key{td::Slice{key}};
+  td::Ed25519::PrivateKey priv_key{td::SecureString{key}};
   auto signature = priv_key.sign(td::Slice{data});
   if (!signature.is_ok()) {
     throw fift::IntError{signature.error().to_string()};
@@ -1156,7 +1261,7 @@ void interpret_ed25519_sign_uint(vm::Stack& stack) {
   if (!data_int->export_bytes(data, 32, false)) {
     throw IntError{"Ed25519 data to be signed must fit into 256 bits"};
   }
-  td::Ed25519::PrivateKey priv_key{td::Slice{key}};
+  td::Ed25519::PrivateKey priv_key{td::SecureString{key}};
   auto signature = priv_key.sign(td::Slice{data, 32});
   if (!signature.is_ok()) {
     throw fift::IntError{signature.error().to_string()};
@@ -1173,7 +1278,7 @@ void interpret_ed25519_chksign(vm::Stack& stack) {
   if (signature.size() != 64) {
     throw IntError{"Ed25519 signature must be exactly 64 bytes long"};
   }
-  td::Ed25519::PublicKey pub_key{td::Slice{key}};
+  td::Ed25519::PublicKey pub_key{td::SecureString{key}};
   auto res = pub_key.verify_signature(td::Slice{data}, td::Slice{signature});
   stack.push_bool(res.is_ok());
 }
@@ -1209,9 +1314,9 @@ void interpret_dict_add_u(vm::Stack& stack, vm::Dictionary::SetMode mode, bool a
   }
   bool res;
   if (add_builder) {
-    res = dict.set_builder(key.get_bitptr(), key.size(), stack.pop_builder(), mode);
+    res = dict.set_builder(std::move(key), stack.pop_builder(), mode);
   } else {
-    res = dict.set(key.get_bitptr(), key.size(), stack.pop_cellslice(), mode);
+    res = dict.set(std::move(key), stack.pop_cellslice(), mode);
   }
   stack.push_maybe_cell(std::move(dict).extract_root_cell());
   stack.push_bool(res);
@@ -1225,7 +1330,7 @@ void interpret_dict_get_u(vm::Stack& stack, bool sgnd) {
   if (!key.is_valid()) {
     throw IntError{"not enough bits for a dictionary key"};
   }
-  auto res = dict.lookup(key.get_bitptr(), key.size());
+  auto res = dict.lookup(std::move(key));
   if (res.not_null()) {
     stack.push_cellslice(std::move(res));
     stack.push_bool(true);
@@ -1365,7 +1470,7 @@ void interpret_pfx_dict_get(vm::Stack& stack) {
 }
 
 void interpret_bytes_hex_literal(IntCtx& ctx) {
-  std::string s = ctx.scan_word_to('}');
+  auto s = ctx.scan_word_to('}');
   std::string t;
   t.reserve(s.size() >> 1);
   int v = 1;
@@ -1398,9 +1503,9 @@ void interpret_bytes_hex_literal(IntCtx& ctx) {
 }
 
 void interpret_bitstring_hex_literal(IntCtx& ctx) {
-  std::string s = ctx.scan_word_to('}');
+  auto s = ctx.scan_word_to('}');
   unsigned char buff[128];
-  int bits = (int)td::bitstring::parse_bitstring_hex_literal(buff, sizeof(buff), s.c_str(), s.c_str() + s.size());
+  int bits = (int)td::bitstring::parse_bitstring_hex_literal(buff, sizeof(buff), s.begin(), s.end());
   if (bits < 0) {
     throw IntError{"Invalid hex bitstring constant"};
   }
@@ -1410,9 +1515,9 @@ void interpret_bitstring_hex_literal(IntCtx& ctx) {
 }
 
 void interpret_bitstring_binary_literal(IntCtx& ctx) {
-  std::string s = ctx.scan_word_to('}');
+  auto s = ctx.scan_word_to('}');
   unsigned char buff[128];
-  int bits = (int)td::bitstring::parse_bitstring_binary_literal(buff, sizeof(buff), s.c_str(), s.c_str() + s.size());
+  int bits = (int)td::bitstring::parse_bitstring_binary_literal(buff, sizeof(buff), s.begin(), s.end());
   if (bits < 0) {
     throw IntError{"Invalid binary bitstring constant"};
   }
@@ -1423,8 +1528,17 @@ void interpret_bitstring_binary_literal(IntCtx& ctx) {
 
 void interpret_word(IntCtx& ctx) {
   char sep = (char)ctx.stack.pop_smallint_range(127);
-  std::string word = (sep != ' ' ? ctx.scan_word_to(sep, true) : ctx.scan_word());
+  auto word = (sep != ' ' ? ctx.scan_word_to(sep, true) : ctx.scan_word());
   ctx.stack.push_string(word);
+}
+
+void interpret_word_ext(IntCtx& ctx) {
+  int mode = ctx.stack.pop_smallint_range(11);
+  auto delims = ctx.stack.pop_string();
+  if (mode & 8) {
+    ctx.skipspc(mode & 4);
+  }
+  ctx.stack.push_string(ctx.scan_word_ext(CharClassifier{delims, mode & 3}));
 }
 
 void interpret_skipspc(IntCtx& ctx) {
@@ -1492,7 +1606,7 @@ void interpret_create_aux(IntCtx& ctx, int mode) {
 
 // { bl word 0 (create) } : create
 void interpret_create(IntCtx& ctx) {
-  std::string word = ctx.scan_word();
+  auto word = ctx.scan_word();
   if (!word.size()) {
     throw IntError{"non-empty word name expected"};
   }
@@ -1534,8 +1648,7 @@ void interpret_forget(IntCtx& ctx) {
 }
 
 void interpret_quote_str(IntCtx& ctx) {
-  std::string s = ctx.scan_word_to('"');
-  ctx.stack.push_string(s);
+  ctx.stack.push_string(ctx.scan_word_to('"'));
   push_argcount(ctx.stack, 1);
 }
 
@@ -1564,9 +1677,9 @@ int str_utf8_code(const char* str, int& len) {
 }
 
 void interpret_char(IntCtx& ctx) {
-  std::string s = ctx.scan_word();
+  auto s = ctx.scan_word();
   int len = (s.size() < 10 ? (int)s.size() : 10);
-  int code = str_utf8_code(s.c_str(), len);
+  int code = str_utf8_code(s.data(), len);
   if (code < 0 || s.size() != (unsigned)len) {
     throw IntError{"exactly one character expected"};
   }
@@ -1617,7 +1730,7 @@ int parse_number(std::string s, td::RefInt256& num, td::RefInt256& denom, bool a
     }
   } else {
     base = 10;
-    if (x.parse_dec(str, len, frac_ptr) != len) {
+    if (!len || x.parse_dec(str, len, frac_ptr) != len) {
       return 0;
     }
   }
@@ -1678,37 +1791,48 @@ void interpret_abort(IntCtx& ctx) {
   throw IntError{ctx.stack.pop_string()};
 }
 
-void interpret_execute(IntCtx& ctx) {
-  auto wd_ref = pop_exec_token(ctx);
-  wd_ref->run(ctx);
+Ref<WordDef> interpret_execute(IntCtx& ctx) {
+  return pop_exec_token(ctx);
 }
 
-void interpret_execute_times(IntCtx& ctx) {
+Ref<WordDef> interpret_execute_times(IntCtx& ctx) {
   int count = ctx.stack.pop_smallint_range(1000000000);
   auto wd_ref = pop_exec_token(ctx);
-  while (--count >= 0) {
+  if (!count) {
+    return {};
+  }
+  while (--count > 0) {
     wd_ref->run(ctx);
   }
+  return wd_ref;
 }
 
-void interpret_if(IntCtx& ctx) {
+Ref<WordDef> interpret_if(IntCtx& ctx) {
   auto true_ref = pop_exec_token(ctx);
   if (ctx.stack.pop_bool()) {
-    true_ref->run(ctx);
+    return true_ref;
+  } else {
+    return {};
   }
 }
 
-void interpret_ifnot(IntCtx& ctx) {
+Ref<WordDef> interpret_ifnot(IntCtx& ctx) {
   auto false_ref = pop_exec_token(ctx);
-  if (!ctx.stack.pop_bool()) {
-    false_ref->run(ctx);
+  if (ctx.stack.pop_bool()) {
+    return {};
+  } else {
+    return false_ref;
   }
 }
 
-void interpret_cond(IntCtx& ctx) {
+Ref<WordDef> interpret_cond(IntCtx& ctx) {
   auto false_ref = pop_exec_token(ctx);
   auto true_ref = pop_exec_token(ctx);
-  (ctx.stack.pop_bool() ? true_ref : false_ref)->run(ctx);
+  if (ctx.stack.pop_bool()) {
+    return true_ref;
+  } else {
+    return false_ref;
+  }
 }
 
 void interpret_while(IntCtx& ctx) {
@@ -1731,7 +1855,7 @@ void interpret_until(IntCtx& ctx) {
 }
 
 void interpret_tick(IntCtx& ctx) {
-  std::string word = ctx.scan_word();
+  std::string word = ctx.scan_word().str();
   auto entry = ctx.dictionary->lookup(word);
   if (!entry) {
     entry = ctx.dictionary->lookup(word + ' ');
@@ -1772,6 +1896,10 @@ void interpret_include(IntCtx& ctx) {
   IntCtx::Savepoint save{ctx, td::PathView(file.path).file_name().str(), td::PathView(file.path).parent_dir().str(),
                          &ss};
   funny_interpret_loop(ctx);
+}
+
+void interpret_skip_source(vm::Stack& stack) {
+  throw SkipToEof();
 }
 
 void interpret_words(IntCtx& ctx) {
@@ -1858,13 +1986,23 @@ class OstreamLogger : public td::LogInterface {
   std::ostream* stream_{nullptr};
 };
 
+td::Ref<vm::Box> vm_libraries{true};
+
+std::vector<Ref<vm::Cell>> get_vm_libraries() {
+  if (vm_libraries->get().type() == vm::StackEntry::t_cell) {
+    return {vm_libraries->get().as_cell()};
+  } else {
+    return {};
+  }
+}
+
 void interpret_run_vm_code(IntCtx& ctx, bool with_gas) {
   long long gas_limit = with_gas ? ctx.stack.pop_long_range(vm::GasLimits::infty) : vm::GasLimits::infty;
   auto cs = ctx.stack.pop_cellslice();
   OstreamLogger ostream_logger(ctx.error_stream);
   auto log = create_vm_log(ctx.error_stream ? &ostream_logger : nullptr);
   vm::GasLimits gas{gas_limit};
-  int res = vm::run_vm_code(cs, ctx.stack, 0, nullptr, log, nullptr, &gas);
+  int res = vm::run_vm_code(cs, ctx.stack, 0, nullptr, log, nullptr, &gas, get_vm_libraries());
   ctx.stack.push_smallint(res);
   if (with_gas) {
     ctx.stack.push_smallint(gas.gas_consumed());
@@ -1877,7 +2015,7 @@ void interpret_run_vm_dict(IntCtx& ctx, bool with_gas) {
   OstreamLogger ostream_logger(ctx.error_stream);
   auto log = create_vm_log(ctx.error_stream ? &ostream_logger : nullptr);
   vm::GasLimits gas{gas_limit};
-  int res = vm::run_vm_code(cs, ctx.stack, 3, nullptr, log, nullptr, &gas);
+  int res = vm::run_vm_code(cs, ctx.stack, 3, nullptr, log, nullptr, &gas, get_vm_libraries());
   ctx.stack.push_smallint(res);
   if (with_gas) {
     ctx.stack.push_smallint(gas.gas_consumed());
@@ -2124,6 +2262,10 @@ void init_words_common(Dictionary& d) {
   d.def_stack_word("exch2 ", interpret_exch2);
   d.def_stack_word("depth ", interpret_depth);
   d.def_stack_word("?dup ", interpret_cond_dup);
+  // low-level stack manipulation
+  d.def_stack_word("<xchg> ", interpret_make_xchg);
+  d.def_stack_word("<push> ", interpret_make_push);
+  d.def_stack_word("<pop> ", interpret_make_pop);
   // arithmetic
   d.def_stack_word("+ ", interpret_plus);
   d.def_stack_word("- ", interpret_minus);
@@ -2163,6 +2305,8 @@ void init_words_common(Dictionary& d) {
   d.def_stack_word("<</ ", std::bind(interpret_lshift_div, _1, -1));
   d.def_stack_word("<</c ", std::bind(interpret_lshift_div, _1, 1));
   d.def_stack_word("<</r ", std::bind(interpret_lshift_div, _1, 0));
+  d.def_stack_word("integer? ", std::bind(interpret_has_type, _1, vm::StackEntry::t_int));
+  d.def_stack_word("box? ", std::bind(interpret_has_type, _1, vm::StackEntry::t_box));
   // logical
   d.def_stack_word("not ", interpret_not);
   d.def_stack_word("and ", interpret_and);
@@ -2200,6 +2344,7 @@ void init_words_common(Dictionary& d) {
   d.def_ctx_word("space ", std::bind(interpret_emit_const, _1, ' '));
   d.def_ctx_word("cr ", std::bind(interpret_emit_const, _1, '\n'));
   d.def_ctx_word("type ", interpret_type);
+  d.def_stack_word("string? ", interpret_is_string);
   d.def_stack_word("chr ", interpret_chr);
   d.def_stack_word("hold ", interpret_hold);
   d.def_stack_word("(number) ", interpret_parse_number);
@@ -2240,7 +2385,8 @@ void init_words_common(Dictionary& d) {
   d.def_stack_word("B, ", interpret_store_bytes);
   d.def_stack_word("s, ", interpret_store_cellslice);
   d.def_stack_word("sr, ", interpret_store_cellslice_ref);
-  d.def_stack_word("b> ", interpret_store_end);
+  d.def_stack_word("b> ", std::bind(interpret_store_end, _1, false));
+  d.def_stack_word("b>spec ", std::bind(interpret_store_end, _1, true));
   d.def_stack_word("$>s ", interpret_string_to_cellslice);
   d.def_stack_word("|+ ", interpret_concat_cellslice);
   d.def_stack_word("|_ ", interpret_concat_cellslice_ref);
@@ -2331,7 +2477,9 @@ void init_words_common(Dictionary& d) {
   // tuples/arrays
   d.def_stack_word("| ", interpret_empty_tuple);
   d.def_stack_word(", ", interpret_tuple_push);
+  d.def_stack_word("tpop ", interpret_tuple_pop);
   d.def_stack_word("[] ", interpret_tuple_index);
+  d.def_stack_word("[]= ", interpret_tuple_set);
   d.def_stack_word("count ", interpret_tuple_len);
   d.def_stack_word("tuple? ", interpret_is_tuple);
   d.def_stack_word("tuple ", interpret_make_tuple);
@@ -2341,14 +2489,16 @@ void init_words_common(Dictionary& d) {
   // atoms
   d.def_stack_word("anon ", interpret_atom_anon);
   d.def_stack_word("(atom) ", interpret_atom);
+  d.def_stack_word("atom>$ ", interpret_atom_name);
   d.def_stack_word("eq? ", interpret_is_eq);
+  d.def_stack_word("eqv? ", interpret_is_eqv);
   d.def_stack_word("atom? ", interpret_is_atom);
   // execution control
-  d.def_ctx_word("execute ", interpret_execute);
-  d.def_ctx_word("times ", interpret_execute_times);
-  d.def_ctx_word("if ", interpret_if);
-  d.def_ctx_word("ifnot ", interpret_ifnot);
-  d.def_ctx_word("cond ", interpret_cond);
+  d.def_ctx_tail_word("execute ", interpret_execute);
+  d.def_ctx_tail_word("times ", interpret_execute_times);
+  d.def_ctx_tail_word("if ", interpret_if);
+  d.def_ctx_tail_word("ifnot ", interpret_ifnot);
+  d.def_ctx_tail_word("cond ", interpret_cond);
   d.def_ctx_word("while ", interpret_while);
   d.def_ctx_word("until ", interpret_until);
   // compiler control
@@ -2375,8 +2525,10 @@ void init_words_common(Dictionary& d) {
   d.def_ctx_word("words ", interpret_words);
   // input parse
   d.def_ctx_word("word ", interpret_word);
+  d.def_ctx_word("(word) ", interpret_word_ext);
   d.def_ctx_word("skipspc ", interpret_skipspc);
   d.def_ctx_word("include ", interpret_include);
+  d.def_stack_word("skip-to-eof ", interpret_skip_source);
   d.def_ctx_word("abort ", interpret_abort);
   d.def_ctx_word("quit ", interpret_quit);
   d.def_ctx_word("bye ", interpret_bye);
@@ -2397,6 +2549,7 @@ void init_words_vm(Dictionary& d) {
   using namespace std::placeholders;
   vm::init_op_cp0();
   // vm run
+  d.def_stack_word("vmlibs ", std::bind(interpret_literal, _1, vm::StackEntry{vm_libraries}));
   d.def_ctx_word("runvmcode ", std::bind(interpret_run_vm_code, _1, false));
   d.def_ctx_word("gasrunvmcode ", std::bind(interpret_run_vm_code, _1, true));
   d.def_ctx_word("runvmdict ", std::bind(interpret_run_vm_dict, _1, false));
@@ -2518,6 +2671,8 @@ int funny_interpret_loop(IntCtx& ctx) {
         } else {
           return q.res;
         }
+      } catch (SkipToEof) {
+        return 0;
       }
     };
     if (!ok) {

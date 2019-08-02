@@ -17,6 +17,8 @@
 
 #define REF_NEW ref new
 #define CLRCALL
+#define DEPRECATED_ATTRIBUTE(message) ::Windows::Foundation::Metadata::Deprecated(message,\
+                                      ::Windows::Foundation::Metadata::DeprecationType::Deprecate, 0x0)
 
 namespace CxCli {
 
@@ -84,6 +86,7 @@ inline String^ string_from_unmanaged(const std::string &from) {
 
 #define REF_NEW gcnew
 #define CLRCALL __clrcall
+#define DEPRECATED_ATTRIBUTE(message) System::ObsoleteAttribute(message)
 
 namespace CxCli {
 

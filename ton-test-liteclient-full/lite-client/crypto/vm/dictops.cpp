@@ -185,7 +185,7 @@ std::string dump_subdictop2(unsigned args, const char* name) {
 
 int exec_dict_get(VmState* st, unsigned args) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute DICT" << (args & 4 ? (args & 2 ? "U" : "I") : "") << "GET" << (args & 1 ? "REF\n" : "\n");
+  VM_LOG(st) << "execute DICT" << (args & 4 ? (args & 2 ? "U" : "I") : "") << "GET" << (args & 1 ? "REF" : "");
   stack.check_underflow(3);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
   Dictionary dict{stack.pop_maybe_cell(), n};
@@ -204,7 +204,7 @@ int exec_dict_get(VmState* st, unsigned args) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
   }
   if (args & 1) {
-    auto value = dict.lookup_ref(key.get_bitptr(), key.size());
+    auto value = dict.lookup_ref(key.bits(), key.size());
     if (value.not_null()) {
       stack.push_cell(std::move(value));
       stack.push_smallint(-1);
@@ -212,7 +212,7 @@ int exec_dict_get(VmState* st, unsigned args) {
       stack.push_smallint(0);
     }
   } else {
-    auto value = dict.lookup(key.get_bitptr(), key.size());
+    auto value = dict.lookup(key.bits(), key.size());
     if (value.not_null()) {
       stack.push_cellslice(std::move(value));
       stack.push_smallint(-1);
@@ -223,11 +223,35 @@ int exec_dict_get(VmState* st, unsigned args) {
   return 0;
 }
 
+int exec_dict_get_optref(VmState* st, unsigned args) {
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute DICT" << (args & 2 ? (args & 1 ? "U" : "I") : "") << "GETOPTREF";
+  stack.check_underflow(3);
+  int n = stack.pop_smallint_range(Dictionary::max_key_bits);
+  Dictionary dict{stack.pop_maybe_cell(), n};
+  BitSlice key;
+  unsigned char buffer[Dictionary::max_key_bytes];
+  if (args & 2) {
+    key = dict.integer_key(stack.pop_int(), n, !(args & 1), buffer, true);
+    if (!key.is_valid()) {
+      stack.push_null();
+      return 0;
+    }
+  } else {
+    key = stack.pop_cellslice()->prefetch_bits(n);
+  }
+  if (!key.is_valid()) {
+    throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
+  }
+  stack.push_maybe_cell(dict.lookup_ref(key.bits(), key.size()));
+  return 0;
+}
+
 int exec_dict_set(VmState* st, unsigned args, Dictionary::SetMode mode, const char* name, bool bld = false) {
   args <<= (bld ? 1 : 0);
   Stack& stack = st->get_stack();
   VM_LOG(st) << "execute DICT" << (args & 4 ? (args & 2 ? "U" : "I") : "") << name
-             << (args & 1 ? "REF\n" : (bld ? "B\n" : "\n"));
+             << (args & 1 ? "REF" : (bld ? "B" : ""));
   stack.check_underflow(4);
   int n = stack.pop_smallint_range(Dictionary::max_key_bits);
   Dictionary dict{stack.pop_maybe_cell(), n};
@@ -244,19 +268,19 @@ int exec_dict_set(VmState* st, unsigned args, Dictionary::SetMode mode, const ch
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    res = dict.set_builder(key.get_bitptr(), key.size(), std::move(new_value), mode);
+    res = dict.set_builder(key.bits(), key.size(), std::move(new_value), mode);
   } else if (!(args & 1)) {
     auto new_value = stack.pop_cellslice();
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    res = dict.set(key.get_bitptr(), key.size(), std::move(new_value), mode);
+    res = dict.set(key.bits(), key.size(), std::move(new_value), mode);
   } else {
     auto new_value_ref = stack.pop_cell();
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    res = dict.set_ref(key.get_bitptr(), key.size(), std::move(new_value_ref), mode);
+    res = dict.set_ref(key.bits(), key.size(), std::move(new_value_ref), mode);
   }
   push_dict(stack, std::move(dict));
   if (mode == Dictionary::SetMode::Set) {
@@ -288,7 +312,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    auto res = dict.lookup_set_builder(key.get_bitptr(), key.size(), std::move(new_value), mode);
+    auto res = dict.lookup_set_builder(key.bits(), key.size(), std::move(new_value), mode);
     push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cellslice(std::move(res));
@@ -301,7 +325,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    auto res = dict.lookup_set(key.get_bitptr(), key.size(), std::move(new_value), mode);
+    auto res = dict.lookup_set(key.bits(), key.size(), std::move(new_value), mode);
     push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cellslice(std::move(res));
@@ -314,7 +338,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    auto res = dict.lookup_set_ref(key.get_bitptr(), key.size(), std::move(new_value_ref), mode);
+    auto res = dict.lookup_set_ref(key.bits(), key.size(), std::move(new_value_ref), mode);
     push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cell(std::move(res));
@@ -347,7 +371,7 @@ int exec_dict_delete(VmState* st, unsigned args) {
   if (!key.is_valid()) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
   }
-  bool res = dict.lookup_delete(key.get_bitptr(), key.size()).not_null();
+  bool res = dict.lookup_delete(key.bits(), key.size()).not_null();
   push_dict(stack, std::move(dict));
   stack.push_bool(res);
   return 0;
@@ -375,7 +399,7 @@ int exec_dict_deleteget(VmState* st, unsigned args) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
   }
   if (!(args & 1)) {
-    auto res = dict.lookup_delete(key.get_bitptr(), key.size());
+    auto res = dict.lookup_delete(key.bits(), key.size());
     push_dict(stack, std::move(dict));
     bool ok = res.not_null();
     if (ok) {
@@ -383,7 +407,7 @@ int exec_dict_deleteget(VmState* st, unsigned args) {
     }
     stack.push_bool(ok);
   } else {
-    auto res = dict.lookup_delete_ref(key.get_bitptr(), key.size());
+    auto res = dict.lookup_delete_ref(key.bits(), key.size());
     push_dict(stack, std::move(dict));
     bool ok = res.not_null();
     if (ok) {
@@ -391,6 +415,34 @@ int exec_dict_deleteget(VmState* st, unsigned args) {
     }
     stack.push_bool(ok);
   }
+  return 0;
+}
+
+int exec_dict_setget_optref(VmState* st, unsigned args) {
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute DICT" << (args & 2 ? (args & 1 ? "U" : "I") : "") << "SETGETOPTREF";
+  stack.check_underflow(4);
+  int n = stack.pop_smallint_range(Dictionary::max_key_bits);
+  Dictionary dict{stack.pop_maybe_cell(), n};
+  BitSlice key;
+  unsigned char buffer[Dictionary::max_key_bytes];
+  if (args & 2) {
+    key = dict.integer_key(stack.pop_int(), n, !(args & 1), buffer);
+  } else {
+    key = stack.pop_cellslice()->prefetch_bits(n);
+  }
+  auto new_value = stack.pop_maybe_cell();
+  if (!key.is_valid()) {
+    throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
+  }
+  Ref<vm::Cell> value;
+  if (new_value.not_null()) {
+    value = dict.lookup_set_ref(key.bits(), key.size(), std::move(new_value));
+  } else {
+    value = dict.lookup_delete_ref(key.bits(), key.size());
+  }
+  push_dict(stack, std::move(dict));
+  stack.push_maybe_cell(std::move(value));
   return 0;
 }
 
@@ -460,7 +512,7 @@ int exec_dict_getnear(VmState* st, unsigned args) {
     if (!key_hint.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key hint"};
     }
-    td::BitPtr{buffer}.copy_from(key_hint.get_bitptr(), n);
+    td::BitPtr{buffer}.copy_from(key_hint.bits(), n);
     key_hint.forget();
     auto res = dict.lookup_nearest_key(td::BitPtr{buffer}, n, go_up, allow_eq, false);
     if (res.is_null()) {
@@ -657,7 +709,7 @@ int exec_subdict_get(VmState* st, unsigned args) {
   if (!key.is_valid()) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key prefix"};
   }
-  if (!dict.cut_prefix_subdict(key.get_bitptr(), k, args & 4)) {
+  if (!dict.cut_prefix_subdict(key.bits(), k, args & 4)) {
     throw VmError{Excno::dict_err, "cannot construct subdictionary by key prefix"};
   }
   push_dict(stack, std::move(dict));
@@ -706,6 +758,10 @@ void register_dictionary_ops(OpcodeTable& cp0) {
       .insert(OpcodeInstr::mkfixedrange(0xf459, 0xf45c, 16, 2, std::bind(dump_dictop2, _2, "DEL"), exec_dict_delete))
       .insert(
           OpcodeInstr::mkfixedrange(0xf462, 0xf468, 16, 3, std::bind(dump_dictop, _2, "DELGET"), exec_dict_deleteget))
+      .insert(OpcodeInstr::mkfixedrange(0xf469, 0xf46c, 16, 2, std::bind(dump_dictop2, _2, "GETOPTREF"),
+                                        exec_dict_get_optref))
+      .insert(OpcodeInstr::mkfixedrange(0xf46d, 0xf470, 16, 2, std::bind(dump_dictop2, _2, "SETGETOPTREF"),
+                                        exec_dict_setget_optref))
       .insert(OpcodeInstr::mksimple(0xf470, 16, "PFXDICTSET",
                                     std::bind(exec_pfx_dict_set, _1, PrefixDictionary::SetMode::Set, "SET")))
       .insert(OpcodeInstr::mksimple(0xf471, 16, "PFXDICTREPLACE",

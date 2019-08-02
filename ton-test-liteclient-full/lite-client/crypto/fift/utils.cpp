@@ -6,7 +6,7 @@
 namespace fift {
 namespace {
 std::string fift_dir() {
-  return td::PathView(td::realpath(__FILE__).move_as_ok()).parent_dir().str();
+  return td::PathView(td::realpath(__FILE__).move_as_ok()).parent_dir().str() + "lib/";
 }
 std::string load_source(std::string name, std::string dir = fift_dir()) {
   return td::read_file_str(dir + name).move_as_ok();
