@@ -816,7 +816,7 @@ bool CellSlice::is_prefix_of(td::ConstBitPtr bs, unsigned len) const {
 bool CellSlice::is_prefix_of(const td::BitSlice& bs, unsigned offs, unsigned max_len) const {
   max_len = std::min(max_len, size());
   return max_len + offs <= bs.size() &&
-         !td::bitstring::bits_memcmp(data_bits(), bs.get_bitptr() + offs, max_len, 0);
+         !td::bitstring::bits_memcmp(data_bits(), bs.bits() + offs, max_len, 0);
 }
 */
 
@@ -855,7 +855,7 @@ int CellSlice::common_prefix_len(const CellSlice& cs2) const {
 
 /*
 int CellSlice::common_prefix_len(const td::BitSlice& bs, unsigned offs, unsigned max_len) const {
-  return common_prefix_len(bs.get_bitptr() + offs, std::min(bs.size() - offs, max_len));
+  return common_prefix_len(bs.bits() + offs, std::min(bs.size() - offs, max_len));
 }
 */
 
@@ -990,8 +990,8 @@ VirtualCell::LoadedCell load_cell_slice_impl(const Ref<Cell>& cell, bool* can_be
     if (loaded_cell.data_cell->special_type() == DataCell::SpecialType::Library) {
       if (vm_state_interface) {
         CellSlice cs(std::move(loaded_cell));
-        DCHECK(cs.size() == Cell::hash_bits);
-        auto library_cell = vm_state_interface->load_library(cs.data_bits());
+        DCHECK(cs.size() == Cell::hash_bits + 8);
+        auto library_cell = vm_state_interface->load_library(cs.data_bits() + 8);
         if (library_cell.not_null()) {
           //TODO: fix infinity loop
           return load_cell_slice_impl(library_cell, nullptr);

@@ -33,8 +33,6 @@
 
 #include <openssl/sha.h>
 
-#include <absl/container/flat_hash_set.h>
-
 struct Step {
   std::function<void()> func;
   td::uint32 weight;
@@ -1180,6 +1178,7 @@ TEST(Cell, MerkleProofHands) {
       ASSERT_EQ(0u, cs2.prefetch_ref(1)->get_virtualization());
     }
   }
+  LOG(ERROR) << td::NamedThreadSafeCounter::get_default();
 }
 
 TEST(Cell, MerkleProofArrayHands) {

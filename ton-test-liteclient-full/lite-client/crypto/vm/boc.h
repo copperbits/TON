@@ -3,12 +3,12 @@
 #include "vm/cells.h"
 #include "td/utils/Status.h"
 #include "td/utils/buffer.h"
-#include "absl/container/flat_hash_map.h"
+#include "td/utils/HashMap.h"
 
 namespace vm {
 using td::Ref;
 
-td::Result<Ref<Cell>> std_boc_deserialize(td::Slice data);
+td::Result<Ref<Cell>> std_boc_deserialize(td::Slice data, bool can_be_empty = false);
 td::Result<td::BufferSlice> std_boc_serialize(Ref<Cell> root, int mode = 0);
 
 td::Result<std::vector<Ref<Cell>>> std_boc_deserialize_multi(td::Slice data);
@@ -190,8 +190,7 @@ class BagOfCells {
   unsigned long long data_bytes{0};
   unsigned char* store_ptr{nullptr};
   unsigned char* store_end{nullptr};
-  //std::map<hash_t, int> cells;
-  absl::flat_hash_map<Hash, int> cells;
+  td::HashMap<Hash, int> cells;
   struct CellInfo {
     Ref<DataCell> dc_ref;
     std::array<int, 4> ref_idx;

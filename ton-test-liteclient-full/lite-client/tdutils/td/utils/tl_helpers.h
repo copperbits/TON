@@ -4,10 +4,12 @@
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
 #include "td/utils/Slice.h"
+#include "td/utils/SharedSlice.h"
 #include "td/utils/StackAllocator.h"
 #include "td/utils/Status.h"
 #include "td/utils/tl_parsers.h"
 #include "td/utils/tl_storers.h"
+#include "td/utils/Variant.h"
 
 #include <type_traits>
 #include <unordered_set>
@@ -39,18 +41,19 @@
 
 #define END_PARSE_FLAGS()                                                   \
   CHECK(bit_offset_parse < 31);                                             \
-  CHECK((flags_parse & ~((1 << bit_offset_parse) - 1)) == 0)                \
+  LOG_CHECK((flags_parse & ~((1 << bit_offset_parse) - 1)) == 0)            \
       << flags_parse << " " << bit_offset_parse << " " << parser.version(); \
   }                                                                         \
   while (false)
 
-#define END_PARSE_FLAGS_GENERIC()                                                                       \
-  CHECK(bit_offset_parse < 31);                                                                         \
-  CHECK((flags_parse & ~((1 << bit_offset_parse) - 1)) == 0) << flags_parse << " " << bit_offset_parse; \
-  }                                                                                                     \
+#define END_PARSE_FLAGS_GENERIC()                                                                           \
+  CHECK(bit_offset_parse < 31);                                                                             \
+  LOG_CHECK((flags_parse & ~((1 << bit_offset_parse) - 1)) == 0) << flags_parse << " " << bit_offset_parse; \
+  }                                                                                                         \
   while (false)
 
 namespace td {
+
 template <class StorerT>
 void store(bool x, StorerT &storer) {
   storer.store_binary(static_cast<int32>(x));
@@ -112,9 +115,18 @@ template <class StorerT>
 void store(const string &x, StorerT &storer) {
   storer.store_string(x);
 }
+template <class StorerT>
+void store(const SecureString &x, StorerT &storer) {
+  storer.store_string(x.as_slice());
+}
 template <class ParserT>
 void parse(string &x, ParserT &parser) {
   x = parser.template fetch_string<string>();
+}
+
+template <class ParserT>
+void parse(SecureString &x, ParserT &parser) {
+  x = parser.template fetch_string<SecureString>();
 }
 
 template <class T, class StorerT>
@@ -179,6 +191,29 @@ std::enable_if_t<!std::is_enum<T>::value> parse(T &val, ParserT &parser) {
   val.parse(parser);
 }
 
+template <class... Types, class StorerT>
+void store(const Variant<Types...> &variant, StorerT &storer) {
+  store(variant.get_offset(), storer);
+  variant.visit([&storer](auto &&value) {
+    using td::store;
+    store(value, storer);
+  });
+}
+template <class... Types, class ParserT>
+void parse(Variant<Types...> &variant, ParserT &parser) {
+  auto type_offset = parser.fetch_int();
+  if (type_offset < 0 || type_offset >= static_cast<int32>(sizeof...(Types))) {
+    return parser.set_error("Invalid type");
+  }
+  variant.for_each([type_offset, &parser, &variant](int offset, auto *ptr) {
+    using T = std::decay_t<decltype(*ptr)>;
+    if (offset == type_offset) {
+      variant = T();
+      parse(variant.template get<T>(), parser);
+    }
+  });
+}
+
 template <class T>
 string serialize(const T &object) {
   TlStorerCalcLength calc_length;
@@ -203,10 +238,26 @@ string serialize(const T &object) {
 }
 
 template <class T>
+SecureString serialize_secure(const T &object) {
+  TlStorerCalcLength calc_length;
+  store(object, calc_length);
+  size_t length = calc_length.get_length();
+
+  SecureString key(length, '\0');
+  CHECK(is_aligned_pointer<4>(key.data()));
+  MutableSlice data = key.as_mutable_slice();
+  TlStorerUnsafe storer(data.ubegin());
+  store(object, storer);
+  CHECK(storer.get_buf() == data.uend());
+  return key;
+}
+
+template <class T>
 TD_WARN_UNUSED_RESULT Status unserialize(T &object, Slice data) {
   TlParser parser(data);
   parse(object, parser);
   parser.fetch_end();
   return parser.get_status();
 }
+
 }  // namespace td

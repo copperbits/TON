@@ -110,7 +110,7 @@ Create the file `new-wallet.fif` containing the source of our new smart contract
 ------------------------------------
 "Asm.fif" include
 
--1 constant wc  // create a wallet in workchain -1 (masterchain)
+0 constant wc  // create a wallet in workchain 0 (basechain)
 
 // Create new simple wallet
 <{  SETCP0 DUP IFNOTRET INC 32 THROWIF  // return if recv_internal, fail unless recv_external
@@ -154,13 +154,13 @@ dup ."External message for initialization is " <s csr. cr
 ."(Saved to file " type .")" cr
 --------------------------------------------
 
-Incidentally, you can find this sample file in crypto/block/new-wallet.fif.
+Incidentally, you can find a more sophisticated version of this sample file in crypto/smartcont/new-wallet.fif.
 
 Now, provided that you have compiled Fift binary (usually located as "crypto/fift" with respect to the build directory), you can run
 
-crypto/fift -I<source-directory>/crypto/fift new-wallet.fif
+crypto/fift -I<source-directory>/crypto/fift/lib new-wallet.fif
 
-assuming that you have copied new-wallet.fif into the current directory. You may wish to set the FIFTPATH environment variable to <source-directory>/crypto/fift, the directory containing Fift.fif and Asm.fif library files; then you can omit the -I argument to the Fift interpreter.
+assuming that you have copied new-wallet.fif into the current directory. You may wish to set the FIFTPATH environment variable to <source-directory>/crypto/fift/lib, the directory containing Fift.fif and Asm.fif library files; then you can omit the -I argument to the Fift interpreter.
 
 If everything worked, you'll see something like the following
 
@@ -210,7 +210,7 @@ You need to know the address of the test giver smart contract. We'll assume that
 
 as explained above in Section 2. The only number you need from the output is the 32-bit sequence number stored in the smart contract data (it is zero in the example above, but generally it will be non-zero).
 
-Next, you create an external message to the test giver asking it to send another message to your (uninitialized) smart contract carrying a specified amount of test Grams. There is a special Fift source file for generating this external message, located at crypto/block/testgiver.fif:
+Next, you create an external message to the test giver asking it to send another message to your (uninitialized) smart contract carrying a specified amount of test Grams. There is a special Fift source file for generating this external message, located at crypto/smartcont/testgiver.fif:
 
 --------------------------------------------
 // "testgiver.addr" file>B 256 B>u@ 
@@ -402,7 +402,7 @@ You will see that the smart contract has been initialized using code and data fr
 
 Actually, the simple wallet smart contract used in this example can be used to transfer test Grams to any other accounts. It is in this respect similar to the test giver smart contract discussed above, with the difference that it processes only external messages signed by the correct private key (of its owner). In our case, it is the private key saved into the file "new-wallet.pk" during the compilation of the smart contract (see Section 3).
 
-An example of how you might use this smart contract is provided in sample file crypto/block/wallet.fif :
+An example of how you might use this smart contract is provided in sample file crypto/smartcont/wallet.fif :
 
 --------------------------------------------------------
 #!/usr/bin/fift -s
@@ -449,4 +449,4 @@ When you run this code (by invoking the Fift interpreter), you create an externa
 
 Of course, a true TON Blockchain wallet application would hide all the intermediate steps explained above. It would first communicate the address of the new smart contract to the user, asking them to transfer some funds to the indicated address (displayed in its non-bounceable user-friendly form) from another wallet or a cryptocurrency exchange, and then would provide a simple interface to display the current balance and to transfer funds to whatever other addresses the user wants. (The aim of this document is to explain how to create new non-trivial smart contracts and experiment with the TON Blockchain Test Network, rather than to explain how one could use the Lite Client instead of a more user-friendly wallet application.)
 
-One final remark: The above examples used smart contracts in the masterchain (workchain -1). They would work in exactly the same way in the basic workchain (workchain 0), if one changes the "-1 constant wc" to "0 constant wc" in relevant places. The only difference is that the processing and storage fees in the basic workchain are 10-100 times lower than in the masterchain. However, during the early testing phases of the TON Blockchain Test Network the basic workchain may occasionally be unavailable, so the examples above are given for the masterchain. 
+One final remark: The above examples used smart contracts in the basic workchain (workchain 0). They would work in exactly the same way in the masterchain (workchain -1), if one changes the "0 constant wc" to "-1 constant wc" in relevant places. The only difference is that the processing and storage fees in the basic workchain are 10-100 times lower than in the masterchain.

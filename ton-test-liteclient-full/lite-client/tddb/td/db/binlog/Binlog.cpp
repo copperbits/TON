@@ -111,7 +111,7 @@ Status Binlog::replay_sync(BinlogReaderInterface& binlog_reader) {
   auto buf_reader = std::move(reader_writer.first);
   auto buf_writer = std::move(reader_writer.second);
 
-  auto fd_size = fd.get_size();
+  TRY_RESULT(fd_size, fd.get_size());
 
   BinlogReaderHelper helper;
   while (fd_size != 0) {
@@ -152,9 +152,12 @@ void Binlog::replay_async(std::shared_ptr<BinlogReaderInterface> binlog_reader, 
   auto buf_reader = std::move(reader_writer.first);
   auto buf_writer = std::move(reader_writer.second);
 
-  auto fd_size = fd.get_size();
+  auto r_fd_size = fd.get_size();
+  if (r_fd_size.is_error()) {
+    promise.set_error(r_fd_size.move_as_error());
+  }
   auto options = FileToStreamActor::Options{};
-  options.limit = fd_size;
+  options.limit = r_fd_size.move_as_ok();
   auto file_to_stream =
       actor::create_actor<FileToStreamActor>("FileToStream", std::move(fd), std::move(buf_writer), options);
   auto stream_to_binlog = actor::create_actor<BinlogReplayActor>(

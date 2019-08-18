@@ -9,10 +9,9 @@
 #include <cassert>
 #include "common/bitstring.h"
 
-#include <absl/numeric/int128.h>
-
 #include "td/utils/bits.h"
 #include "td/utils/Span.h"
+#include "td/utils/uint128.h"
 
 /**************************************
  *
@@ -40,67 +39,29 @@ struct BigIntInfo {
 };
 
 inline void BigIntInfo::set_mul(word_t* hi, word_t* lo, word_t x, word_t y) {
-#if defined(ABSL_HAVE_INTRINSIC_INT128)
-  __int128 z = __int128(x) * y;
-#else
-  absl::uint128 z = absl::uint128(x) * y;
-#endif
-  *lo = (word_t)z & (Base - 1);
-  *hi = (word_t)(z >> word_shift);
+  auto z = uint128::from_signed(x).mult_signed(y);
+  *lo = static_cast<word_t>(z.lo()) & (Base - 1);
+  *hi = static_cast<word_t>(z.shr(word_shift).lo());
 }
 
 inline void BigIntInfo::add_mul(word_t* hi, word_t* lo, word_t x, word_t y) {
-#if defined(ABSL_HAVE_INTRINSIC_INT128)
-  __int128 z = __int128(x) * y;
-#else
-  absl::uint128 z = absl::uint128(x) * y;
-#endif
-  *lo += (word_t)z & (Base - 1);
-  *hi += (word_t)(z >> word_shift);
+  auto z = uint128::from_signed(x).mult_signed(y);
+  *lo += static_cast<word_t>(z.lo()) & (Base - 1);
+  *hi += static_cast<word_t>(z.shr(word_shift).lo());
 }
 
 inline void BigIntInfo::sub_mul(word_t* hi, word_t* lo, word_t x, word_t y) {
-#if defined(ABSL_HAVE_INTRINSIC_INT128)
-  __int128 z = __int128(x) * y;
-#else
-  absl::uint128 z = absl::uint128(x) * y;
-#endif
-  *lo -= (word_t)z & (Base - 1);
-  *hi -= (word_t)(z >> word_shift);
+  auto z = uint128::from_signed(x).mult_signed(y);
+  *lo -= static_cast<word_t>(z.lo()) & (Base - 1);
+  *hi -= static_cast<word_t>(z.shr(word_shift).lo());
 }
 
 inline void BigIntInfo::dbl_divmod(word_t* quot, word_t* rem, word_t hi, word_t lo, word_t y) {
-#if defined(ABSL_HAVE_INTRINSIC_INT128)
-  __int128 x = ((__int128)hi << word_shift) + lo;
-  *quot = (word_t)(x / y);
-  *rem = (word_t)(x % y);
-#else
-  absl::uint128 x = (absl::uint128(hi) << word_shift) + lo;
-  int x_sgn = (hi < 0 || (hi == 0 && lo < 0));
-  int y_sgn = y < 0;
-  if (x_sgn) {
-    x = -x;
-  }
-  if (y_sgn) {
-    if (y == std::numeric_limits<word_t>::min()) {
-      *quot = (word_t)(x / -absl::uint128(y));
-      *rem = (word_t)(x % -absl::uint128(y));
-    } else {
-      *quot = (word_t)(x / -y);
-      *rem = (word_t)(x % -y);
-    }
-  } else {
-    *quot = (word_t)(x / y);
-    *rem = (word_t)(x % y);
-  }
-
-  if (x_sgn != y_sgn) {
-    *quot = -*quot;
-  }
-  if (x_sgn) {
-    *rem = -*rem;
-  }
-#endif
+  auto x = uint128::from_signed(hi).shl(word_shift).add(uint128::from_signed(lo));
+  int64 a, b;
+  x.divmod_signed(y, &a, &b);
+  *quot = a;
+  *rem = b;
 }
 
 namespace {
@@ -2419,6 +2380,9 @@ int BigIntG<len, Tr>::parse_dec_slow(const char* str, int str_len) {
   *this = 0;
   int i;
   bool sgn = (str[0] == '-');
+  if (str_len <= sgn) {
+    return 0;
+  }
   for (i = sgn; i < str_len; i++) {
     if (str[i] < '0' || str[i] > '9') {
       return i;
@@ -2438,7 +2402,7 @@ int BigIntG<len, Tr>::parse_dec(const char* str, int str_len, int* frac) {
   *this = 0;
   int i;
   int p = frac ? -1 : 0;
-  bool sgn = (str[0] == '-');
+  bool sgn = (str[0] == '-'), ok = false;
   word_t q = 1, a = 0;
   for (i = sgn; i < str_len; i++) {
     if (str[i] == '.') {
@@ -2452,6 +2416,7 @@ int BigIntG<len, Tr>::parse_dec(const char* str, int str_len, int* frac) {
     if ((unsigned)digit >= 10) {
       break;
     }
+    ok = true;
     if (q >= Tr::Half / 10) {
       if (!mul_add_short_bool(q, a)) {
         return 0;
@@ -2463,7 +2428,7 @@ int BigIntG<len, Tr>::parse_dec(const char* str, int str_len, int* frac) {
     a *= 10;
     a += (sgn ? -digit : digit);
   }
-  if (!mul_add_short_bool(q, a) || !normalize_bool()) {
+  if (!ok || !mul_add_short_bool(q, a) || !normalize_bool()) {
     return 0;
   }
   if (frac) {

@@ -5,6 +5,8 @@
 
 namespace ton {
 
+namespace adnl {
+
 class AdnlExtClient : public td::actor::Actor {
  public:
   class Callback {
@@ -20,5 +22,7 @@ class AdnlExtClient : public td::actor::Actor {
   static td::actor::ActorOwn<AdnlExtClient> create(AdnlNodeIdFull dst, td::IPAddress dst_addr,
                                                    std::unique_ptr<AdnlExtClient::Callback> callback);
 };
+
+}  // namespace adnl
 
 }  // namespace ton

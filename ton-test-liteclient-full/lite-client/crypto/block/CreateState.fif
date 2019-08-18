@@ -15,14 +15,14 @@
 <b b> constant empty_cell
 
 // workchain-id -- wc-zero-state
-{ <b x{9023afdf} s, globalid@ 32 i, 0 8 i, swap 32 i, 1 63 << 64 u,
-  0 64 i, now 32 u, 0 64 i, -1 32 i, <b 0 67 u, b> ref, 0 7 u,
+{ <b x{9023afe1} s, globalid@ 32 i, 0 8 i, swap 32 i, 1 63 << 64 u,
+  0 64 i, now 32 u, 0 64 i, -1 32 i, <b 0 67 u, b> ref, 0 12 u,
   <b 0 128 10 + 1+ 1+ u, b> ref, 0 1 u, b>
   dup isShardState? not abort"invalid ShardState created"
 } : mkemptyShardState
 
 ' dictnew : Libs{
-{ 1 u@+ swap { ref@+ } { empty_cell swap } cond s> }  : }Libs
+'nop : }Libs
 { <b swap 1 u, over ref, b> <s swap hash rot 256 udict!+
   0= abort"duplicate library in collection" } : lib+
 { 0 lib+ } : private_lib
@@ -49,7 +49,7 @@ dictnew 0 2constant validator-dict
 { ?dup 0= { validator# } if 
   validator# 0= abort"no initial validators defined"
   rot <b x{11} s, swap 32 u, rot 32 u, validator# 16 u, swap 16 u,
-  validator-dict@ drop ref@ drop <s s, b>
+  validator-dict@ drop <s s, b>
   34 config!
 } : config.validators!
 
@@ -62,19 +62,19 @@ dictnew constant workchain-dict
   =: workchain-dict
 } : add-std-workchain
 // --
-{ @' workchain-dict s>c 12 config! } : config.workchains!
+{ @' workchain-dict dict>s s>c 12 config! } : config.workchains!
 
 dictnew constant special-dict
 // special-smc-addr --
 { x{} swap @' special-dict 256 udict! not abort"cannot add a new special smart contract"
   =: special-dict
 } : make_special
-{ @' special-dict s>c 31 config! } : config.special!
+{ @' special-dict dict>s s>c 31 config! } : config.special!
 
 // bit-pps cell-pps mc-bit-pps mc-cell-pps --
 { <b x{cc} s, 0 32 u, 4 roll 64 u, 3 roll 64 u, rot 64 u, swap 64 u,
   0 dictnew 32 b>udict! 0= abort"cannot create storage prices dictionary"
-  <b swap ref@ drop <s s, b> 18 config!
+  <b swap <s s, b> 18 config!
 } : config.storage_prices!
 { 16 << } : sg*
 { 16 <</r } : sg*/

@@ -115,14 +115,14 @@ class PingPong : public td::actor::Actor {
   }
 };
 
-void run_server(int from_port, int to_port, bool is_first) {
+void run_server(int from_port, int to_port, bool is_first, bool use_tcp) {
   td::IPAddress to_ip;
   to_ip.init_host_port("localhost", to_port).ensure();
 
   td::actor::Scheduler scheduler({1});
   scheduler.run_in_context([&] {
-    td::actor::create_actor<PingPong>(td::actor::ActorOptions().with_name("PingPong"), from_port, to_ip,
-                                      false /*use_tcp*/, is_first)
+    td::actor::create_actor<PingPong>(td::actor::ActorOptions().with_name("PingPong"), from_port, to_ip, use_tcp,
+                                      is_first)
         .release();
   });
   scheduler.run();
@@ -130,8 +130,10 @@ void run_server(int from_port, int to_port, bool is_first) {
 
 TEST(Net, PingPong) {
   SET_VERBOSITY_LEVEL(VERBOSITY_NAME(DEBUG));
-  auto a = td::thread([] { run_server(8091, 8092, true); });
-  auto b = td::thread([] { run_server(8092, 8091, false); });
-  a.join();
-  b.join();
+  for (auto use_tcp : {false, true}) {
+    auto a = td::thread([use_tcp] { run_server(8091, 8092, true, use_tcp); });
+    auto b = td::thread([use_tcp] { run_server(8092, 8091, false, use_tcp); });
+    a.join();
+    b.join();
+  }
 }

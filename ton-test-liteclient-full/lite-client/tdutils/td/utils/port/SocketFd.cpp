@@ -1,5 +1,6 @@
 #include "td/utils/port/SocketFd.h"
 
+#include "td/utils/common.h"
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
 #include "td/utils/port/PollFlags.h"
@@ -79,13 +80,35 @@ class SocketFdImpl : private Iocp::Callback {
   }
 
   Result<size_t> write(Slice data) {
+    // LOG(ERROR) << "Write: " << format::as_hex_dump<0>(data);
     output_writer_.append(data);
+    return write_finish(data.size());
+  }
+
+  Result<size_t> writev(Span<IoSlice> slices) {
+    size_t total_size = 0;
+    for (auto io_slice : slices) {
+      total_size += as_slice(io_slice).size();
+    }
+
+    auto left_size = total_size;
+    for (auto io_slice : slices) {
+      auto slice = as_slice(io_slice);
+      output_writer_.append(slice, left_size);
+      left_size -= slice.size();
+    }
+
+    return write_finish(total_size);
+  }
+
+  Result<size_t> write_finish(size_t total_size) {
     if (is_write_waiting_) {
       auto lock = lock_.lock();
       is_write_waiting_ = false;
+      lock.reset();
       notify_iocp_write();
     }
-    return data.size();
+    return total_size;
   }
 
   Result<size_t> read(MutableSlice slice) {
@@ -96,6 +119,8 @@ class SocketFdImpl : private Iocp::Callback {
     auto res = input_reader_.advance(td::min(slice.size(), input_reader_.size()), slice);
     if (res == 0) {
       get_poll_info().clear_flags(PollFlags::Read());
+    } else {
+      // LOG(ERROR) << "Read: " << format::as_hex_dump<0>(Slice(slice.substr(0, res)));
     }
     return res;
   }
@@ -172,6 +197,7 @@ class SocketFdImpl : private Iocp::Callback {
     auto to_write = output_reader_.prepare_read();
     if (to_write.empty()) {
       auto lock = lock_.lock();
+      output_reader_.sync_with_writer();
       to_write = output_reader_.prepare_read();
       if (to_write.empty()) {
         is_write_waiting_ = true;
@@ -181,12 +207,22 @@ class SocketFdImpl : private Iocp::Callback {
     if (to_write.empty()) {
       return;
     }
-    auto dest = output_reader_.prepare_read();
     std::memset(&write_overlapped_, 0, sizeof(write_overlapped_));
-    WSABUF buf;
-    buf.len = narrow_cast<ULONG>(dest.size());
-    buf.buf = const_cast<CHAR *>(dest.data());
-    int status = WSASend(get_native_fd().socket(), &buf, 1, nullptr, 0, &write_overlapped_, nullptr);
+    constexpr size_t buf_size = 20;
+    WSABUF buf[buf_size];
+    auto it = output_reader_.clone();
+    size_t buf_i;
+    for (buf_i = 0; buf_i < buf_size; buf_i++) {
+      auto src = it.prepare_read();
+      if (src.empty()) {
+        break;
+      }
+      buf[buf_i].len = narrow_cast<ULONG>(src.size());
+      buf[buf_i].buf = const_cast<CHAR *>(src.data());
+      it.confirm_read(src.size());
+    }
+    int status =
+        WSASend(get_native_fd().socket(), buf, narrow_cast<DWORD>(buf_i), nullptr, 0, &write_overlapped_, nullptr);
     if (status == 0 || check_status("Failed to write to connection")) {
       inc_refcnt();
       is_write_active_ = true;
@@ -267,7 +303,7 @@ class SocketFdImpl : private Iocp::Callback {
     }
     CHECK(is_write_active_);
     is_write_active_ = false;
-    output_reader_.confirm_read(size);
+    output_reader_.advance(size);
     loop_write();
   }
 
@@ -338,9 +374,18 @@ class SocketFdImpl {
   const NativeFd &get_native_fd() const {
     return info.native_fd();
   }
+  Result<size_t> writev(Span<IoSlice> slices) {
+    int native_fd = get_native_fd().socket();
+    auto write_res =
+        detail::skip_eintr([&] { return ::writev(native_fd, slices.begin(), narrow_cast<int>(slices.size())); });
+    return write_finish(write_res);
+  }
   Result<size_t> write(Slice slice) {
     int native_fd = get_native_fd().socket();
     auto write_res = detail::skip_eintr([&] { return ::write(native_fd, slice.begin(), slice.size()); });
+    return write_finish(write_res);
+  }
+  Result<size_t> write_finish(ssize_t write_res) {
     auto write_errno = errno;
     if (write_res >= 0) {
       return narrow_cast<size_t>(write_res);
@@ -462,7 +507,7 @@ Status get_socket_pending_error(const NativeFd &fd, WSAOVERLAPPED *overlapped, S
   // https://stackoverflow.com/questions/28925003/calling-wsagetlasterror-from-an-iocp-thread-return-incorrect-result
   DWORD num_bytes = 0;
   DWORD flags = 0;
-  bool success = WSAGetOverlappedResult(fd.socket(), overlapped, &num_bytes, false, &flags);
+  BOOL success = WSAGetOverlappedResult(fd.socket(), overlapped, &num_bytes, false, &flags);
   if (success) {
     LOG(ERROR) << "WSAGetOverlappedResult succeded after " << iocp_error;
     return iocp_error;
@@ -555,6 +600,10 @@ Status SocketFd::get_pending_error() {
 
 Result<size_t> SocketFd::write(Slice slice) {
   return impl_->write(slice);
+}
+
+Result<size_t> SocketFd::writev(Span<IoSlice> slices) {
+  return impl_->writev(slices);
 }
 
 Result<size_t> SocketFd::read(MutableSlice slice) {

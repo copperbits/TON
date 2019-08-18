@@ -1,5 +1,6 @@
 #pragma once
 
+#include "td/utils/common.h"
 #include "td/utils/misc.h"
 #include "td/utils/port/EventFd.h"
 
@@ -22,17 +23,22 @@ class MpscPollableQueue {
       return narrow_cast<int>(ready);
     }
 
-    auto guard = lock_.lock();
-    if (writer_vector_.empty()) {
+    for (int i = 0; i < 2; i++) {
+      auto guard = lock_.lock();
+      if (writer_vector_.empty()) {
+        if (i == 1) {
+          wait_event_fd_ = true;
+          return 0;
+        }
+      } else {
+        reader_vector_.clear();
+        reader_pos_ = 0;
+        std::swap(writer_vector_, reader_vector_);
+        return narrow_cast<int>(reader_vector_.size());
+      }
       event_fd_.acquire();
-      wait_event_fd_ = true;
-      return 0;
-    } else {
-      reader_vector_.clear();
-      reader_pos_ = 0;
-      std::swap(writer_vector_, reader_vector_);
-      return narrow_cast<int>(reader_vector_.size());
     }
+    UNREACHABLE();
   }
   ValueType reader_get_unsafe() {
     return std::move(reader_vector_[reader_pos_++]);
@@ -45,6 +51,7 @@ class MpscPollableQueue {
     writer_vector_.push_back(std::move(value));
     if (wait_event_fd_) {
       wait_event_fd_ = false;
+      guard.reset();
       event_fd_.release();
     }
   }
@@ -89,7 +96,6 @@ class MpscPollableQueue {
 }  // namespace td
 
 #else
-#include "td/utils/logging.h"
 
 namespace td {
 

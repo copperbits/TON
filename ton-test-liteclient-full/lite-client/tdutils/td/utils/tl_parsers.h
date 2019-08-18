@@ -7,6 +7,7 @@
 #include "td/utils/misc.h"
 #include "td/utils/Slice.h"
 #include "td/utils/Status.h"
+#include "td/utils/UInt.h"
 #include "td/utils/utf8.h"
 
 #include <array>
@@ -44,7 +45,7 @@ class TlParser {
         data_buf = std::make_unique<int32[]>(1 + data_len / sizeof(int32));
         buf = data_buf.get();
       }
-      std::memcpy(static_cast<void *>(buf), static_cast<const void *>(slice.begin()), slice.size());
+      std::memcpy(buf, slice.begin(), slice.size());
       data = reinterpret_cast<unsigned char *>(buf);
     }
   }
@@ -82,7 +83,7 @@ class TlParser {
 
   int32 fetch_int_unsafe() {
     int32 result;
-    std::memcpy(reinterpret_cast<unsigned char *>(&result), data, sizeof(int32));
+    std::memcpy(&result, data, sizeof(int32));
     data += sizeof(int32);
     return result;
   }
@@ -94,7 +95,7 @@ class TlParser {
 
   int64 fetch_long_unsafe() {
     int64 result;
-    std::memcpy(reinterpret_cast<unsigned char *>(&result), data, sizeof(int64));
+    std::memcpy(&result, data, sizeof(int64));
     data += sizeof(int64);
     return result;
   }
@@ -106,7 +107,7 @@ class TlParser {
 
   double fetch_double_unsafe() {
     double result;
-    std::memcpy(reinterpret_cast<unsigned char *>(&result), data, sizeof(double));
+    std::memcpy(&result, data, sizeof(double));
     data += sizeof(double);
     return result;
   }
@@ -119,7 +120,7 @@ class TlParser {
   template <class T>
   T fetch_binary_unsafe() {
     T result;
-    std::memcpy(reinterpret_cast<unsigned char *>(&result), data, sizeof(T));
+    std::memcpy(&result, data, sizeof(T));
     data += sizeof(T);
     return result;
   }
@@ -141,16 +142,22 @@ class TlParser {
     if (result_len < 254) {
       result_begin = reinterpret_cast<const char *>(data + 1);
       result_aligned_len = (result_len >> 2) << 2;
+      data += sizeof(int32);
     } else if (result_len == 254) {
       result_len = data[1] + (data[2] << 8) + (data[3] << 16);
       result_begin = reinterpret_cast<const char *>(data + 4);
       result_aligned_len = ((result_len + 3) >> 2) << 2;
+      data += sizeof(int32);
     } else {
-      set_error("Can't fetch string, 255 found");
-      return T();
+      check_len(sizeof(int32));
+      result_len = data[1] + (data[2] << 8) + (data[3] << 16) + (data[4] << 24) + (static_cast<uint64>(data[5]) << 32) +
+                   (static_cast<uint64>(data[6]) << 40) + (static_cast<uint64>(data[7]) << 48);
+      result_begin = reinterpret_cast<const char *>(data + 8);
+      result_aligned_len = ((result_len + 3) >> 2) << 2;
+      data += sizeof(int64);
     }
     check_len(result_aligned_len);
-    data += result_aligned_len + sizeof(int32);
+    data += result_aligned_len;
     return T(result_begin, result_len);
   }
 

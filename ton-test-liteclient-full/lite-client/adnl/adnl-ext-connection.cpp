@@ -2,6 +2,8 @@
 
 namespace ton {
 
+namespace adnl {
+
 void AdnlExtConnection::send_uninit(td::BufferSlice data) {
   buffered_fd_.output_buffer().append(std::move(data));
   loop();
@@ -118,15 +120,15 @@ td::Status AdnlExtConnection::init_crypto(td::Slice S) {
     return td::Status::Error(ErrorCode::protoviolation, "too small enc data");
   }
   CHECK(S.size() >= 96);
-  td::UInt256 s1, s2;
-  td::UInt128 v1, v2;
-  as_slice(s1).copy_from(S.copy().truncate(32));
+  td::SecureString s1(32), s2(32);
+  td::SecureString v1(16), v2(16);
+  s1.as_mutable_slice().copy_from(S.copy().truncate(32));
   S.remove_prefix(32);
-  as_slice(s2).copy_from(S.copy().truncate(32));
+  s2.as_mutable_slice().copy_from(S.copy().truncate(32));
   S.remove_prefix(32);
-  as_slice(v1).copy_from(S.copy().truncate(16));
+  v1.as_mutable_slice().copy_from(S.copy().truncate(16));
   S.remove_prefix(16);
-  as_slice(v2).copy_from(S.copy().truncate(16));
+  v2.as_mutable_slice().copy_from(S.copy().truncate(16));
   S.remove_prefix(16);
   if (is_client_) {
     in_ctr_.init(s1, v1);
@@ -175,5 +177,7 @@ td::Status AdnlExtConnection::receive_packet(td::BufferSlice data) {
 
   return process_packet(std::move(data));
 }
+
+}  // namespace adnl
 
 }  // namespace ton

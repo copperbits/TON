@@ -38,6 +38,9 @@ class IPAddress {
 
   IPAddress get_any_addr() const;
 
+  static Result<IPAddress> get_ipv4_address(CSlice host);
+  static Result<IPAddress> get_ipv6_address(CSlice host);
+
   Status init_ipv6_port(CSlice ipv6, int port) TD_WARN_UNUSED_RESULT;
   Status init_ipv6_as_ipv4_port(CSlice ipv4, int port) TD_WARN_UNUSED_RESULT;
   Status init_ipv4_port(CSlice ipv4, int port) TD_WARN_UNUSED_RESULT;
@@ -55,6 +58,7 @@ class IPAddress {
   size_t get_sockaddr_len() const;
   int get_address_family() const;
   static CSlice ipv4_to_str(uint32 ipv4);
+  static CSlice ipv6_to_str(Slice ipv6);
   Status init_sockaddr(sockaddr *addr);
   Status init_sockaddr(sockaddr *addr, socklen_t len) TD_WARN_UNUSED_RESULT;
 

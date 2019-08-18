@@ -205,7 +205,7 @@ SmartContractDb TonDbTransactionImpl::begin_smartcontract(td::Slice hash) {
       info.hash = hash.str();
       info.smart_contract_db = std::make_unique<SmartContractDbImpl>(hash, nullptr);
     }
-    CHECK(info.generation_ != generation_) << "Cannot begin one smartcontract twice during the same transaction";
+    LOG_CHECK(info.generation_ != generation_) << "Cannot begin one smartcontract twice during the same transaction";
     CHECK(info.smart_contract_db);
     info.smart_contract_db->set_reader(std::make_shared<td::PrefixedKeyValueReader>(reader_, hash));
     res = std::move(info.smart_contract_db);

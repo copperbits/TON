@@ -1,4 +1,4 @@
-#include "td/utils/logging.h"
+#include "td/utils/common.h"
 #include "td/utils/SharedObjectPool.h"
 #include "td/utils/tests.h"
 
@@ -50,7 +50,16 @@ TEST(SharedPtr, simple) {
   ptr2 = std::move(ptr);
   CHECK(ptr.empty());
   CHECK(*ptr2 == "hello");
+#if TD_CLANG
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-pragmas"
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic ignored "-Wself-assign-overloaded"
+#endif
   ptr2 = ptr2;
+#if TD_CLANG
+#pragma clang diagnostic pop
+#endif
   CHECK(*ptr2 == "hello");
   CHECK(!Deleter::was_delete());
   ptr2.reset();

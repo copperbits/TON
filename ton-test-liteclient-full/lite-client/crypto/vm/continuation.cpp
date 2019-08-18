@@ -1,6 +1,6 @@
 #include "vm/dispatch.h"
 #include "vm/continuation.h"
-
+#include "vm/dict.h"
 #include "vm/log.h"
 
 namespace vm {
@@ -330,20 +330,8 @@ VmState::VmState(Ref<CellSlice> _code)
   init_cregs();
 }
 
-VmState::VmState(Ref<CellSlice> _code, Ref<Stack> _stack, int flags, Ref<Cell> _data, VmLog log)
-    : code(std::move(_code))
-    , stack(std::move(_stack))
-    , cp(-1)
-    , dispatch(&dummy_dispatch_table)
-    , quit0(true, 0)
-    , quit1(true, 1)
-    , log(log) {
-  ensure_throw(init_cp(0));
-  set_c4(std::move(_data));
-  init_cregs(flags & 1, flags & 2);
-}
-
-VmState::VmState(Ref<CellSlice> _code, Ref<Stack> _stack, const GasLimits& gas, int flags, Ref<Cell> _data, VmLog log)
+VmState::VmState(Ref<CellSlice> _code, Ref<Stack> _stack, int flags, Ref<Cell> _data, VmLog log,
+                 std::vector<Ref<Cell>> _libraries)
     : code(std::move(_code))
     , stack(std::move(_stack))
     , cp(-1)
@@ -351,15 +339,16 @@ VmState::VmState(Ref<CellSlice> _code, Ref<Stack> _stack, const GasLimits& gas, 
     , quit0(true, 0)
     , quit1(true, 1)
     , log(log)
-    , gas(gas) {
+    , libraries(std::move(_libraries)) {
   ensure_throw(init_cp(0));
   set_c4(std::move(_data));
   init_cregs(flags & 1, flags & 2);
 }
 
-VmState::VmState(Ref<Cell> code_cell, Ref<Stack> _stack, const GasLimits& gas, int flags, Ref<Cell> _data,
-                 std::vector<Ref<Cell>> _libraries, VmLog log)
-    : stack(std::move(_stack))
+VmState::VmState(Ref<CellSlice> _code, Ref<Stack> _stack, const GasLimits& gas, int flags, Ref<Cell> _data, VmLog log,
+                 std::vector<Ref<Cell>> _libraries)
+    : code(std::move(_code))
+    , stack(std::move(_stack))
     , cp(-1)
     , dispatch(&dummy_dispatch_table)
     , quit0(true, 0)
@@ -368,10 +357,19 @@ VmState::VmState(Ref<Cell> code_cell, Ref<Stack> _stack, const GasLimits& gas, i
     , gas(gas)
     , libraries(std::move(_libraries)) {
   ensure_throw(init_cp(0));
-  Guard guard(this);
-  code = load_cell_slice_ref(std::move(code_cell));
   set_c4(std::move(_data));
   init_cregs(flags & 1, flags & 2);
+}
+
+Ref<CellSlice> VmState::convert_code_cell(Ref<Cell> code_cell) {
+  if (code_cell.is_null()) {
+    return {};
+  }
+  Ref<CellSlice> csr{true, NoVmOrd(), code_cell};
+  if (csr->is_valid()) {
+    return csr;
+  }
+  return load_cell_slice_ref(CellBuilder{}.store_ref(std::move(code_cell)).finalize());
 }
 
 bool VmState::init_cp(int new_cp) {
@@ -669,6 +667,9 @@ int VmState::step() {
   assert(!code.is_null());
   //VM_LOG(st) << "stack:";  stack->dump(VM_LOG(st));
   //VM_LOG(st) << "; cr0.refcnt = " << get_c0()->get_refcnt() - 1 << std::endl;
+  if (stack_trace) {
+    stack->dump(std::cerr);
+  }
   ++steps;
   if (code->size()) {
     return dispatch->dispatch(this, code.write());
@@ -736,9 +737,10 @@ ControlRegs* force_cregs(Ref<Continuation>& cont) {
 }
 
 int run_vm_code(Ref<CellSlice> code, Ref<Stack>& stack, int flags, Ref<Cell>* data_ptr, VmLog log, long long* steps,
-                GasLimits* gas_limits) {
-  VmState vm{code, std::move(stack), gas_limits ? *gas_limits : GasLimits{}, flags, data_ptr ? *data_ptr : Ref<Cell>{},
-             log};
+                GasLimits* gas_limits, std::vector<Ref<Cell>> libraries) {
+  VmState vm{
+      code, std::move(stack),    gas_limits ? *gas_limits : GasLimits{}, flags, data_ptr ? *data_ptr : Ref<Cell>{},
+      log,  std::move(libraries)};
   int res = vm.run();
   stack = vm.get_stack_ref();
   if (res == -1 && data_ptr) {
@@ -765,11 +767,11 @@ int run_vm_code(Ref<CellSlice> code, Ref<Stack>& stack, int flags, Ref<Cell>* da
 }
 
 int run_vm_code(Ref<CellSlice> code, Stack& stack, int flags, Ref<Cell>* data_ptr, VmLog log, long long* steps,
-                GasLimits* gas_limits) {
+                GasLimits* gas_limits, std::vector<Ref<Cell>> libraries) {
   Ref<Stack> stk{true};
   stk.unique_write().set_contents(std::move(stack));
   stack.clear();
-  int res = run_vm_code(code, stk, flags, data_ptr, log, steps, gas_limits);
+  int res = run_vm_code(code, stk, flags, data_ptr, log, steps, gas_limits, std::move(libraries));
   assert(stack.is_unique());
   if (stk.is_null()) {
     stack.clear();
@@ -787,8 +789,25 @@ int run_vm_code(Ref<CellSlice> code, Stack& stack, int flags, Ref<Cell>* data_pt
 }
 
 // may throw a dictionary exception; returns nullptr if library is not found in context
-Ref<vm::Cell> VmState::load_library(td::ConstBitPtr hash) {
+Ref<Cell> VmState::load_library(td::ConstBitPtr hash) {
+  std::unique_ptr<VmStateInterface> tmp_ctx;
+  // install temporary dummy vm state interface to prevent charging for cell load operations during library lookup
+  VmStateInterface::Guard(tmp_ctx.get());
+  for (const auto& lib_collection : libraries) {
+    auto lib = lookup_library_in(hash, lib_collection);
+    if (lib.not_null()) {
+      return lib;
+    }
+  }
   return {};
+}
+
+bool VmState::register_library_collection(Ref<Cell> lib) {
+  if (lib.is_null()) {
+    return true;
+  }
+  libraries.push_back(std::move(lib));
+  return true;
 }
 
 void VmState::register_cell_load() {
@@ -811,6 +830,30 @@ td::BitArray<256> VmState::get_final_state_hash(int exit_code) const {
   td::BitArray<256> res;
   res.clear();
   return res;
+}
+
+Ref<vm::Cell> lookup_library_in(td::ConstBitPtr key, vm::Dictionary& dict) {
+  try {
+    auto val = dict.lookup(key, 256);
+    if (val.is_null() || !val->have_refs()) {
+      return {};
+    }
+    auto root = val->prefetch_ref();
+    if (root.not_null() && !root->get_hash().bits().compare(key, 256)) {
+      return root;
+    }
+    return {};
+  } catch (vm::VmError) {
+    return {};
+  }
+}
+
+Ref<vm::Cell> lookup_library_in(td::ConstBitPtr key, Ref<vm::Cell> lib_root) {
+  if (lib_root.is_null()) {
+    return lib_root;
+  }
+  vm::Dictionary dict{std::move(lib_root), 256};
+  return lookup_library_in(key, dict);
 }
 
 }  // namespace vm

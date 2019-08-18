@@ -1,5 +1,6 @@
 #pragma once
 
+#include "td/utils/common.h"
 #include "td/utils/format.h"
 #include "td/utils/List.h"
 #include "td/utils/logging.h"
@@ -131,7 +132,7 @@ class PollableFdInfo : private ListNode {
 
  private:
   NativeFd fd_{};
-  std::atomic_flag lock_{false};
+  std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
   PollFlagsSet flags_;
 #if TD_PORT_WINDOWS
   SpinLock observer_lock_;

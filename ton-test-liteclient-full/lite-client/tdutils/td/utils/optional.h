@@ -29,6 +29,7 @@ class optional {
     } else {
       impl_ = Result<T>();
     }
+    return *this;
   }
 
   optional(optional &&other) = default;

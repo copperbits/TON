@@ -58,7 +58,7 @@ TEST(Actors2, flags) {
   CHECK(signals.has_signal(ActorSignals::Cpu));
   CHECK(signals.has_signal(ActorSignals::Kill));
   flags.set_signals(signals);
-  CHECK(flags.get_signals().raw() == signals.raw()) << flags.get_signals().raw() << " " << signals.raw();
+  LOG_CHECK(flags.get_signals().raw() == signals.raw()) << flags.get_signals().raw() << " " << signals.raw();
 
   auto wakeup = ActorSignals{};
   wakeup.add_signal(ActorSignals::Wakeup);
@@ -228,8 +228,8 @@ TEST(Actor2, locker_stress) {
           CHECK(!locker.flags().has_signals());
           CHECK(locker.try_unlock(locker.flags()));
           for (size_t thread_id = 0; thread_id < threads_n; thread_id++) {
-            CHECK(nodes[thread_id].response ==
-                  static_cast<td::uint32>(thread_id + need) * static_cast<td::uint32>(thread_id + need))
+            LOG_CHECK(nodes[thread_id].response ==
+                      static_cast<td::uint32>(thread_id + need) * static_cast<td::uint32>(thread_id + need))
                 << td::tag("thread", thread_id) << " " << nodes[thread_id].response << " "
                 << nodes[thread_id].request.load();
           }
@@ -290,30 +290,30 @@ TEST(Actor2, executor_simple) {
       ActorExecutor executor(*actor, dispatcher, ActorExecutor::Options());
       CHECK(!executor.is_closed());
       CHECK(executor.can_send_immediate());
-      CHECK(sb.as_cslice() == "StartUp") << sb.as_cslice();
+      LOG_CHECK(sb.as_cslice() == "StartUp") << sb.as_cslice();
       sb.clear();
       executor.send(ActorMessageCreator::lambda([&] { sb << "A"; }));
-      CHECK(sb.as_cslice() == "A") << sb.as_cslice();
+      LOG_CHECK(sb.as_cslice() == "A") << sb.as_cslice();
       sb.clear();
       auto big_message = ActorMessageCreator::lambda([&] { sb << "big"; });
       big_message.set_big();
       executor.send(std::move(big_message));
-      CHECK(sb.as_cslice() == "") << sb.as_cslice();
+      LOG_CHECK(sb.as_cslice() == "") << sb.as_cslice();
       executor.send(ActorMessageCreator::lambda([&] { sb << "B"; }));
-      CHECK(sb.as_cslice() == "") << sb.as_cslice();
+      LOG_CHECK(sb.as_cslice() == "") << sb.as_cslice();
     }
     CHECK(dispatcher.queue.size() == 1);
     { ActorExecutor executor(*actor, dispatcher, ActorExecutor::Options().with_from_queue()); }
     CHECK(dispatcher.queue.size() == 1);
     dispatcher.queue.clear();
-    CHECK(sb.as_cslice() == "bigB") << sb.as_cslice();
+    LOG_CHECK(sb.as_cslice() == "bigB") << sb.as_cslice();
     sb.clear();
     {
       ActorExecutor executor(*actor, dispatcher, ActorExecutor::Options());
       executor.send(
           ActorMessageCreator::lambda([&] { static_cast<TestActor &>(ActorExecuteContext::get()->actor()).close(); }));
     }
-    CHECK(sb.as_cslice() == "TearDown") << sb.as_cslice();
+    LOG_CHECK(sb.as_cslice() == "TearDown") << sb.as_cslice();
     sb.clear();
     CHECK(!actor->has_actor());
     {
@@ -334,7 +334,7 @@ TEST(Actor2, executor_simple) {
       ActorExecutor executor(*actor, dispatcher, ActorExecutor::Options());
       CHECK(!executor.is_closed());
       CHECK(executor.can_send_immediate());
-      CHECK(sb.as_cslice() == "StartUp") << sb.as_cslice();
+      LOG_CHECK(sb.as_cslice() == "StartUp") << sb.as_cslice();
       sb.clear();
       auto a_msg = ActorMessageCreator::lambda([&] {
         sb << "big pause";
@@ -343,7 +343,7 @@ TEST(Actor2, executor_simple) {
       a_msg.set_big();
       executor.send(std::move(a_msg));
       executor.send(ActorMessageCreator::lambda([&] { sb << "A"; }));
-      CHECK(sb.as_cslice() == "") << sb.as_cslice();
+      LOG_CHECK(sb.as_cslice() == "") << sb.as_cslice();
     }
     {
       CHECK(dispatcher.queue.size() == 1);
@@ -351,7 +351,7 @@ TEST(Actor2, executor_simple) {
       ActorExecutor executor(*actor, dispatcher, ActorExecutor::Options().with_from_queue());
       CHECK(!executor.is_closed());
       CHECK(!executor.can_send_immediate());
-      CHECK(sb.as_cslice() == "big pause") << sb.as_cslice();
+      LOG_CHECK(sb.as_cslice() == "big pause") << sb.as_cslice();
       sb.clear();
     }
     {
@@ -360,7 +360,7 @@ TEST(Actor2, executor_simple) {
       ActorExecutor executor(*actor, dispatcher, ActorExecutor::Options().with_from_queue());
       CHECK(!executor.is_closed());
       CHECK(executor.can_send_immediate());
-      CHECK(sb.as_cslice() == "A") << sb.as_cslice();
+      LOG_CHECK(sb.as_cslice() == "A") << sb.as_cslice();
       sb.clear();
     }
     {
@@ -368,7 +368,7 @@ TEST(Actor2, executor_simple) {
       executor.send(
           ActorMessageCreator::lambda([&] { static_cast<TestActor &>(ActorExecuteContext::get()->actor()).close(); }));
     }
-    CHECK(sb.as_cslice() == "TearDown") << sb.as_cslice();
+    LOG_CHECK(sb.as_cslice() == "TearDown") << sb.as_cslice();
     sb.clear();
     dispatcher.queue.clear();
   }
@@ -552,7 +552,7 @@ TEST(Actor2, actor_timeout_simple) {
       }
       void alarm() override {
         double diff = td::Time::now() - expected_timeout_;
-        CHECK(-0.001 < diff && diff < 0.1) << diff;
+        LOG_CHECK(-0.001 < diff && diff < 0.1) << diff;
         if (cnt_-- > 0) {
           set_timeout();
         } else {
@@ -658,7 +658,7 @@ TEST(Actor2, actor_function_result) {
       A(std::shared_ptr<td::Destructor> watcher) : watcher_(std::move(watcher)) {
       }
       void on_result(uint32 x, uint32 y) {
-        CHECK(x * x == y) << x << " " << y;
+        LOG_CHECK(x * x == y) << x << " " << y;
         if (--cnt_ == 0) {
           stop();
         }

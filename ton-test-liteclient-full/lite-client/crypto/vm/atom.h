@@ -29,6 +29,9 @@ class Atom : public td::CntObject {
   std::string name() const {
     return name_;
   }
+  std::string name_ext() const {
+    return name_.empty() ? make_name() : name_;
+  }
   td::Slice name_as_slice() const {
     return td::Slice{name_};
   }
@@ -36,6 +39,9 @@ class Atom : public td::CntObject {
     return index_;
   }
   void print_to(std::ostream& os) const;
+
+ private:
+  std::string make_name() const;
 };
 
 std::ostream& operator<<(std::ostream& os, const Atom& atom);

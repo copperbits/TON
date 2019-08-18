@@ -6,6 +6,7 @@
 #include "td/utils/JsonBuilder.h"
 #include "td/utils/misc.h"
 #include "td/utils/Slice.h"
+#include "td/utils/SharedSlice.h"
 #include "td/utils/Status.h"
 #include "td/utils/tl_storers.h"
 
@@ -124,6 +125,14 @@ inline Status from_json(string &to, JsonValue &from) {
   return Status::OK();
 }
 
+inline Status from_json(SecureString &to, JsonValue &from) {
+  if (from.type() != JsonValue::Type::String) {
+    return Status::Error(PSLICE() << "Expected string, got " << from.type());
+  }
+  to = SecureString(from.get_string().str());
+  return Status::OK();
+}
+
 inline Status from_json_bytes(string &to, JsonValue &from) {
   if (from.type() != JsonValue::Type::String) {
     return Status::Error(PSLICE() << "Expected string, got " << from.type());
@@ -132,6 +141,17 @@ inline Status from_json_bytes(string &to, JsonValue &from) {
   to = std::move(decoded);
   return Status::OK();
 }
+
+inline Status from_json_bytes(SecureString &to, JsonValue &from) {
+  if (from.type() != JsonValue::Type::String) {
+    return Status::Error(PSLICE() << "Expected string, got " << from.type());
+  }
+  //FIXME
+  TRY_RESULT(decoded, base64_decode(from.get_string()));
+  to = SecureString(decoded);
+  return Status::OK();
+}
+
 inline Status from_json_bytes(BufferSlice &to, JsonValue &from) {
   if (from.type() != JsonValue::Type::String) {
     return Status::Error(PSLICE() << "Expected string, got " << from.type());

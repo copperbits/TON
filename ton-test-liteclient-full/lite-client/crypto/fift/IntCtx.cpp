@@ -1,6 +1,7 @@
 #include "IntCtx.h"
 
 namespace fift {
+
 td::StringBuilder& operator<<(td::StringBuilder& os, const IntCtx& ctx) {
   if (ctx.include_depth) {
     return os << ctx.filename << ":" << ctx.line_no << ": ";
@@ -11,6 +12,41 @@ td::StringBuilder& operator<<(td::StringBuilder& os, const IntCtx& ctx) {
 
 std::ostream& operator<<(std::ostream& os, const IntCtx& ctx) {
   return os << (PSLICE() << ctx).c_str();
+}
+
+void CharClassifier::import_from_string(td::Slice str, int space_cls) {
+  set_char_class(' ', space_cls);
+  set_char_class('\t', space_cls);
+  int cls = 3;
+  for (char c : str) {
+    if (c == ' ') {
+      cls--;
+    } else {
+      set_char_class(c, cls);
+    }
+  }
+}
+
+void CharClassifier::import_from_string(std::string str, int space_cls) {
+  import_from_string(td::Slice{str}, space_cls);
+}
+
+void CharClassifier::import_from_string(const char* str, int space_cls) {
+  import_from_string(td::Slice{str}, space_cls);
+}
+
+CharClassifier CharClassifier::from_string(td::Slice str, int space_cls) {
+  return CharClassifier{str, space_cls};
+}
+
+void CharClassifier::set_char_class(int c, int cl) {
+  c &= 0xff;
+  cl &= 3;
+  int offs = (c & 3) * 2;
+  int mask = (3 << offs);
+  cl <<= offs;
+  unsigned char* p = data_ + (c >> 2);
+  *p = static_cast<unsigned char>((*p & ~mask) | cl);
 }
 
 IntCtx::Savepoint::Savepoint(IntCtx& _ctx, std::string new_filename, std::string new_current_dir,
@@ -56,27 +92,49 @@ bool IntCtx::is_sb() const {
   return !eof() && line_no == 1 && *input_ptr == '#' && input_ptr[1] == '!';
 }
 
-std::string IntCtx::scan_word_to(char delim, bool err_endl) {
-  std::string res;
-  while (*input_ptr && *input_ptr != delim) {
-    res += *input_ptr++;
+td::Slice IntCtx::scan_word_to(char delim, bool err_endl) {
+  auto ptr = input_ptr;
+  while (*ptr && *ptr != delim) {
+    ptr++;
   }
-  if (*input_ptr) {
-    ++input_ptr;
+  if (*ptr) {
+    std::swap(ptr, input_ptr);
+    return td::Slice{ptr, input_ptr++};
   } else if (err_endl && delim) {
     throw IntError{std::string{"end delimiter `"} + delim + "` not found"};
+  } else {
+    std::swap(ptr, input_ptr);
+    return td::Slice{ptr, input_ptr};
   }
-  return res;
 }
 
-std::string IntCtx::scan_word() {
+td::Slice IntCtx::scan_word() {
   skipspc(true);
-  std::string res;
-  while (*input_ptr && *input_ptr != ' ' && *input_ptr != '\t' && *input_ptr != '\r') {
-    res += *input_ptr++;
+  auto ptr = input_ptr;
+  while (*ptr && *ptr != ' ' && *ptr != '\t' && *ptr != '\r') {
+    ptr++;
   }
+  auto ptr2 = ptr;
+  std::swap(ptr, input_ptr);
   skipspc();
-  return res;
+  return td::Slice{ptr, ptr2};
+}
+
+td::Slice IntCtx::scan_word_ext(const CharClassifier& classifier) {
+  skipspc(true);
+  auto ptr = input_ptr;
+  while (*ptr && *ptr != '\r' && *ptr != '\n') {
+    int c = classifier.classify(*ptr);
+    if ((c & 1) && ptr != input_ptr) {
+      break;
+    }
+    ptr++;
+    if (c & 2) {
+      break;
+    }
+  }
+  std::swap(ptr, input_ptr);
+  return td::Slice{ptr, input_ptr};
 }
 
 void IntCtx::skipspc(bool skip_eol) {

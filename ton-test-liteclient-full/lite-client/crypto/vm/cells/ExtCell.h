@@ -22,8 +22,13 @@ class ExtCell : public Cell {
   }
 
   ExtCell(Ref<PrunnedCell<ExtraT>> prunned_cell, PrivateTag) : prunned_cell_(std::move(prunned_cell)) {
+    get_thread_safe_counter().add(1);
+    get_thread_safe_counter_unloaded().add(prunned_cell_.load_unsafe().not_null());
   }
-  ~ExtCell() = default;
+  ~ExtCell() {
+    get_thread_safe_counter().add(-1);
+    get_thread_safe_counter_unloaded().add(-prunned_cell_.load_unsafe().not_null());
+  }
 
   LevelMask get_level_mask() const override {
     return CellView(this)->get_level_mask();
@@ -46,6 +51,16 @@ class ExtCell : public Cell {
  private:
   mutable td::AtomicRef<DataCell> data_cell_;
   mutable td::AtomicRef<PrunnedCell<ExtraT>> prunned_cell_;
+
+  static td::NamedThreadSafeCounter::CounterRef get_thread_safe_counter() {
+    static auto res = td::NamedThreadSafeCounter::get_default().get_counter("ExtCell");
+    return res;
+  }
+
+  static td::NamedThreadSafeCounter::CounterRef get_thread_safe_counter_unloaded() {
+    static auto res = td::NamedThreadSafeCounter::get_default().get_counter("ExtCell.unloaded");
+    return res;
+  }
 
   struct CellView {
     CellView(const ExtCell<ExtraT, Loader>* cell) {
@@ -98,6 +113,7 @@ class ExtCell : public Cell {
 
     if (data_cell_.store_if_empty(new_data_cell)) {
       prunned_cell_.store({});
+      get_thread_safe_counter_unloaded().add(-1);
     }
 
     return data_cell_.load_unsafe();

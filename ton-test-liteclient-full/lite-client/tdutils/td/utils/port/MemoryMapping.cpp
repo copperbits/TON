@@ -56,7 +56,7 @@ Result<MemoryMapping> MemoryMapping::create_from_file(const FileFd &file_fd, con
   if (file_fd.empty()) {
     return Status::Error("Can't create memory mapping: file is empty");
   }
-  auto stat = file_fd.stat();
+  TRY_RESULT(stat, file_fd.stat());
   auto fd = file_fd.get_native_fd().fd();
   auto begin = options.offset;
   if (begin < 0) {

@@ -48,29 +48,29 @@ unsigned char rfc8032_signature2[64] = {
 TEST(Crypto, ed25519) {
   td::Ed25519::generate_private_key().ensure();
 
-  auto PK1 = td::Ed25519::generate_private_key().ok();
-  auto PK2 = td::Ed25519::PrivateKey(td::Slice(fixed_privkey, 32));
+  auto PK1 = td::Ed25519::generate_private_key().move_as_ok();
+  auto PK2 = td::Ed25519::PrivateKey(td::SecureString(td::Slice(fixed_privkey, 32)));
   LOG(ERROR) << "PK1 = " << td::buffer_to_hex(PK1.as_octet_string());
   auto priv2_export = PK2.as_octet_string();
   LOG(ERROR) << "PK2 = " << td::buffer_to_hex(priv2_export);
-  auto PK3 = td::Ed25519::PrivateKey(priv2_export);
+  auto PK3 = td::Ed25519::PrivateKey(std::move(priv2_export));
 
-  auto PubK1 = PK1.get_public_key().ok();
+  auto PubK1 = PK1.get_public_key().move_as_ok();
   LOG(ERROR) << "PubK1 = " << td::buffer_to_hex(PubK1.as_octet_string());
-  auto PubK2 = PK2.get_public_key().ok();
+  auto PubK2 = PK2.get_public_key().move_as_ok();
   LOG(ERROR) << "PubK2 = " << td::buffer_to_hex(PubK2.as_octet_string());
   CHECK(td::Slice(fixed_pubkey, 32) == PubK2.as_octet_string());
-  auto PubK3 = PK3.get_public_key().ok();
+  auto PubK3 = PK3.get_public_key().move_as_ok();
   LOG(ERROR) << "PubK3 = " << td::buffer_to_hex(PubK3.as_octet_string());
   CHECK(td::Slice(fixed_pubkey, 32) == PubK3.as_octet_string());
   LOG(ERROR) << "PubK1 = " << td::buffer_to_hex(PubK1.as_octet_string());
 
-  auto secret22 = td::Ed25519::compute_shared_secret(PubK3, PK2).ok();
+  auto secret22 = td::Ed25519::compute_shared_secret(PubK3, PK2).move_as_ok();
   LOG(ERROR) << "secret(PK2, PubK2)=" << td::buffer_to_hex(secret22);
 
-  auto secret12 = td::Ed25519::compute_shared_secret(PubK3, PK1).ok();
+  auto secret12 = td::Ed25519::compute_shared_secret(PubK3, PK1).move_as_ok();
   LOG(ERROR) << "secret(PK1, PubK2)=" << td::buffer_to_hex(secret12);
-  auto secret21 = td::Ed25519::compute_shared_secret(PubK1, PK2).ok();
+  auto secret21 = td::Ed25519::compute_shared_secret(PubK1, PK2).move_as_ok();
   LOG(ERROR) << "secret(PK2, PubK1)=" << td::buffer_to_hex(secret21);
   CHECK(secret12 == secret21);
 
@@ -79,7 +79,7 @@ TEST(Crypto, ed25519) {
   //    td::Ed25519::compute_shared_secret(PubK1, PK2).ensure();
   //  }
 
-  auto signature = PK1.sign("abc").ok();
+  auto signature = PK1.sign("abc").move_as_ok();
   LOG(ERROR) << "PK1.signature=" << td::buffer_to_hex(signature);
 
   // signature[63] ^= 1;
@@ -87,21 +87,21 @@ TEST(Crypto, ed25519) {
   LOG(ERROR) << "PubK1.check_signature=" << ok;
   ok.ensure();
 
-  td::Ed25519::PrivateKey PK4(td::Slice(rfc8032_secret_key1, 32));
-  auto PubK4 = PK4.get_public_key().ok();
+  td::Ed25519::PrivateKey PK4(td::SecureString(td::Slice(rfc8032_secret_key1, 32)));
+  auto PubK4 = PK4.get_public_key().move_as_ok();
   LOG(ERROR) << "PK4.private_key = " << td::buffer_to_hex(PK4.as_octet_string());
   LOG(ERROR) << "PK4.public_key = " << td::buffer_to_hex(PubK4.as_octet_string());
   CHECK(td::Slice(rfc8032_public_key1, 32) == PubK4.as_octet_string());
-  signature = PK4.sign("").ok();
+  signature = PK4.sign("").move_as_ok();
   LOG(ERROR) << "PK4.signature('') = " << td::buffer_to_hex(signature);
   CHECK(signature == td::Slice(rfc8032_signature1, 64));
 
-  td::Ed25519::PrivateKey PK5(td::Slice(rfc8032_secret_key2, 32));
-  auto PubK5 = PK5.get_public_key().ok();
+  td::Ed25519::PrivateKey PK5(td::SecureString(td::Slice(rfc8032_secret_key2, 32)));
+  auto PubK5 = PK5.get_public_key().move_as_ok();
   LOG(ERROR) << "PK5.private_key = " << td::buffer_to_hex(PK5.as_octet_string());
   LOG(ERROR) << "PK5.public_key = " << td::buffer_to_hex(PubK5.as_octet_string());
   CHECK(td::Slice(rfc8032_public_key2, 32) == PubK5.as_octet_string());
-  signature = PK5.sign(td::Slice(rfc8032_message2, 2)).ok();
+  signature = PK5.sign(td::Slice(rfc8032_message2, 2)).move_as_ok();
   LOG(ERROR) << "PK5.signature('') = " << td::buffer_to_hex(signature);
   CHECK(signature == td::Slice(rfc8032_signature2, 64));
 

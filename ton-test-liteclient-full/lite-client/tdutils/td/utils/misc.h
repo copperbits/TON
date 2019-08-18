@@ -44,7 +44,7 @@ vector<T> full_split(T s, char delimiter = ' ') {
   }
 }
 
-string implode(vector<string> v, char delimiter = ' ');
+string implode(const vector<string> &v, char delimiter = ' ');
 
 namespace detail {
 
@@ -86,15 +86,32 @@ void reset_to_empty(T &value) {
 }
 
 template <class T>
-auto append(vector<T> &destination, const vector<T> &source) {
+void append(vector<T> &destination, const vector<T> &source) {
   destination.insert(destination.end(), source.begin(), source.end());
 }
 
 template <class T>
-auto append(vector<T> &destination, vector<T> &&source) {
+void append(vector<T> &destination, vector<T> &&source) {
   if (destination.empty()) {
     destination.swap(source);
     return;
+  }
+  destination.reserve(destination.size() + source.size());
+  for (auto &elem : source) {
+    destination.push_back(std::move(elem));
+  }
+  reset_to_empty(source);
+}
+
+template <class T>
+void combine(vector<T> &destination, const vector<T> &source) {
+  append(destination, source);
+}
+
+template <class T>
+void combine(vector<T> &destination, vector<T> &&source) {
+  if (destination.size() < source.size()) {
+    destination.swap(source);
   }
   destination.reserve(destination.size() + source.size());
   for (auto &elem : source) {
@@ -317,8 +334,8 @@ class NarrowCast {
     static_assert(std::is_integral<AT>::value, "expected integral type to cast from");
 
     auto r = R(a);
-    CHECK(A(r) == a) << static_cast<AT>(a) << " " << static_cast<RT>(r) << " " << file_ << " " << line_;
-    CHECK((is_same_signedness<RT, AT>::value) || ((static_cast<RT>(r) < RT{}) == (static_cast<AT>(a) < AT{})))
+    LOG_CHECK(A(r) == a) << static_cast<AT>(a) << " " << static_cast<RT>(r) << " " << file_ << " " << line_;
+    LOG_CHECK((is_same_signedness<RT, AT>::value) || ((static_cast<RT>(r) < RT{}) == (static_cast<AT>(a) < AT{})))
         << static_cast<AT>(a) << " " << static_cast<RT>(r) << " " << file_ << " " << line_;
 
     return r;
@@ -375,15 +392,14 @@ detail::reversion_wrapper<T> reversed(T &iterable) {
   return {iterable};
 }
 
-inline std::string buffer_to_hex(td::Slice buffer) {
-  const char *hex = "0123456789ABCDEF";
-  std::string res(2 * buffer.size(), '\0');
-  for (std::size_t i = 0; i < buffer.size(); i++) {
-    auto c = buffer.ubegin()[i];
-    res[2 * i] = hex[c & 15];
-    res[2 * i + 1] = hex[c >> 4];
-  }
-  return res;
-}
+string buffer_to_hex(Slice buffer);
+
+string zero_encode(Slice data);
+
+string zero_decode(Slice data);
+
+string zero_one_encode(Slice data);
+
+string zero_one_decode(Slice data);
 
 }  // namespace td

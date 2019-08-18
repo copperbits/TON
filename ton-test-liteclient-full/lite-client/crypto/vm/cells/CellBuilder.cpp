@@ -19,14 +19,12 @@ using td::RefAny;
  * 
  */
 
-td::ThreadSafeCounter CellBuilder::total_cell_builders;
-
 CellBuilder::~CellBuilder() {
-  total_cell_builders.add(-1);
+  get_thread_safe_counter().add(-1);
 }
 
 CellBuilder::CellBuilder() : bits(0), refs_cnt(0) {
-  total_cell_builders.add(+1);
+  get_thread_safe_counter().add(+1);
 }
 
 Ref<DataCell> CellBuilder::finalize_copy(bool special) const {
@@ -457,6 +455,10 @@ bool CellBuilder::append_bitstring_chk(Ref<td::BitString> bs_ref, unsigned size)
   return bs_ref.not_null() && append_bitstring_chk(*bs_ref, size);
 }
 
+bool CellBuilder::append_bitslice(const td::BitSlice& bs) {
+  return store_bits_bool(bs.bits(), bs.size());
+}
+
 bool CellBuilder::store_maybe_ref(Ref<Cell> cell) {
   if (cell.is_null()) {
     return store_long_bool(0, 1);
@@ -516,11 +518,11 @@ CellBuilder* CellBuilder::make_copy() const {
   return c;
 }
 
-CellSlice CellBuilder::as_cellslice() const & {
+CellSlice CellBuilder::as_cellslice() const& {
   return CellSlice{finalize_copy()};
 }
 
-Ref<CellSlice> CellBuilder::as_cellslice_ref() const & {
+Ref<CellSlice> CellBuilder::as_cellslice_ref() const& {
   return Ref<CellSlice>{true, finalize_copy()};
 }
 

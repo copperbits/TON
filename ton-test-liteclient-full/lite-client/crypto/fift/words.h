@@ -12,6 +12,8 @@ struct Quit {
   }
 };
 
+struct SkipToEof {};
+
 void init_words_common(Dictionary& dictionary);
 void init_words_vm(Dictionary& dictionary);
 void init_words_ton(Dictionary& dictionary);

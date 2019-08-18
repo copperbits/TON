@@ -5,6 +5,8 @@ int32 = Int32;
 int53 = Int53;
 int64 = Int64;
 bytes = Bytes;
+secureString = SecureString;
+secureBytes = SecureBytes;
 
 boolFalse = Bool;
 boolTrue = Bool;
@@ -14,18 +16,25 @@ vector {t:Type} # [ t ] = Vector t;
 error code:int32 message:string = Error;
 ok = Ok;
 
-privateKey key:bytes = PrivateKey;
-publicKey key:bytes = PublicKey;
+options config:string keystore_directory:string = Options;
+
+key public_key:bytes secret:secureBytes = Key;
+inputKey key:key local_password:secureBytes = InputKey;
+exportedKey word_list:vector<secureString> = ExportedKey;
+exportedPemKey pem:secureString = ExportedPemKey;
+exportedEncryptedKey data:secureBytes = ExportedEncryptedKey;
 
 accountAddress account_address:string = AccountAddress;
 
+internal.transactionId lt:int64 hash:bytes = internal.TransactionId;
+
 raw.initialAccountState code:bytes data:bytes = raw.InitialAccountState;
-raw.accountState balance:int64 code:bytes data:bytes = raw.AccountState;
+raw.accountState balance:int64 code:bytes data:bytes last_transaction:internal.transactionId = raw.AccountState;
 
-testWallet.initialAccountState public_key:PublicKey = testWallet.InitialAccountState;
-testWallet.accountState balance:int64 seqno:int32 = testWallet.AccountState;
+testWallet.initialAccountState public_key:bytes = testWallet.InitialAccountState;
+testWallet.accountState balance:int64 seqno:int32 last_transaction_id:internal.transactionId = testWallet.AccountState;
 
-testGiver.accountState balance:int64 seqno:int32 = testGiver.AccountState;
+testGiver.accountState balance:int64 seqno:int32 last_transaction_id:internal.transactionId = testGiver.AccountState;
 
 uninited.accountState balance:int64 = uninited.AccountState;
 
@@ -39,20 +48,30 @@ generic.accountStateUninited account_state:uninited.accountState = generic.Accou
 
 ---functions---
 
+init options:options = Ok;
+close = Ok;
+
 options.setConfig config:string = Ok;
 
-createKey = PrivateKey;
-getPublicKey private_key:privateKey = PublicKey;
+createNewKey local_password:secureBytes mnemonic_password:secureBytes = Key;
+deleteKey public_key:bytes = Ok;
+exportKey input_key:inputKey = ExportedKey;
+exportPemKey input_key:inputKey key_password:secureBytes = ExportedPemKey;
+exportEncryptedKey input_key:inputKey key_password:secureBytes = ExportedEncryptedKey;
+importKey local_password:secureBytes mnemonic_password:secureBytes exported_key:exportedKey = Key;
+importPemKey local_password:secureBytes key_password:secureBytes exported_key:exportedPemKey = Key;
+importEncryptedKey local_password:secureBytes key_password:secureBytes exported_encrypted_key:exportedEncryptedKey = Key;
+changeLocalPassword input_key:inputKey new_local_password:secureBytes = Key;
 
 //raw.init initial_account_state:raw.initialAccountState = Ok;
 raw.getAccountAddress initital_account_state:raw.initialAccountState = AccountAddress;
 raw.getAccountState account_address:accountAddress = raw.AccountState;
 raw.sendMessage destination:accountAddress initial_account_state:bytes data:bytes = Ok;
 
-testWallet.init private_key:PrivateKey = Ok;
+testWallet.init private_key:inputKey = Ok;
 testWallet.getAccountAddress initital_account_state:testWallet.initialAccountState = AccountAddress;
 testWallet.getAccountState account_address:accountAddress = testWallet.AccountState;
-testWallet.sendGrams private_key:PrivateKey destination:accountAddress seqno:int32 amount:int64 = Ok;
+testWallet.sendGrams private_key:inputKey destination:accountAddress seqno:int32 amount:int64 = Ok;
 
 testGiver.getAccountState = testGiver.AccountState;
 testGiver.getAccountAddress = AccountAddress;
@@ -60,20 +79,7 @@ testGiver.sendGrams destination:accountAddress seqno:int32 amount:int64 = Ok;
 
 //generic.getAccountAddress initital_account_state:generic.InitialAccountState = AccountAddress;
 generic.getAccountState account_address:accountAddress = generic.AccountState;
-generic.sendGrams private_key:PrivateKey source:accountAddress destination:accountAddress amount:int64 = Ok;
+generic.sendGrams private_key:inputKey source:accountAddress destination:accountAddress amount:int64 = Ok;
 
 runTests dir:string = Ok;
 
----types---
-key public_key:bytes secret:bytes = Key;
-inputKey key:key local_password:bytes = InputKey;
-exportedKey word_list:vector<string> = ExportedKey;
-exportedPemKey pem:string= ExportedPemKey;
---- functions ---
-createNewKey local_password:bytes mnemonic_password:bytes = Key;
-deleteKey public_key:bytes = Ok;
-exportKey input_key:inputKey = ExportedKey;
-exportPemKey input_key:inputKey key_password:bytes = ExportedPemKey;
-importKey local_password:bytes mnemonic_password:bytes exported_key:exportedKey = Key;
-importPemKey local_password:bytes key_password:bytes exported_key:exportedPemKey = Key;
-changeLocalPassword input_key:inputKey new_local_password:bytes = Key;

@@ -26,6 +26,7 @@ class FileFd {
   FileFd &operator=(const FileFd &) = delete;
 
   enum Flags : int32 { Write = 1, Read = 2, Truncate = 4, Create = 8, Append = 16, CreateNew = 32, Direct = 64 };
+  enum PrivateFlags : int32 { WinStat = 128 };
 
   static Result<FileFd> open(CSlice filepath, int32 flags, int32 mode = 0600) TD_WARN_UNUSED_RESULT;
   static FileFd from_native_fd(NativeFd fd) TD_WARN_UNUSED_RESULT;
@@ -46,9 +47,9 @@ class FileFd {
   void close();
   bool empty() const;
 
-  int64 get_size();
+  Result<int64> get_size() const;
 
-  Stat stat() const;
+  Result<Stat> stat() const;
 
   Status sync() TD_WARN_UNUSED_RESULT;
 

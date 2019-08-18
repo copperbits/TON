@@ -1,6 +1,6 @@
 #pragma once
 
-#include "td/utils/logging.h"
+#include "td/utils/common.h"
 
 #include <utility>
 
@@ -42,7 +42,7 @@ class TimedStat {
 
   void update(double &now) {
     if (now < next_timestamp_) {
-      // CHECK(now >= next_timestamp_ * (1 - 1e-14)) << now << " " << next_timestamp_;
+      // LOG_CHECK(now >= next_timestamp_ * (1 - 1e-14)) << now << " " << next_timestamp_;
       now = next_timestamp_;
     }
     if (duration_ == 0) {

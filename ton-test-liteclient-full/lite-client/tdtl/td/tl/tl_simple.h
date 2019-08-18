@@ -39,6 +39,8 @@ struct Type {
     Double,
     String,
     Bytes,
+    SecureString,
+    SecureBytes,
     Vector,
     Bool,
     Int128,
@@ -134,6 +136,10 @@ class Schema {
         type->type = Type::String;
       } else if (from_type->name == "Bytes") {
         type->type = Type::Bytes;
+      } else if (from_type->name == "SecureString") {
+        type->type = Type::SecureString;
+      } else if (from_type->name == "SecureBytes") {
+        type->type = Type::SecureBytes;
       } else if (from_type->name == "Bool") {
         type->type = Type::Bool;
       } else if (from_type->name == "Int128") {

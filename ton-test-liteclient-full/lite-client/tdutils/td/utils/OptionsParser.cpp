@@ -4,6 +4,11 @@
 #include "getopt.h"
 #endif
 
+#if !TD_WINDOWS
+#include <getopt.h>
+#include <unistd.h>
+#endif
+
 namespace td {
 void OptionsParser::set_description(std::string description) {
   description_ = std::move(description);

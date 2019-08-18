@@ -94,16 +94,9 @@ BufferRaw *BufferAllocator::create_buffer_raw(size_t size) {
   }
   buffer_mem += buf_size;
   auto *buffer_raw = reinterpret_cast<BufferRaw *>(new char[buf_size]);
-  new (buffer_raw) BufferRaw();
-  buffer_raw->data_size_ = size;
-  buffer_raw->begin_ = 0;
-  buffer_raw->end_ = 0;
-
-  buffer_raw->ref_cnt_.store(1, std::memory_order_relaxed);
-  buffer_raw->has_writer_.store(true, std::memory_order_relaxed);
-  buffer_raw->was_reader_ = false;
-  return buffer_raw;
+  return new (buffer_raw) BufferRaw(size);
 }
+
 void BufferBuilder::append(BufferSlice slice) {
   if (append_inplace(slice.as_slice())) {
     return;
@@ -134,15 +127,20 @@ BufferSlice BufferBuilder::extract() {
   if (to_append_.empty() && to_prepend_.empty()) {
     return buffer_writer_.as_buffer_slice();
   }
-  size_t total_size = 0;
-  for_each([&](auto &&slice) { total_size += slice.size(); });
+  size_t total_size = size();
   BufferWriter writer(0, 0, total_size);
-  for_each([&](auto &&slice) {
+  std::move(*this).for_each([&](auto &&slice) {
     writer.prepare_append().truncate(slice.size()).copy_from(slice.as_slice());
     writer.confirm_append(slice.size());
   });
   *this = {};
   return writer.as_buffer_slice();
+}
+
+size_t BufferBuilder::size() const {
+  size_t total_size = 0;
+  for_each([&](auto &&slice) { total_size += slice.size(); });
+  return total_size;
 }
 
 bool BufferBuilder::append_inplace(Slice slice) {
