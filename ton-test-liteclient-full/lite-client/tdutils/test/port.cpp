@@ -1,7 +1,9 @@
 #include "td/utils/common.h"
 #include "td/utils/logging.h"
+#include "td/utils/misc.h"
 #include "td/utils/port/FileFd.h"
 #include "td/utils/port/path.h"
+#include "td/utils/port/signals.h"
 #include "td/utils/Slice.h"
 #include "td/utils/tests.h"
 
@@ -11,7 +13,7 @@ TEST(Port, files) {
   CSlice main_dir = "test_dir";
   rmrf(main_dir).ignore();
   ASSERT_TRUE(FileFd::open(main_dir, FileFd::Write).is_error());
-  ASSERT_TRUE(walk_path(main_dir, [](CSlice name, bool is_directory) { UNREACHABLE(); }).is_error());
+  ASSERT_TRUE(walk_path(main_dir, [](CSlice name, WalkPath::Type type) { UNREACHABLE(); }).is_error());
   mkdir(main_dir).ensure();
   mkdir(PSLICE() << main_dir << TD_DIR_SLASH << "A").ensure();
   mkdir(PSLICE() << main_dir << TD_DIR_SLASH << "B").ensure();
@@ -28,18 +30,41 @@ TEST(Port, files) {
   int cnt = 0;
   const int ITER_COUNT = 1000;
   for (int i = 0; i < ITER_COUNT; i++) {
-    walk_path(main_dir,
-              [&](CSlice name, bool is_directory) {
-                if (!is_directory) {
-                  ASSERT_TRUE(name == fd_path || name == fd2_path);
-                }
-                cnt++;
-              })
-        .ensure();
+    walk_path(main_dir, [&](CSlice name, WalkPath::Type type) {
+      if (type == WalkPath::Type::NotDir) {
+        ASSERT_TRUE(name == fd_path || name == fd2_path);
+      }
+      cnt++;
+    }).ensure();
   }
-  ASSERT_EQ(7 * ITER_COUNT, cnt);
+  ASSERT_EQ((5 * 2 + 2) * ITER_COUNT, cnt);
+  bool was_abort = false;
+  walk_path(main_dir, [&](CSlice name, WalkPath::Type type) {
+    CHECK(!was_abort);
+    if (type == WalkPath::Type::EnterDir && ends_with(name, PSLICE() << TD_DIR_SLASH << "B")) {
+      was_abort = true;
+      return WalkPath::Action::Abort;
+    }
+    return WalkPath::Action::Continue;
+  }).ensure();
+  CHECK(was_abort);
 
-  ASSERT_EQ(0u, fd.get_size());
+  cnt = 0;
+  bool is_first_dir = true;
+  walk_path(main_dir, [&](CSlice name, WalkPath::Type type) {
+    cnt++;
+    if (type == WalkPath::Type::EnterDir) {
+      if (is_first_dir) {
+        is_first_dir = false;
+      } else {
+        return WalkPath::Action::SkipDir;
+      }
+    }
+    return WalkPath::Action::Continue;
+  }).ensure();
+  ASSERT_EQ(6, cnt);
+
+  ASSERT_EQ(0u, fd.get_size().move_as_ok());
   ASSERT_EQ(12u, fd.write("Hello world!").move_as_ok());
   ASSERT_EQ(4u, fd.pwrite("abcd", 1).move_as_ok());
   char buf[100];
@@ -50,7 +75,7 @@ TEST(Port, files) {
 
   ASSERT_TRUE(FileFd::open(main_dir, FileFd::Read | FileFd::CreateNew).is_error());
   fd = FileFd::open(fd_path, FileFd::Read | FileFd::Create).move_as_ok();
-  ASSERT_EQ(13u, fd.get_size());
+  ASSERT_EQ(13u, fd.get_size().move_as_ok());
   ASSERT_EQ(4u, fd.pread(buf_slice.substr(0, 4), 1).move_as_ok());
   ASSERT_STREQ("abcd", buf_slice.substr(0, 4));
 
@@ -76,8 +101,88 @@ TEST(Port, Writev) {
   fd.close();
   fd = FileFd::open(test_file_path, FileFd::Read).move_as_ok();
   Slice expected_content = "abcdefghi";
-  ASSERT_EQ(static_cast<int64>(expected_content.size()), fd.get_size());
+  ASSERT_EQ(static_cast<int64>(expected_content.size()), fd.get_size().ok());
   std::string content(expected_content.size(), '\0');
   ASSERT_EQ(content.size(), fd.read(content).move_as_ok());
   ASSERT_EQ(expected_content, content);
 }
+
+#if TD_PORT_POSIX
+#include <signal.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <mutex>
+#include <set>
+#include <algorithm>
+
+std::mutex m;
+std::vector<std::string> ptrs;
+std::vector<int *> addrs;
+TD_THREAD_LOCAL int thread_id;
+void on_user_signal(int sig) {
+  int addr;
+  addrs[thread_id] = &addr;
+  char ptr[10];
+  snprintf(ptr, 6, "%d", thread_id);
+  std::unique_lock<std::mutex> guard(m);
+  ptrs.push_back(std::string(ptr));
+}
+
+TEST(Post, SignalsAndThread) {
+  setup_signals_alt_stack().ensure();
+  set_signal_handler(SignalType::User, on_user_signal).ensure();
+  std::vector<std::string> ans = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+  {
+    std::vector<td::thread> threads;
+    int thread_n = 10;
+    std::vector<Stage> stages(thread_n);
+    ptrs.clear();
+    addrs.resize(thread_n);
+    for (int i = 0; i < 10; i++) {
+      threads.emplace_back([&, i] {
+        setup_signals_alt_stack().ensure();
+        if (i != 0) {
+          stages[i].wait(2);
+        }
+        thread_id = i;
+        pthread_kill(pthread_self(), SIGUSR1);
+        if (i + 1 < thread_n) {
+          stages[i + 1].wait(2);
+        }
+      });
+    }
+    for (auto &t : threads) {
+      t.join();
+    }
+    CHECK(ptrs == ans);
+
+    LOG(ERROR) << ptrs;
+    //LOG(ERROR) << std::set<int *>(addrs.begin(), addrs.end()).size();
+    //LOG(ERROR) << addrs;
+  }
+
+  {
+    Stage stage;
+    std::vector<td::thread> threads;
+    int thread_n = 10;
+    ptrs.clear();
+    addrs.resize(thread_n);
+    for (int i = 0; i < 10; i++) {
+      threads.emplace_back([&, i] {
+        stage.wait(thread_n);
+        thread_id = i;
+        pthread_kill(pthread_self(), SIGUSR1);
+        //kill(pid_t(syscall(SYS_gettid)), SIGUSR1);
+      });
+    }
+    for (auto &t : threads) {
+      t.join();
+    }
+    std::sort(ptrs.begin(), ptrs.end());
+    CHECK(ptrs == ans);
+    ASSERT_EQ(10u, std::set<int *>(addrs.begin(), addrs.end()).size());
+    //LOG(ERROR) << addrs;
+  }
+  //ASSERT_EQ(10u, ptrs.size());
+}
+#endif

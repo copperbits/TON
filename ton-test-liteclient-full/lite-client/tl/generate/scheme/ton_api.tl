@@ -22,8 +22,9 @@ testVectorBytes value:(vector bytes) = TestObject;
 
 tcp.pong random_id:long = tcp.Pong;
 
-fer.raptorQ symbol_size:int total_symbols:int total_size:int = fer.Type;
-fer.simple symbol_size:int total_symbols:int total_size:int = fer.Type;
+fec.raptorQ data_size:int symbol_size:int symbols_count:int = fec.Type;
+fec.roundRobin data_size:int symbol_size:int symbols_count:int = fec.Type;
+fec.online data_size:int symbol_size:int symbols_count:int = fec.Type;
 
 ---functions---
 
@@ -52,8 +53,8 @@ adnl.id.short id:int256 = adnl.id.Short;
 
 adnl.address.udp ip:int port:int = adnl.Address;
 adnl.address.udp6 ip:int128 port:int = adnl.Address;
-adnl.address.tcp ip:int port:int = adnl.Address;
-adnl.address.tcp6 ip:int128 port:int = adnl.Address;
+//adnl.address.tcp ip:int port:int = adnl.Address;
+//adnl.address.tcp6 ip:int128 port:int = adnl.Address;
 
 //adnl.address.tunnel to:adnl.Address tunid: = adnl.Address; 
 
@@ -110,7 +111,7 @@ adnl.db.node.value date:int id:PublicKey addr_list:adnl.addressList priority_add
 
 ---types---
 
-rldp.messagePart transfer_id:int256 fer_type:fer.Type part:int total_size:long seqno:int data:bytes = rldp.MessagePart;
+rldp.messagePart transfer_id:int256 fec_type:fec.Type part:int total_size:long seqno:int data:bytes = rldp.MessagePart;
 rldp.confirm transfer_id:int256 part:int seqno:int = rldp.MessagePart;
 rldp.complete transfer_id:int256 part:int = rldp.MessagePart;
 
@@ -166,12 +167,12 @@ overlay.message overlay:int256 = overlay.Message;
 //overlay.randomPeers peers:(vector adnl.node) = overlay.RandomPeers;
 overlay.broadcastList hashes:(vector int256) = overlay.BroadcastList;
 
-overlay.fer.received hash:int256 = overlay.Broadcast;
-overlay.fer.completed hash:int256 = overlay.Broadcast;
+overlay.fec.received hash:int256 = overlay.Broadcast;
+overlay.fec.completed hash:int256 = overlay.Broadcast;
 
 overlay.broadcast.id src:int256 data_hash:int256 flags:int = overlay.broadcast.Id; 
-overlay.broadcastFer.id src:int256 type:int256 data_hash:int256 size:int flags:int = overlay.broadcastFer.Id;
-overlay.broadcastFer.partId broadcast_hash:int256 data_hash:int256 seqno:int = overlay.broadcastFer.PartId;
+overlay.broadcastFec.id src:int256 type:int256 data_hash:int256 size:int flags:int = overlay.broadcastFec.Id;
+overlay.broadcastFec.partId broadcast_hash:int256 data_hash:int256 seqno:int = overlay.broadcastFec.PartId;
 
 overlay.broadcast.toSign hash:int256 date:int = overlay.broadcast.ToSign;
 
@@ -182,9 +183,9 @@ overlay.certificateId overlay_id:int256 node:int256 expire_at:int max_size:int =
 
 overlay.unicast data:bytes = overlay.Broadcast;
 overlay.broadcast src:PublicKey certificate:overlay.Certificate flags:int data:bytes date:int signature:bytes = overlay.Broadcast;
-overlay.broadcastFer src:PublicKey certificate:overlay.Certificate data_hash:int256 data_size:int flags:int
-          data:bytes seqno:int fer:fer.Type date:int signature:bytes = overlay.Broadcast;
-overlay.broadcastFerShort src:PublicKey certificate:overlay.Certificate broadcast_hash:int256 part_data_hash:int256 seqno:int signature:bytes = overlay.Broadcast; 
+overlay.broadcastFec src:PublicKey certificate:overlay.Certificate data_hash:int256 data_size:int flags:int
+          data:bytes seqno:int fec:fec.Type date:int signature:bytes = overlay.Broadcast;
+overlay.broadcastFecShort src:PublicKey certificate:overlay.Certificate broadcast_hash:int256 part_data_hash:int256 seqno:int signature:bytes = overlay.Broadcast; 
 overlay.broadcastNotFound = overlay.Broadcast;
 
 ---functions---
@@ -308,13 +309,15 @@ tonNode.zeroStateIdExt workchain:int root_hash:int256 file_hash:int256 = tonNode
 tonNode.blockDescriptionEmpty = tonNode.BlockDescription;
 tonNode.blockDescription id:tonNode.blockIdExt = tonNode.BlockDescription;
 tonNode.preparedProofEmpty = tonNode.PreparedProof;
-tonNode.preparedProof masterchain_block:tonNode.blockIdExt = tonNode.PreparedProof;
+tonNode.preparedProof = tonNode.PreparedProof;
 tonNode.preparedProofLink = tonNode.PreparedProof;
 tonNode.preparedState = tonNode.PreparedState;
 tonNode.notFoundState = tonNode.PreparedState;
 tonNode.prepared = tonNode.Prepared;
 tonNode.notFound = tonNode.Prepared;
 tonNode.data data:bytes = tonNode.Data;
+//tonNode.preparedKeyBlockProofEmpty = tonNode.PreparedKeyBlockProof;
+//tonNode.preparedKeyBlockProof block_id:tonNode.blockIdExt = tonNode.PreparedKeyBlockProof;
 
 tonNode.ihrMessage data:bytes = tonNode.IhrMessage;
 tonNode.externalMessage data:bytes = tonNode.ExternalMessage;
@@ -322,13 +325,15 @@ tonNode.externalMessage data:bytes = tonNode.ExternalMessage;
 tonNode.newShardBlock block:tonNode.blockIdExt cc_seqno:int data:bytes = tonNode.NewShardBlock;
 
 tonNode.blockBroadcast id:tonNode.blockIdExt catchain_seqno:int validator_set_hash:int 
-              signatures:(vector tonNode.blockSignature) masterchain_block_id:tonNode.blockIdExt
+              signatures:(vector tonNode.blockSignature) 
               proof:bytes data:bytes = tonNode.Broadcast;
 tonNode.ihrMessageBroadcast message:tonNode.ihrMessage = tonNode.Broadcast;
 tonNode.externalMessageBroadcast message:tonNode.externalMessage = tonNode.Broadcast;
 tonNode.newShardBlockBroadcast block:tonNode.newShardBlock = tonNode.Broadcast;
 
 tonNode.shardPublicOverlayId workchain:int shard:long zero_state_file_hash:int256 = tonNode.ShardPublicOverlayId;
+
+tonNode.keyBlocks blocks:(vector tonNode.blockIdExt) incomplete:Bool error:Bool = tonNode.KeyBlocks;
 
 ton.blockId root_cell_hash:int256 file_hash:int256 = ton.BlockId;
 
@@ -337,17 +342,15 @@ ton.blockId root_cell_hash:int256 file_hash:int256 = ton.BlockId;
 tonNode.getNextBlockDescription prev_block:tonNode.blockIdExt = tonNode.BlockDescription;
 tonNode.prepareBlockProof block:tonNode.blockIdExt allow_partial:Bool = tonNode.PreparedProof;
 tonNode.prepareBlock block:tonNode.blockIdExt = tonNode.Prepared;
-tonNode.prepareState block:tonNode.blockIdExt = tonNode.PreparedState;
+tonNode.preparePersistentState block:tonNode.blockIdExt masterchain_block:tonNode.blockIdExt = tonNode.PreparedState;
+tonNode.prepareZeroState block:tonNode.blockIdExt = tonNode.PreparedState;
+tonNode.getNextKeyBlockIds block:tonNode.blockIdExt max_size:int = tonNode.KeyBlocks;
 tonNode.downloadBlock block:tonNode.blockIdExt = tonNode.Data;
-tonNode.downloadState block:tonNode.blockIdExt = tonNode.Data;
+tonNode.downloadPersistentState block:tonNode.blockIdExt masterchain_block:tonNode.blockIdExt = tonNode.Data;
+tonNode.downloadZeroState block:tonNode.blockIdExt = tonNode.Data;
 tonNode.downloadBlockProof block:tonNode.blockIdExt = tonNode.Data;
 tonNode.downloadBlockProofLink block:tonNode.blockIdExt = tonNode.Data;
 
----types---
-
-liteServer.error code:int message:string = liteServer.Error; 
-
----functions---
 ---types---
 
 test.validatorSession.block root_hash:int256 height:long data:bytes = test.validatorSession.Block;
@@ -398,8 +401,8 @@ db.root.key.blockDb version:int = db.root.Key;
 db.root.config celldb_version:int blockdb_version:int = db.root.Config;
 db.root.key.config = db.root.Key;
 
-db.celldb.value next:tonNode.blockIdExt hash:int256 = db.celldb.Value;
-db.celldb.key.value id:tonNode.blockIdExt = db.celldb.key.Value;
+db.celldb.value block_id:tonNode.blockIdExt prev:int256 next:int256 root_hash:int256 = db.celldb.Value;
+db.celldb.key.value hash:int256 = db.celldb.key.Value;
 
 db.block.info id:tonNode.blockIdExt flags:# prev_left:flags.1?tonNode.blockIdExt
                                             prev_right:flags.2?tonNode.blockIdExt
@@ -411,31 +414,35 @@ db.block.info id:tonNode.blockIdExt flags:# prev_left:flags.1?tonNode.blockIdExt
 db.block.archivedInfo id:tonNode.blockIdExt flags:# next:flags.0?tonNode.blockIdExt = db.block.Info;
 
 db.blockdb.value next:tonNode.blockIdExt data:bytes = db.blockdb.Value;
-db.blockdb.key.value id:tonNode.blockIdExt = db.blockdb.key.Value;
-
-db.filedb.value next:db.filedb.Key hash:int256 = db.filedb.Value;
+db.blockdb.lru id:tonNode.blockIdExt prev:int256 next:int256 = db.blockdb.Lru;
+db.blockdb.key.lru id:tonNode.blockIdExt = db.blockdb.Key;
+db.blockdb.key.value id:tonNode.blockIdExt = db.blockdb.Key;
 
 db.candidate id:tonNode.blockIdExt data:bytes collated_data:bytes = db.Candidate;
 db.candidate.id id:tonNode.blockIdExt collated_data_file_hash:int256 = db.candidate.Id; 
 
 db.filedb.key.empty = db.filedb.Key;
 db.filedb.key.blockFile block_id:tonNode.blockIdExt = db.filedb.Key; 
-db.filedb.key.stateFile block_id:tonNode.blockIdExt = db.filedb.Key; 
-db.filedb.key.shardStateFile block_id:tonNode.blockIdExt masterchain_block_id:tonNode.blockIdExt = db.filedb.Key; 
+db.filedb.key.zeroStateFile block_id:tonNode.blockIdExt = db.filedb.Key; 
+db.filedb.key.persistentStateFile block_id:tonNode.blockIdExt masterchain_block_id:tonNode.blockIdExt = db.filedb.Key; 
 db.filedb.key.proof block_id:tonNode.blockIdExt = db.filedb.Key;
 db.filedb.key.proofLink block_id:tonNode.blockIdExt = db.filedb.Key;
 db.filedb.key.signatures block_id:tonNode.blockIdExt = db.filedb.Key;
 db.filedb.key.candidate id:db.candidate.id = db.filedb.Key;
 
+db.filedb.value key:db.filedb.Key prev:int256 next:int256 file_hash:int256 = db.filedb.Value;
+
 db.state.destroyedSessions sessions:(vector int256) = db.state.DestroyedSessions;
 db.state.initBlockId block:tonNode.blockIdExt = db.state.InitBlockId;
 db.state.gcBlockId block:tonNode.blockIdExt = db.state.GcBlockId;
 db.state.shardClient block:tonNode.blockIdExt = db.state.ShardClient;
+db.state.asyncSerializer block:tonNode.blockIdExt last:tonNode.blockIdExt last_ts:int = db.state.AsyncSerializer;
 
 db.state.key.destroyedSessions = db.state.Key;
 db.state.key.initBlockId = db.state.Key;
 db.state.key.gcBlockId = db.state.Key;
-db.state.key.shardClient workchain:int shard:long = db.state.Key;
+db.state.key.shardClient = db.state.Key;
+db.state.key.asyncSerializer = db.state.Key;
 
 db.lt.el.key workchain:int shard:long idx:int = db.lt.Key;
 db.lt.desc.key workchain:int shard:long = db.lt.Key;
@@ -473,38 +480,3 @@ config.global adnl:adnl.config.global dht:dht.config.global catchains:(vector ca
 
 ---functions---
 
----types---
-liteServer.accountId workchain:int id:int256 = liteServer.AccountId;
-
-liteServer.masterchainInfo last:tonNode.blockIdExt state_root_hash:int256 init:tonNode.zeroStateIdExt = liteServer.MasterchainInfo;
-liteServer.currentTime now:int = liteServer.CurrentTime;
-liteServer.blockData id:tonNode.blockIdExt data:bytes = liteServer.BlockData;
-liteServer.blockState id:tonNode.blockIdExt root_hash:int256 file_hash:int256 data:bytes = liteServer.BlockState;
-liteServer.blockHeader id:tonNode.blockIdExt mode:# header_proof:bytes = liteServer.BlockHeader;
-liteServer.sendMsgStatus status:int = liteServer.SendMsgStatus;
-liteServer.accountState id:tonNode.blockIdExt shardblk:tonNode.blockIdExt shard_proof:bytes proof:bytes state:bytes = liteServer.AccountState;
-liteServer.shardInfo id:tonNode.blockIdExt shardblk:tonNode.blockIdExt shard_proof:bytes shard_descr:bytes = liteServer.ShardInfo;
-liteServer.allShardsInfo id:tonNode.blockIdExt proof:bytes data:bytes = liteServer.AllShardsInfo;
-liteServer.transactionInfo id:tonNode.blockIdExt proof:bytes transaction:bytes = liteServer.TransactionInfo;
-liteServer.transactionList ids:(vector tonNode.blockIdExt) transactions:bytes = liteServer.TransactionList;
-
-liteServer.debug.verbosity value:int = liteServer.debug.Verbosity;
-
----functions---
-
-liteServer.getMasterchainInfo = liteServer.MasterchainInfo;
-liteServer.getTime = liteServer.CurrentTime;
-liteServer.getBlock id:tonNode.blockIdExt = liteServer.BlockData;
-liteServer.getState id:tonNode.blockIdExt = liteServer.BlockState;
-liteServer.getBlockHeader id:tonNode.blockIdExt mode:# = liteServer.BlockHeader;
-liteServer.sendMessage body:bytes = liteServer.SendMsgStatus;
-liteServer.getAccountState id:tonNode.blockIdExt account:liteServer.accountId = liteServer.AccountState;
-liteServer.getShardInfo id:tonNode.blockIdExt workchain:int shard:long exact:Bool = liteServer.ShardInfo;
-liteServer.getAllShardsInfo id:tonNode.blockIdExt = liteServer.AllShardsInfo;
-liteServer.getOneTransaction id:tonNode.blockIdExt account:liteServer.accountId lt:long = liteServer.TransactionInfo;
-liteServer.getTransactions count:# account:liteServer.accountId lt:long hash:int256 = liteServer.TransactionList;
-liteServer.lookupBlock mode:# id:tonNode.blockId lt:mode.1?long utime:mode.2?int = liteServer.BlockHeader;
-
-liteServer.debug.setVerbosity verbosity:liteServer.debug.verbosity = liteServer.debug.Verbosity;
-
-liteServer.query data:bytes = Object;

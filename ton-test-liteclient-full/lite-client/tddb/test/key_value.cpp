@@ -7,6 +7,7 @@
 #include "td/utils/benchmark.h"
 #include "td/utils/buffer.h"
 #include "td/utils/optional.h"
+#include "td/utils/UInt.h"
 
 TEST(KeyValue, simple) {
   td::Slice db_name = "testdb";

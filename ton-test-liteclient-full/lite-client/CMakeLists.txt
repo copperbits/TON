@@ -1,16 +1,74 @@
 cmake_minimum_required(VERSION 3.0.2)
 
-project(LITE_CLIENT)
+project(TON VERSION 0.5 LANGUAGES C CXX)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+#set(OPENSSL_USE_STATIC_LIBS TRUE)
 
-add_subdirectory(third-party/abseil-cpp EXCLUDE_FROM_ALL)
+# Prevent in-source build
+get_filename_component(TON_REAL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
+get_filename_component(TON_REAL_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}" REALPATH)
+
+if (TON_REAL_BINARY_DIR STREQUAL TON_REAL_SOURCE_DIR)
+  message("  Out-of-source build should be used to build TDLib.")
+  message("  You need to remove the files already created by CMake and")
+  message("  rerun CMake from a new directory:")
+  message("  rm -rf CMakeFiles CMakeCache.txt")
+  message("  mkdir build")
+  message("  cd build")
+  message("  cmake ..")
+  message(FATAL_ERROR "In-source build failed.")
+endif()
+
+
+option(TONLIB_ENABLE_JNI "Use \"ON\" to enable JNI-compatible TonLib API.")
+option(TON_USE_ASAN "Use \"ON\" to enable AddressSanitizer." OFF)
+option(TON_USE_TSAN "Use \"ON\" to enable ThreadSanitizer." OFF)
+option(TON_USE_UBSAN "Use \"ON\" to enable UndefinedBehaviorSanitizer." OFF)
+set(TON_ARCH "native" CACHE STRING "Architecture, will be passed to -march=")
+
+if (TON_USE_ABSEIL)
+  message("Add abseil-cpp")
+  add_subdirectory(third-party/abseil-cpp EXCLUDE_FROM_ALL)
+  set(ABSL_FOUND 1)
+endif()
+
+#add_subdirectory(third-party/libcuckoo EXCLUDE_FROM_ALL)
+#add_subdirectory(third-party/junction EXCLUDE_FROM_ALL)
+
+if (WIN32)
+  message("Add wingetopt")
+  add_subdirectory(third-party/wingetopt EXCLUDE_FROM_ALL)
+  set(WINGETOPT_FOUND 1)
+  message(STATUS "Use wingetopt")
+endif()
 
 set(CRC32C_BUILD_TESTS OFF CACHE BOOL "Build CRC32C's unit tests")
 set(CRC32C_BUILD_BENCHMARKS OFF CACHE BOOL "Build CRC32C's benchmarks")
 set(CRC32C_USE_GLOG OFF CACHE BOOL "Build CRC32C's tests with Google Logging")
 set(CRC32C_INSTALL OFF CACHE BOOL "Install CRC32C's header and library")
+message("Add crc32c")
 add_subdirectory(third-party/crc32c EXCLUDE_FROM_ALL)
 set(CRC32C_FOUND 1)
-set(HAVE_SSE42)
+
+if (TON_USE_ROCKSDB)
+  if (ANDROID) 
+    set(PORTABLE ON CACHE BOOL "portable")
+  endif()
+  set(WITH_TESTS OFF CACHE BOOL "build with tests")
+  set(WITH_TOOLS OFF CACHE BOOL "build with tools")
+  set(FAIL_ON_WARNINGS OFF CACHE BOOL "fail on warnings")
+  message("Add rocksdb")
+  add_subdirectory(third-party/rocksdb EXCLUDE_FROM_ALL)
+endif()
+
+option(USE_COROUTINES "experimental support of coroutines" OFF)
+if (USE_COROUTINES)
+  if (${CMAKE_CXX_COMPILER_ID} MATCHES Clang)
+    set(TD_HAVE_COROUTINES 1)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcoroutines-ts")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+  endif()
+endif()
 
 option(USE_LIBRAPTORQ "use libraptorq for tests" OFF)
 if (USE_LIBRAPTORQ)
@@ -18,12 +76,12 @@ if (USE_LIBRAPTORQ)
   if (${CMAKE_CXX_COMPILER_ID} MATCHES Clang)
     set(CLANG_STDLIB "ON") # for libraptorq
   endif()
+  message("Add libraptorq")
   add_subdirectory(third-party/libraptorq EXCLUDE_FROM_ALL)
 endif()
 
+message("Add ton")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH})
-
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Configure CCache if available
 find_program(CCACHE_FOUND ccache)
@@ -72,11 +130,32 @@ set(CMAKE_THREAD_PREFER_PTHREAD ON)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-if (NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=core2")
+if (TON_ARCH AND NOT MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${TON_ARCH}")
 endif()
 if (THREADS_HAVE_PTHREAD_ARG)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+endif()
+
+if (TON_USE_JEMALLOC)
+  find_package(JeMalloc REQUIRED)
+endif()
+
+set(MEMPROF "" CACHE STRING "Use one of \"ON\", \"FAST\" or \"SAFE\" to enable memory profiling. \
+Works under macOS and Linux when compiled using glibc. \
+In FAST mode stack is unwinded only using frame pointers, which may fail. \
+In SAFE mode stack is unwinded using backtrace function from execinfo.h, which may be very slow. \
+By default both methods are used to achieve maximum speed and accuracy")
+
+if (CLANG OR GCC)
+  if (MEMPROF)
+    check_cxx_compiler_flag(-no-pie CXX_NO_PIE_FLAG)
+    if (CXX_NO_PIE_FLAG)
+      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -no-pie")
+    elseif (APPLE)
+      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-no_pie")
+    endif()
+  endif()
 endif()
 
 if (MSVC)
@@ -84,15 +163,20 @@ if (MSVC)
     string(REPLACE "/RTC1" " " CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
   endif()
   add_definitions(-D_SCL_SECURE_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /wd4100 /wd4127 /wd4324 /wd4505 /wd4702")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP /W4 /wd4100 /wd4127 /wd4324 /wd4505 /wd4702")
 elseif (CLANG OR GCC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${STD14_FLAG} -fno-omit-frame-pointer")
   if (APPLE)
     #use "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/export_list" for exported symbols
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fvisibility=hidden -Wl,-dead_strip,-x,-S")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fvisibility=hidden -Wl,-dead_strip,-x,-S")
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections -Wl,--exclude-libs,ALL")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
+    if (NOT TON_USE_ASAN AND NOT TON_USE_TSAN AND NOT MEMPROF)
+      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--exclude-libs,ALL")
+    endif()
   endif()
 elseif (INTEL)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${STD14_FLAG}")
@@ -110,6 +194,9 @@ if (NOT ANDROID) # _FILE_OFFSET_BITS is broken in ndk r15 and r15b and doesn't w
 endif()
 
 include(AddCXXCompilerFlag)
+if (MSVC)
+  add_cxx_compiler_flag("/experimental:external /external:anglebrackets /external:W0")
+endif()
 if (NOT MSVC)
   add_cxx_compiler_flag("-Wall")
 endif()
@@ -131,9 +218,41 @@ add_cxx_compiler_flag("-Wconversion")
 add_cxx_compiler_flag("-Wno-sign-conversion")
 add_cxx_compiler_flag("-Qunused-arguments")
 add_cxx_compiler_flag("-Wno-unused-private-field")
+add_cxx_compiler_flag("-Wno-redundant-move")
+#add_cxx_compiler_flag("-Werror")
+
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem /usr/include/c++/v1")
+if (CLANG)
+  #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+endif()
+if (TON_USE_ASAN)
+  if (CLANG)
+    add_cxx_compiler_flag("-stdlib=libc++")
+  endif()
+  add_cxx_compiler_flag("-fsanitize=address")
+  add_definitions(-DTD_USE_ASAN=1)
+endif()
+if (TON_USE_TSAN)
+  if (CLANG)
+    add_cxx_compiler_flag("-stdlib=libc++")
+  endif()
+  add_cxx_compiler_flag("-fsanitize=thread")
+endif()
+if (TON_USE_UBSAN)
+  if (CLANG)
+    add_cxx_compiler_flag("-stdlib=libc++")
+  endif()
+  add_cxx_compiler_flag("-fsanitize=undefined")
+endif()
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=leak")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -finstrument-functions")
 
 #Compilation database
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+
 
 function(target_link_libraries_system target)
   set(libs ${ARGN})
@@ -145,23 +264,65 @@ function(target_link_libraries_system target)
 endfunction(target_link_libraries_system)
 
 add_subdirectory(tdutils)
+add_subdirectory(memprof)
 add_subdirectory(tdactor)
 add_subdirectory(tdnet)
+if (TON_USE_ROCKSDB)
+  option(TDDB_USE_ROCKSDB "Use rockdb" ON)
+endif()
 add_subdirectory(tddb)
 add_subdirectory(tdtl)
 add_subdirectory(tl)
-if (USE_LIBRAPTORQ) 
-  target_link_libraries(test-fec PRIVATE third_party_fec)
-  target_compile_definitions(test-fec PRIVATE "USE_LIBRAPTORQ=1")
-endif()
-
 add_subdirectory(terminal)
 add_subdirectory(keys)
 add_subdirectory(tl-utils)
 add_subdirectory(adnl)
-
 add_subdirectory(crypto)
+add_subdirectory(lite-client)
 
-add_executable (test-lite-client test/test-lite-client.cpp test/test-lite-client.h)
-target_link_libraries(test-lite-client tdutils tdactor adnllite tl_api 
-  ton_crypto ton_block terminal )
+
+
+if (NOT CMAKE_CROSSCOMPILING)
+  add_custom_target(prepare_cross_compiling DEPENDS tl_generate_common tdmime_auto tlb_generate_block)
+endif()
+
+#TESTS
+add_executable(test-ed25519 test/test-td-main.cpp ${ED25519_TEST_SOURCE})
+target_link_libraries(test-ed25519 PRIVATE ton_crypto)
+
+add_executable(test-vm test/test-td-main.cpp ${TONVM_TEST_SOURCE})
+target_link_libraries(test-vm PRIVATE ton_crypto fift-lib)
+
+add_executable(test-cells test/test-td-main.cpp ${CELLS_TEST_SOURCE})
+target_link_libraries(test-cells PRIVATE ton_crypto)
+
+add_executable(test-fift test/test-td-main.cpp ${FIFT_TEST_SOURCE})
+target_link_libraries(test-fift PRIVATE fift-lib)
+
+add_executable(test-tdutils test/test-td-main.cpp ${TDUTILS_TEST_SOURCE})
+target_link_libraries(test-tdutils PRIVATE tdutils ${CMAKE_THREAD_LIBS_INIT} memprof ${JEMALLOC_LIBRARIES})
+#target_link_libraries_system(test-tdutils absl::base absl::container absl::hash )
+#target_link_libraries_system(test-tdutils libcuckoo)
+#target_include_directories(test-tdutils PRIVATE SYSTEM ${JUNCTION_ALL_INCLUDE_DIRS})
+#target_link_libraries(test-tdutils PRIVATE ${JUNCTION_ALL_LIBRARIES})
+
+add_executable(test-tdactor test/test-td-main.cpp ${TDACTOR_TEST_SOURCE})
+target_link_libraries(test-tdactor PRIVATE tdactor ${CMAKE_THREAD_LIBS_INIT})
+
+add_executable(test-net test/test-td-main.cpp ${NET_TEST_SOURCE})
+target_link_libraries(test-net PRIVATE tdnet tdutils ${CMAKE_THREAD_LIBS_INIT})
+
+
+
+enable_testing()
+set(TEST_OPTIONS "--regression ${CMAKE_CURRENT_SOURCE_DIR}/test/regression-tests.ans --filter -Bench")
+separate_arguments(TEST_OPTIONS)
+add_test(test-ed25519 test-ed25519)
+add_test(test-vm test-vm ${TEST_OPTIONS})
+add_test(test-fift test-fift ${TEST_OPTIONS})
+add_test(test-cells test-cells ${TEST_OPTIONS})
+add_test(test-net test-net)
+add_test(test-actors test-tdactor)
+
+
+

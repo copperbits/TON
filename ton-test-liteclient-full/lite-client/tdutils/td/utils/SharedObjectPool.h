@@ -1,7 +1,6 @@
 #pragma once
 
 #include "td/utils/common.h"
-
 #include "td/utils/logging.h"
 #include "td/utils/MpscLinkQueue.h"
 
@@ -28,7 +27,7 @@ class AtomicRefCnt {
   }
 
  private:
-  std::atomic<uint64> cnt_;
+  std::atomic<uint64> cnt_{0};
 };
 
 template <class DataT, class DeleterT>
@@ -184,7 +183,7 @@ class SharedObjectPool {
     while (free_queue_reader_.read()) {
       free_cnt++;
     }
-    CHECK(free_cnt == allocated_.size()) << free_cnt << " " << allocated_.size();
+    LOG_CHECK(free_cnt == allocated_.size()) << free_cnt << " " << allocated_.size();
   }
 
   template <class... ArgsT>

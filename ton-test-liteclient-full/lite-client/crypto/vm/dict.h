@@ -69,6 +69,9 @@ static inline bool store_cell_dict(vm::CellBuilder& cb, Ref<vm::Cell> dict_root)
 }  // namespace dict
 
 struct CombineError {};  // thrown by Dictionary::combine_with
+struct CombineErrorValue {
+  int arg_;
+};
 
 struct DictNonEmpty {};
 struct DictAdvance {};
@@ -187,13 +190,13 @@ class DictionaryFixed : public DictionaryBase {
   bool combine_with(DictionaryFixed& dict2, const simple_combine_func_t& simple_combine_func, int mode = 0);
   bool combine_with(DictionaryFixed& dict2);
   bool scan_diff(DictionaryFixed& dict2, const scan_diff_func_t& diff_func, int check_augm = 0);
-  template <unsigned n>
-  bool key_exists(const td::BitArray<n>& key) {
-    return key_exists(key.cbits(), n);
+  template <typename T>
+  bool key_exists(const T& key) {
+    return key_exists(key.bits(), key.size());
   }
-  template <unsigned n>
-  Ref<CellSlice> lookup(const td::BitArray<n>& key) {
-    return lookup(key.cbits(), n);
+  template <typename T>
+  Ref<CellSlice> lookup(const T& key) {
+    return lookup(key.bits(), key.size());
   }
 
  protected:
@@ -257,25 +260,25 @@ class Dictionary final : public DictionaryFixed {
                                    bool invert_first = false);
   void map(const map_func_t& map_func);
   void map(const simple_map_func_t& simple_map_func);
-  template <unsigned n>
-  Ref<Cell> lookup_ref(const td::BitArray<n>& key) {
-    return lookup_ref(key.cbits(), n);
+  template <typename T>
+  Ref<Cell> lookup_ref(const T& key) {
+    return lookup_ref(key.bits(), key.size());
   }
-  template <unsigned n>
-  bool set(const td::BitArray<n>& key, Ref<CellSlice> value, SetMode mode = SetMode::Set) {
-    return set(key.cbits(), n, std::move(value), mode);
+  template <typename T>
+  bool set(const T& key, Ref<CellSlice> value, SetMode mode = SetMode::Set) {
+    return set(key.bits(), key.size(), std::move(value), mode);
   }
-  template <unsigned n>
-  bool set_ref(const td::BitArray<n>& key, Ref<Cell> val_ref, SetMode mode = SetMode::Set) {
-    return set_ref(key.cbits(), n, std::move(val_ref), mode);
+  template <typename T>
+  bool set_ref(const T& key, Ref<Cell> val_ref, SetMode mode = SetMode::Set) {
+    return set_ref(key.bits(), key.size(), std::move(val_ref), mode);
   }
-  template <unsigned n>
-  bool set_builder(const td::BitArray<n>& key, const CellBuilder& val_b, SetMode mode = SetMode::Set) {
-    return set_builder(key.cbits(), n, val_b, mode);
+  template <typename T>
+  bool set_builder(const T& key, const CellBuilder& val_b, SetMode mode = SetMode::Set) {
+    return set_builder(key.bits(), key.size(), val_b, mode);
   }
-  template <unsigned n>
-  bool set_builder(const td::BitArray<n>& key, Ref<vm::CellBuilder> val_ref, SetMode mode = SetMode::Set) {
-    return set_builder(key.cbits(), n, std::move(val_ref), mode);
+  template <typename T>
+  bool set_builder(const T& key, Ref<vm::CellBuilder> val_ref, SetMode mode = SetMode::Set) {
+    return set_builder(key.bits(), key.size(), std::move(val_ref), mode);
   }
 
  private:
@@ -307,6 +310,10 @@ class AugmentedDictionary final : public DictionaryFixed {
 
  public:
   typedef std::function<bool(Ref<CellSlice>, Ref<CellSlice>, td::ConstBitPtr, int)> foreach_extra_func_t;
+  // return value of traverse_func: < 0 = error, 0 = skip, 1 = visit only left, 2 = visit only right, 5 = visit right, then left, 6 = visit left, then right
+  // for leaf nodes, all >0 values mean accept and return node as the final result, 0 = skip (continue scanning)
+  typedef std::function<int(td::ConstBitPtr key_prefix, int key_pfx_len, Ref<CellSlice> extra, Ref<CellSlice> value)>
+      traverse_func_t;
   AugmentedDictionary(int _n, const AugmentationData& _aug, bool validate = true);
   AugmentedDictionary(Ref<CellSlice> _root, int _n, const AugmentationData& _aug, bool validate = true);
   AugmentedDictionary(Ref<Cell> cell, int _n, const AugmentationData& _aug, bool validate = true);
@@ -332,43 +339,46 @@ class AugmentedDictionary final : public DictionaryFixed {
   bool set_ref(td::ConstBitPtr key, int key_len, Ref<Cell> val_ref, SetMode mode = SetMode::Set);
   bool set_builder(td::ConstBitPtr key, int key_len, const CellBuilder& value, SetMode mode = SetMode::Set);
   bool check_for_each_extra(const foreach_extra_func_t& foreach_extra_func, bool invert_first = false);
+  std::pair<Ref<CellSlice>, Ref<CellSlice>> traverse_extra(td::BitPtr key_buffer, int key_len,
+                                                           const traverse_func_t& traverse_node);
   bool validate() override;
-  template <unsigned n>
-  Ref<CellSlice> lookup(const td::BitArray<n>& key) {
-    return lookup(key.cbits(), n);
+  template <typename T>
+  Ref<CellSlice> lookup(const T& key) {
+    return lookup(key.bits(), key.size());
   }
-  template <unsigned n>
-  Ref<Cell> lookup_ref(const td::BitArray<n>& key) {
-    return lookup_ref(key.cbits(), n);
+  template <typename T>
+  Ref<Cell> lookup_ref(const T& key) {
+    return lookup_ref(key.bits(), key.size());
   }
-  template <unsigned n>
-  bool set(const td::BitArray<n>& key, Ref<CellSlice> val_ref, SetMode mode = SetMode::Set) {
-    return set(key.cbits(), n, std::move(val_ref), mode);
+  template <typename T>
+  bool set(const T& key, Ref<CellSlice> val_ref, SetMode mode = SetMode::Set) {
+    return set(key.bits(), key.size(), std::move(val_ref), mode);
   }
-  template <unsigned n>
-  bool set(const td::BitArray<n>& key, const CellSlice& value, SetMode mode = SetMode::Set) {
-    return set(key.cbits(), n, value, mode);
+  template <typename T>
+  bool set(const T& key, const CellSlice& value, SetMode mode = SetMode::Set) {
+    return set(key.bits(), key.size(), value, mode);
   }
-  template <unsigned n>
-  bool set_ref(const td::BitArray<n>& key, Ref<Cell> val_ref, SetMode mode = SetMode::Set) {
-    return set_ref(key.cbits(), n, std::move(val_ref), mode);
+  template <typename T>
+  bool set_ref(const T& key, Ref<Cell> val_ref, SetMode mode = SetMode::Set) {
+    return set_ref(key.bits(), key.size(), std::move(val_ref), mode);
   }
-  template <unsigned n>
-  bool set_builder(const td::BitArray<n>& key, const CellBuilder& val_b, SetMode mode = SetMode::Set) {
-    return set_builder(key.cbits(), n, val_b, mode);
+  template <typename T>
+  bool set_builder(const T& key, const CellBuilder& val_b, SetMode mode = SetMode::Set) {
+    return set_builder(key.bits(), key.size(), val_b, mode);
   }
-  template <unsigned n>
-  Ref<CellSlice> lookup_delete(const td::BitArray<n>& key) {
-    return lookup_delete(key.cbits(), n);
+  template <typename T>
+  Ref<CellSlice> lookup_delete(const T& key) {
+    return lookup_delete(key.bits(), key.size());
   }
 
- private:
-  bool compute_root() const;
-  Ref<CellSlice> get_node_extra(Ref<Cell> cell_ref, int n) const;
   Ref<CellSlice> extract_value(Ref<CellSlice> value_extra) const;
   Ref<Cell> extract_value_ref(Ref<CellSlice> value_extra) const;
   std::pair<Ref<CellSlice>, Ref<CellSlice>> decompose_value_extra(Ref<CellSlice> value_extra) const;
   std::pair<Ref<Cell>, Ref<CellSlice>> decompose_value_ref_extra(Ref<CellSlice> value_extra) const;
+
+ private:
+  bool compute_root() const;
+  Ref<CellSlice> get_node_extra(Ref<Cell> cell_ref, int n) const;
   std::pair<Ref<Cell>, bool> dict_set(Ref<Cell> dict, td::ConstBitPtr key, int n, const CellSlice& value,
                                       SetMode mode = SetMode::Set) const;
   Ref<Cell> finish_create_leaf(CellBuilder& cb, const CellSlice& value) const override;
@@ -376,6 +386,8 @@ class AugmentedDictionary final : public DictionaryFixed {
   int label_mode() const override {
     return dict::LabelParser::chk_size;
   }
+  std::pair<Ref<CellSlice>, Ref<CellSlice>> dict_traverse_extra(Ref<Cell> dict, td::BitPtr key_buffer, int n,
+                                                                const traverse_func_t& traverse_node) const;
 };
 
 }  // namespace vm

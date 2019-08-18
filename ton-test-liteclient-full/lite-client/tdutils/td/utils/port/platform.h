@@ -3,7 +3,7 @@
 // clang-format off
 
 /*** Platform macros ***/
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(_WINDOWS) // _WINDOWS is defined by CMake
   #if defined(__cplusplus_winrt)
     #define TD_WINRT 1
   #endif
@@ -98,5 +98,9 @@
 #endif
 
 #define TD_CONCURRENCY_PAD 128
+
+#if !TD_WINDOWS && defined(__SIZEOF_INT128__)
+#define TD_HAVE_INT128 1
+#endif
 
 // clang-format on

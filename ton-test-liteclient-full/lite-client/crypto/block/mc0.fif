@@ -22,7 +22,7 @@ hash dup =: basestate0_rhash
 ."root hash=" dup x. space 256 u>B dup B>base64url type cr
 "basestate0" +suffix +".rhash" B>file
 
-basestate0_rhash basestate0_fhash now 0 3 60 0 add-std-workchain
+basestate0_rhash basestate0_fhash now 0 2 8 0 add-std-workchain
 config.workchains!
 
 // SmartContract #1 (Simple wallet)
@@ -156,16 +156,47 @@ now dup 1000000 + 0 config.validators!
 PROGRAM{
   recv_internal x{} PROC
   recv_external PROC:<{
+    512 INT LDSLICEX DUP 32 LDU 32 PLDU   // sign cs cnt valid-until
+    NOW LEQ 35 THROWIF    // ( fail if now >= valid-until )   
+    c4 PUSH CTOS LDREF 32 LDU 256 LDU ENDS  // sign cs cnt dict cnt' pubk
+    s1 s3 XCPU            // sign cs cnt dict pubk cnt' cnt 
+    EQUAL 33 THROWIFNOT   // ( seqno mismatch? )
+    s3 PUSH HASHSU        // sign cs cnt dict pubk hash
+    s0 s5 s5 XC2PU        // pubk cs cnt dict hash sign pubk
+    CHKSIGNU              // pubk cs cnt dict ?
+    34 THROWIFNOT         // signature mismatch
+    ACCEPT
+    ROT 64 LDU NIP 32 LDI LDREF ENDS      // pubk cnt dict index value
+    s0 s2 XCHG 32 INT     // pubk cnt value index dict 32
+    DICTISETREF ROTREV    // dict' pubk cnt
+    INC NEWC 32 STU 256 STU STREF ENDC c4 POP
+  }>
+  run_ticktock PROC:<{
+    // store (now >> 8) into config param #-17, if the new value is different
+    c4 PUSH CTOS LDREF SWAP  // s' D
+    NOW 8 RSHIFT# TUCK       // s' t D t
+    NEWC 32 STU ENDC         // s' t D c
+    -17 INT ROT 32 INT       // s' t c -17 D 32 
+    DICTISETGETREF           // s' t D' c' -1 or s' t D' 0
+    IF:<{ CTOS 32 LDU ENDS }>ELSE<{ ZERO }>  // s' t D' y'
+    ROT EQUAL IFNOT:         // s' D'
+    NEWC STREF STSLICE ENDC  // c
+    c4 POP
   }>
 }END>c
 // code
-<b x{11EF} s, configdict ref, b> // data
+<b 0 32 u, 
+   "config-master" +suffix +".pk" load-generate-keypair drop
+   B,
+   configdict ref,
+b> // data
 empty_cell  // libraries
 1  // balance
-0 0 2 register_smc
+0 1 2 register_smc  // tock
 dup set_config_smc
-."address = " x. cr
-
+Masterchain swap
+."config smart contract address = " 2dup .addr cr 2dup 7 .Addr cr
+"config-master" +suffix +".addr" save-address-verbose
 // Other data
 
 create_state

@@ -7,6 +7,7 @@
 #include <ostream>
 #include "tl/tlblib.hpp"
 #include "td/utils/bits.h"
+#include "td/utils/StringBuilder.h"
 #include "ton/ton-types.h"
 
 namespace block {
@@ -25,8 +26,8 @@ struct StdAddress {
   StdAddress(ton::WorkchainId _wc, td::ConstBitPtr _addr, bool _bounce = true, bool _testnet = false)
       : workchain(_wc), bounceable(_bounce), testnet(_testnet), addr(_addr) {
   }
-  StdAddress(std::string serialized);
-  StdAddress(td::Slice from);
+  explicit StdAddress(std::string serialized);
+  explicit StdAddress(td::Slice from);
   bool is_valid() const {
     return workchain != ton::workchainInvalid;
   }
@@ -45,6 +46,9 @@ struct StdAddress {
 
   static td::Result<StdAddress> parse(td::Slice acc_string);
 };
+inline td::StringBuilder& operator<<(td::StringBuilder& sb, const StdAddress& addr) {
+  return sb << addr.workchain << " : " << addr.addr.to_hex();
+}
 
 bool parse_std_account_addr(td::Slice acc_string, ton::WorkchainId& wc, ton::StdSmcAddress& addr,
                             bool* bounceable = nullptr, bool* testnet_only = nullptr);
@@ -250,7 +254,18 @@ struct Anycast final : TLB {
   int get_size(const vm::CellSlice& cs) const override {
     return cs.have(5) ? 5 + (int)cs.prefetch_ulong(5) : -1;
   }
+  bool skip_get_depth(vm::CellSlice& cs, int& depth) const {
+    return cs.fetch_uint_leq(30, depth) && cs.advance(depth);
+  }
 };
+
+extern const Anycast t_Anycast;
+
+struct Maybe_Anycast final : public Maybe<Anycast> {
+  bool skip_get_depth(vm::CellSlice& cs, int& depth) const;
+};
+
+extern const Maybe_Anycast t_Maybe_Anycast;
 
 struct VarUInteger final : TLB_Complex {
   int n, ln;
@@ -470,6 +485,7 @@ struct MsgAddressInt final : TLB_Complex {
   ton::AccountIdPrefixFull get_prefix(vm::CellSlice&& cs) const;
   ton::AccountIdPrefixFull get_prefix(const vm::CellSlice& cs) const;
   ton::AccountIdPrefixFull get_prefix(Ref<vm::CellSlice> cs_ref) const;
+  bool skip_get_depth(vm::CellSlice& cs, int& depth) const;
   bool extract_std_address(Ref<vm::CellSlice> cs_ref, ton::WorkchainId& workchain, ton::StdSmcAddress& addr,
                            bool rewrite = true) const;
   bool extract_std_address(vm::CellSlice& cs, ton::WorkchainId& workchain, ton::StdSmcAddress& addr,
@@ -693,6 +709,7 @@ struct Account final : TLB_Complex {
   bool validate_skip(vm::CellSlice& cs) const override;
   // Ref<vm::CellSlice> get_balance(const vm::CellSlice& cs) const;
   bool skip_copy_balance(vm::CellBuilder& cb, vm::CellSlice& cs) const;
+  bool skip_copy_depth_balance(vm::CellBuilder& cb, vm::CellSlice& cs) const;
   int get_tag(const vm::CellSlice& cs) const override {
     return (int)cs.prefetch_ulong(1);
   }
@@ -727,8 +744,17 @@ struct ShardAccount final : TLB_Complex {
 
 extern const ShardAccount t_ShardAccount;
 
+struct DepthBalanceInfo final : TLB_Complex {
+  bool skip(vm::CellSlice& cs) const override;
+  bool validate_skip(vm::CellSlice& cs) const override;
+  bool null_value(vm::CellBuilder& cb) const override;
+  bool add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const override;
+};
+
+extern const DepthBalanceInfo t_DepthBalanceInfo;
+
 struct Aug_ShardAccounts final : AugmentationCheckData {
-  Aug_ShardAccounts() : AugmentationCheckData(t_ShardAccount, t_CurrencyCollection) {
+  Aug_ShardAccounts() : AugmentationCheckData(t_ShardAccount, t_DepthBalanceInfo) {
   }
   bool eval_leaf(vm::CellBuilder& cb, vm::CellSlice& cs) const override;
 };
@@ -1054,8 +1080,9 @@ extern const OutMsgQueueInfo t_OutMsgQueueInfo;
 extern const RefTo<OutMsgQueueInfo> t_Ref_OutMsgQueueInfo;
 
 struct ExtBlkRef final : TLB {
+  enum { fixed_size = 64 + 32 + 256 * 2 };
   int get_size(const vm::CellSlice& cs) const override {
-    return 64 + 32 + 256;
+    return fixed_size;
   }
 };
 
@@ -1124,7 +1151,7 @@ struct BlockIdExt final : TLB_Complex {
 extern const BlockIdExt t_BlockIdExt;
 
 struct ShardState final : TLB_Complex {
-  enum { shard_state = (int)0x9023afdf, split_state = 0x5f327da5 };
+  enum { shard_state = (int)0x9023afe1, split_state = 0x5f327da5 };
   bool skip(vm::CellSlice& cs) const override;
   bool validate_skip(vm::CellSlice& cs) const override;
   int get_tag(const vm::CellSlice& cs) const override {
@@ -1166,12 +1193,42 @@ struct BlkPrevInfo final : TLB_Complex {
 extern const BlkPrevInfo t_BlkPrevInfo_0;
 
 struct McStateExtra final : TLB_Complex {
-  enum { masterchain_state_extra = 0xcc1f };
+  enum { masterchain_state_extra = 0xcc21 };
   bool skip(vm::CellSlice& cs) const override;
   bool validate_skip(vm::CellSlice& cs) const override;
 };
 
 extern const McStateExtra t_McStateExtra;
+
+struct KeyExtBlkRef final : TLB {
+  enum { fixed_size = 1 + ExtBlkRef::fixed_size };
+  int get_size(const vm::CellSlice& cs) const override {
+    return fixed_size;
+  }
+};
+
+extern const KeyExtBlkRef t_KeyExtBlkRef;
+
+struct KeyMaxLt final : TLB {
+  enum { fixed_size = 1 + 64 };
+  int get_size(const vm::CellSlice& cs) const override {
+    return fixed_size;
+  }
+  bool null_value(vm::CellBuilder& cb) const override {
+    return cb.store_bits_same_bool(fixed_size, false);
+  }
+  bool add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const override;
+};
+
+extern const KeyMaxLt t_KeyMaxLt;
+
+struct Aug_OldMcBlocksInfo final : AugmentationCheckData {
+  Aug_OldMcBlocksInfo() : AugmentationCheckData(t_KeyExtBlkRef, t_KeyMaxLt) {
+  }
+  bool eval_leaf(vm::CellBuilder& cb, vm::CellSlice& cs) const override;
+};
+
+extern const Aug_OldMcBlocksInfo aug_OldMcBlocksInfo;
 
 }  // namespace tlb
 
@@ -1219,13 +1276,15 @@ td::Status unpack_block_prev_blk_try(Ref<vm::Cell> block_root, const ton::BlockI
                                      std::vector<ton::BlockIdExt>& prev, ton::BlockIdExt& mc_blkid, bool& after_split,
                                      ton::BlockIdExt* fetch_blkid = nullptr);
 
-std::unique_ptr<vm::Dictionary> get_prev_blocks_dict(Ref<vm::Cell> state_root);
-bool get_old_mc_block_id(vm::Dictionary* prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
+std::unique_ptr<vm::AugmentedDictionary> get_prev_blocks_dict(Ref<vm::Cell> state_root);
+bool get_old_mc_block_id(vm::AugmentedDictionary* prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
                          ton::LogicalTime* end_lt = nullptr);
-bool get_old_mc_block_id(vm::Dictionary& prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
+bool get_old_mc_block_id(vm::AugmentedDictionary& prev_blocks_dict, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
                          ton::LogicalTime* end_lt = nullptr);
-bool check_old_mc_block_id(vm::Dictionary* prev_blocks_dict, const ton::BlockIdExt& blkid);
-bool check_old_mc_block_id(vm::Dictionary& prev_blocks_dict, const ton::BlockIdExt& blkid);
+bool unpack_old_mc_block_id(Ref<vm::CellSlice> old_blk_info, ton::BlockSeqno seqno, ton::BlockIdExt& blkid,
+                            ton::LogicalTime* end_lt);
+bool check_old_mc_block_id(vm::AugmentedDictionary* prev_blocks_dict, const ton::BlockIdExt& blkid);
+bool check_old_mc_block_id(vm::AugmentedDictionary& prev_blocks_dict, const ton::BlockIdExt& blkid);
 
 td::Result<Ref<vm::Cell>> get_block_transaction(Ref<vm::Cell> block_root, ton::WorkchainId workchain,
                                                 const ton::StdSmcAddress& addr, ton::LogicalTime lt);

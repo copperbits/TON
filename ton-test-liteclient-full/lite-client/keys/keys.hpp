@@ -3,6 +3,7 @@
 #include "td/utils/int_types.h"
 #include "td/utils/buffer.h"
 #include "auto/tl/ton_api.h"
+#include "td/utils/UInt.h"
 #include "td/utils/Variant.h"
 #include "td/actor/actor.h"
 #include "crypto/common/bitstring.h"
@@ -78,7 +79,7 @@ class Ed25519 {
   }
   Ed25519(td::Ed25519::PublicKey pk);
   td::Ed25519::PublicKey export_key() {
-    return td::Ed25519::PublicKey{data_.as_slice()};
+    return td::Ed25519::PublicKey{td::SecureString(data_.as_slice())};
   }
 
   auto raw() const {
@@ -253,7 +254,7 @@ class Ed25519 {
   }
   Ed25519(td::Ed25519::PrivateKey pk);
   td::Ed25519::PrivateKey export_key() {
-    return td::Ed25519::PrivateKey{data_.as_slice()};
+    return td::Ed25519::PrivateKey{td::SecureString(data_.as_slice())};
   }
   tl_object_ptr<ton_api::pk_ed25519> tl() const {
     return create_tl_object<ton_api::pk_ed25519>(data_);

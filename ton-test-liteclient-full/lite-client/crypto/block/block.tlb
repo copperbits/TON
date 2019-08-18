@@ -37,6 +37,20 @@ hme_root$1 {n:#} {X:Type} root:^(Hashmap n X) = HashmapE n X;
 // true#_ = True;
 _ {n:#} _:(Hashmap n True) = BitstringSet n;
 
+//  HashmapAug, hashmap with an extra value 
+//   (augmentation) of type Y at every node
+//
+ahm_edge#_ {n:#} {X:Type} {Y:Type} {l:#} {m:#} 
+  label:(HmLabel ~l n) {n = (~m) + l} 
+  node:(HashmapAugNode m X Y) = HashmapAug n X Y;
+ahmn_leaf#_ {X:Type} {Y:Type} extra:Y value:X = HashmapAugNode 0 X Y;
+ahmn_fork#_ {n:#} {X:Type} {Y:Type} left:^(HashmapAug n X Y)
+  right:^(HashmapAug n X Y) extra:Y = HashmapAugNode (n + 1) X Y;
+
+ahme_empty$0 {n:#} {X:Type} {Y:Type} extra:Y 
+          = HashmapAugE n X Y;
+ahme_root$1 {n:#} {X:Type} {Y:Type} root:^(HashmapAug n X Y) 
+  extra:Y = HashmapAugE n X Y;
 
 // VarHashmap / VarHashmapE, with variable-length keys
 //
@@ -161,18 +175,6 @@ msg_discard_fin$110 in_msg:^MsgEnvelope transaction_id:uint64
 msg_discard_tr$111 in_msg:^MsgEnvelope transaction_id:uint64 
     fwd_fee:Grams proof_delivered:^Cell = InMsg;
 //
-ahm_edge#_ {n:#} {X:Type} {Y:Type} {l:#} {m:#} 
-  label:(HmLabel ~l n) {n = (~m) + l} 
-  node:(HashmapAugNode m X Y) = HashmapAug n X Y;
-ahmn_leaf#_ {X:Type} {Y:Type} extra:Y value:X = HashmapAugNode 0 X Y;
-ahmn_fork#_ {n:#} {X:Type} {Y:Type} left:^(HashmapAug n X Y)
-  right:^(HashmapAug n X Y) extra:Y = HashmapAugNode (n + 1) X Y;
-
-ahme_empty$0 {n:#} {X:Type} {Y:Type} extra:Y 
-          = HashmapAugE n X Y;
-ahme_root$1 {n:#} {X:Type} {Y:Type} root:^(HashmapAug n X Y) 
-  extra:Y = HashmapAugE n X Y;
-//
 import_fees$_ fees_collected:Grams 
   value_imported:CurrencyCollection = ImportFees;
 
@@ -245,8 +247,11 @@ _ split_depth:(Maybe (## 5)) special:(Maybe TickTock)
 
 account_descr$_ account:^Account last_trans_hash:bits256 
   last_trans_lt:uint64 = ShardAccount;
-  
-_ (HashmapAugE 256 ShardAccount CurrencyCollection) = ShardAccounts;
+
+depth_balance$_ split_depth:(#<= 30) balance:CurrencyCollection = DepthBalanceInfo;
+
+// _ (HashmapAugE 256 ShardAccount CurrencyCollection) = ShardAccounts;
+_ (HashmapAugE 256 ShardAccount DepthBalanceInfo) = ShardAccounts;
 //
 transaction$0110 account_addr:bits256 lt:uint64 
   prev_trans_hash:bits256 prev_trans_lt:uint64 now:uint32
@@ -374,7 +379,7 @@ block_id_ext$_ shard_id:ShardIdent seq_no:uint32
 
 master_info$_ master:ExtBlkRef = BlkMasterInfo;
 
-shard_state#9023afdf global_id:int32
+shard_state#9023afe1 global_id:int32
   shard_id:ShardIdent 
   seq_no:uint32 vert_seq_no:#
   gen_utime:uint32 gen_lt:uint64
@@ -396,12 +401,13 @@ split_state#5f327da5 left:^ShardStateUnsplit right:^ShardStateUnsplit = ShardSta
 shared_lib_descr$00 lib:^Cell publishers:(Hashmap 256 True)
   = LibDescr;
 
-block_info#9bc7a986 version:uint32 
+block_info#9bc7a987 version:uint32 
   not_master:(## 1) 
   after_merge:(## 1) before_split:(## 1) 
   after_split:(## 1) 
   want_split:Bool want_merge:Bool
-  flags:(## 10)
+  key_block:Bool
+  flags:(## 9)
   seq_no:# vert_seq_no:# 
   { prev_seq_no:# } { ~prev_seq_no + 1 = seq_no } 
   shard:ShardIdent gen_utime:uint32
@@ -409,6 +415,7 @@ block_info#9bc7a986 version:uint32
   gen_validator_list_hash_short:uint32
   gen_catchain_seqno:uint32
   min_ref_mc_seqno:uint32
+  prev_key_block_seqno:uint32
   master_ref:not_master?^BlkMasterInfo 
   prev_ref:^(BlkPrevInfo after_merge)
   prev_vert_ref:vert_seq_no?^(BlkPrevInfo 0)
@@ -426,6 +433,7 @@ block_extra in_msg_descr:^InMsgDescr
   out_msg_descr:^OutMsgDescr
   account_blocks:ShardAccountBlocks
   rand_seed:bits256
+  created_by:bits256
   custom:(Maybe ^McBlockExtra) = BlockExtra;
 //
 value_flow ^[ from_prev_blk:CurrencyCollection 
@@ -481,27 +489,41 @@ validator_base_info$_
   catchain_seqno:uint32
 = ValidatorBaseInfo;
 
-_ (HashmapE 32 ExtBlkRef) = OldMcBlocksInfo;
+_ key:Bool max_end_lt:uint64 = KeyMaxLt;
+_ key:Bool blk_ref:ExtBlkRef = KeyExtBlkRef;
 
-masterchain_state_extra#cc1f
+_ (HashmapAugE 32 KeyExtBlkRef KeyMaxLt) = OldMcBlocksInfo;
+
+masterchain_state_extra#cc21
   shard_hashes:ShardHashes
   shard_fees:ShardFees
   config:ConfigParams
   ^[ validator_info:ValidatorInfo
      prev_blocks:OldMcBlocksInfo
+     after_key_block:Bool
      last_key_block:(Maybe ExtBlkRef) ]
 = McStateExtra;
 
-ed25519_signature#5 R:bits256 s:bits256 = CryptoSignature; 
-sig_pair$_ node_id_short:bits256 sign:CryptoSignature = CryptoSignaturePair;
+ed25519_pubkey#8e81278a pubkey:bits256 = SigPubKey;  // 288 bits
+ed25519_signature#5 R:bits256 s:bits256 = CryptoSignatureSimple;  // 516 bits
+_ CryptoSignatureSimple = CryptoSignature;
+sig_pair$_ node_id_short:bits256 sign:CryptoSignature = CryptoSignaturePair;  // 256+x ~ 772 bits
 
-masterchain_block_extra#cc9f
-  is_key_block:Bool
+certificate#4 temp_key:SigPubKey valid_since:uint32 valid_until:uint32 = Certificate;  // 356 bits
+certificate_env#a419b7d certificate:Certificate = CertificateEnv;  // 384 bits
+signed_certificate$_ certificate:Certificate certificate_signature:CryptoSignature
+  = SignedCertificate;  // 356+516 = 872 bits
+// certificate_signature is the signature of CertificateEnv (with embedded certificate) with persistent key
+chained_signature#f signed_cert:^SignedCertificate temp_key_signature:CryptoSignatureSimple
+  = CryptoSignature;   // 4+(356+516)+516 = 520 bits+ref (1392 bits total)
+// temp_key_signature is the signature of whatever was originally intended to be signed with temp_key from certificate
+
+masterchain_block_extra#cca1
+  key_block:(## 1)
   shard_hashes:ShardHashes
   prev_blk_signatures:(HashmapE 16 CryptoSignaturePair)
+  config:key_block?ConfigParams
 = McBlockExtra;
-
-ed25519_pubkey#8e81278a pubkey:bits256 = SigPubKey;
 
 //
 //  CONFIGURATION PARAMETERS
@@ -597,3 +619,8 @@ chain_empty$_ = ProofChain 0;
 chain_link$_ {n:#} root:^Cell prev:n?^(ProofChain n) = ProofChain (n + 1);
 top_block_descr#d5 proof_for:BlockIdExt signatures:(Maybe ^BlockSignatures) 
   len:(## 8) { len >= 1 } { len <= 8 } chain:(ProofChain len) = TopBlockDescr;
+
+//
+//  COLLATED DATA
+//
+top_block_descr_set#4ac789f3 collection:(HashmapE 96 ^TopBlockDescr) = TopBlockDescrSet;

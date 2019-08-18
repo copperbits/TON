@@ -2,8 +2,10 @@
 
 #include "crypto/vm/db/TonDb.h"  // FIXME
 #include "crypto/vm/stack.hpp"
+#include "crypto/common/bitstring.h"
 
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <string>
 
@@ -14,6 +16,32 @@ class SourceLookup;
 struct IntError {
   std::string msg;
   IntError(std::string _msg) : msg(_msg) {
+  }
+};
+
+class CharClassifier {
+  unsigned char data_[64];
+
+ public:
+  CharClassifier() {
+    memset(data_, 0, sizeof(data_));
+  }
+  CharClassifier(td::Slice str, int space_cls = 3) : CharClassifier() {
+    import_from_string(str, space_cls);
+  }
+  CharClassifier(std::string str, int space_cls = 3) : CharClassifier(td::Slice{str}, space_cls) {
+  }
+  CharClassifier(const char* str, int space_cls = 3) : CharClassifier(td::Slice{str}, space_cls) {
+  }
+  void import_from_string(td::Slice str, int space_cls = 3);
+  void import_from_string(std::string str, int space_cls = 3);
+  void import_from_string(const char* str, int space_cls = 3);
+  static CharClassifier from_string(td::Slice str, int space_cls = 3);
+  void set_char_class(int c, int cl);
+  int classify(int c) const {
+    c &= 0xff;
+    int offs = (c & 3) * 2;
+    return (data_[(unsigned)c >> 2] >> offs) & 3;
   }
 };
 
@@ -43,8 +71,9 @@ struct IntCtx {
     return stack;
   }
 
-  std::string scan_word_to(char delim, bool err_endl = true);
-  std::string scan_word();
+  td::Slice scan_word_to(char delim, bool err_endl = true);
+  td::Slice scan_word();
+  td::Slice scan_word_ext(const CharClassifier& classifier);
   void skipspc(bool skip_eol = false);
 
   bool eof() const {

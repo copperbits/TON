@@ -1,11 +1,11 @@
 #pragma once
 
 #include "td/utils/common.h"
-#include "td/utils/int_types.h"
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
 #include "td/utils/Slice.h"
 #include "td/utils/StorerBase.h"
+#include "td/utils/UInt.h"
 
 #include "crypto/common/bitstring.h"
 
@@ -18,7 +18,7 @@ class TlStorerUnsafe {
 
  public:
   explicit TlStorerUnsafe(unsigned char *buf) : buf_(buf) {
-    CHECK(is_aligned_pointer<4>(buf_));
+    LOG_CHECK(is_aligned_pointer<4>(buf_)) << buf_;
   }
 
   TlStorerUnsafe(const TlStorerUnsafe &other) = delete;
@@ -26,7 +26,7 @@ class TlStorerUnsafe {
 
   template <class T>
   void store_binary(const T &x) {
-    std::memcpy(buf_, reinterpret_cast<const unsigned char *>(&x), sizeof(T));
+    std::memcpy(buf_, &x, sizeof(T));
     buf_ += sizeof(T);
   }
 
@@ -58,6 +58,15 @@ class TlStorerUnsafe {
       *buf_++ = static_cast<unsigned char>(len & 255);
       *buf_++ = static_cast<unsigned char>((len >> 8) & 255);
       *buf_++ = static_cast<unsigned char>(len >> 16);
+    } else if (len < (1ull << 32)) {
+      *buf_++ = static_cast<unsigned char>(255);
+      *buf_++ = static_cast<unsigned char>(len & 255);
+      *buf_++ = static_cast<unsigned char>((len >> 8) & 255);
+      *buf_++ = static_cast<unsigned char>((len >> 16) & 255);
+      *buf_++ = static_cast<unsigned char>((len >> 24) & 255);
+      *buf_++ = static_cast<unsigned char>((len >> 32) & 255);
+      *buf_++ = static_cast<unsigned char>((len >> 40) & 255);
+      *buf_++ = static_cast<unsigned char>((len >> 48) & 255);
     } else {
       LOG(FATAL) << "String size " << len << " is too big to be stored";
     }
@@ -67,7 +76,7 @@ class TlStorerUnsafe {
     switch (len & 3) {
       case 1:
         *buf_++ = 0;
-      // fallthrough
+        // fallthrough
       case 2:
         *buf_++ = 0;
       // fallthrough
@@ -115,8 +124,10 @@ class TlStorerCalcLength {
     size_t add = str.size();
     if (add < 254) {
       add += 1;
-    } else {
+    } else if (add < (1 << 24)) {
       add += 4;
+    } else {
+      add += 8;
     }
     add = (add + 3) & -4;
     length += add;
@@ -223,12 +234,10 @@ class TlStorerToString {
       int b = value[static_cast<int>(i)] & 0xff;
       result += hex[b >> 4];
       result += hex[b & 15];
-      if (i + 1 != len) {
-        result += ' ';
-      }
+      result += ' ';
     }
     if (len < value.size()) {
-      result.append(" ...");
+      result.append("...");
     }
     result += '}';
     store_field_end();

@@ -7,7 +7,7 @@ namespace td {
 
 bool TD_TL_writer_jni_cpp::is_built_in_simple_type(const std::string &name) const {
   return name == "Bool" || name == "Int32" || name == "Int53" || name == "Int64" || name == "Double" ||
-         name == "String" || name == "Bytes";
+         name == "String" || name == "Bytes" || name == "SecureString" || name == "SecureBytes";
 }
 
 bool TD_TL_writer_jni_cpp::is_built_in_complex_type(const std::string &name) const {
@@ -146,9 +146,9 @@ std::string TD_TL_writer_jni_cpp::gen_type_fetch(const std::string &field_name, 
       return "env->CallObjectMethod(p, td::jni::LongGetValueMethodID)";
     } else if (name == "Double") {
       return "env->CallObjectMethod(p, td::jni::DoubleGetValueMethodID)";
-    } else if (name == "String") {
+    } else if (name == "String" || name == "SecureString") {
       return "td::jni::from_jstring(env, (jstring)p)";
-    } else if (name == "Bytes") {
+    } else if (name == "Bytes" || name == "SecureBytes") {
       return "td::jni::from_bytes(env, (jbyteArray)p)";
     }
   }
@@ -161,9 +161,9 @@ std::string TD_TL_writer_jni_cpp::gen_type_fetch(const std::string &field_name, 
     res = "env->GetLongField(p, " + field_name + "fieldID)";
   } else if (name == "Double") {
     res = "env->GetDoubleField(p, " + field_name + "fieldID)";
-  } else if (name == "String") {
+  } else if (name == "String" || name == "SecureString") {
     res = "td::jni::fetch_string(env, p, " + field_name + "fieldID)";
-  } else if (name == "Bytes") {
+  } else if (name == "Bytes" || name == "SecureBytes") {
     res = "td::jni::from_bytes(env, (jbyteArray)td::jni::fetch_object(env, p, " + field_name + "fieldID))";
   } else if (name == "Vector") {
     const tl::tl_tree_type *child = static_cast<const tl::tl_tree_type *>(tree_type->children[0]);
@@ -297,14 +297,14 @@ std::string TD_TL_writer_jni_cpp::gen_type_store(const std::string &field_name, 
       res = "env->SetLongField(s, " + field_name + "fieldID, " + field_name + ");";
     } else if (name == "Double") {
       res = "env->SetDoubleField(s, " + field_name + "fieldID, " + field_name + ");";
-    } else if (name == "String") {
+    } else if (name == "String" || name == "SecureString") {
       res = "{ jstring nextString = td::jni::to_jstring(env, " + field_name +
             "); if (nextString) { env->SetObjectField(s, " + field_name +
             "fieldID, nextString); env->DeleteLocalRef(nextString); } }";
     } else {
       assert(false);
     }
-  } else if (name == "Bytes") {
+  } else if (name == "Bytes" || name == "SecureBytes") {
     if (storer_type == 1) {
       res = "s.store_bytes_field(\"" + get_pretty_field_name(field_name) + "\", " + field_name + ");";
     } else {
@@ -461,7 +461,8 @@ std::string TD_TL_writer_jni_cpp::gen_store_function_begin(const std::string &st
 
 std::string TD_TL_writer_jni_cpp::gen_fetch_switch_begin() const {
   return "  if (p == nullptr) { return nullptr; }\n"
-         "  switch (env->CallIntMethod(p, td::jni::GetConstructorID)) {\n";
+         "  auto id = env->CallIntMethod(p, td::jni::GetConstructorID);\n"
+         "  switch (id) {\n";
 }
 
 std::string TD_TL_writer_jni_cpp::gen_fetch_switch_case(const tl::tl_combinator *t, int arity) const {
@@ -474,7 +475,7 @@ std::string TD_TL_writer_jni_cpp::gen_fetch_switch_case(const tl::tl_combinator 
 
 std::string TD_TL_writer_jni_cpp::gen_fetch_switch_end() const {
   return "    default:\n"
-         "      LOG(WARNING) << \"Unknown constructor found\";\n"
+         "      LOG(WARNING) << \"Unknown constructor found: \" << id;\n"
          "      return nullptr;\n"
          "  }\n";
 }
@@ -533,9 +534,9 @@ std::string TD_TL_writer_jni_cpp::gen_type_signature(const tl::tl_tree_type *tre
     return "J";
   } else if (name == "Double") {
     return "D";
-  } else if (name == "String") {
+  } else if (name == "String" || name == "SecureString") {
     return "Ljava/lang/String;";
-  } else if (name == "Bytes") {
+  } else if (name == "Bytes" || name == "SecureBytes") {
     return "[B";
   } else if (name == "Vector") {
     const tl::tl_tree_type *child = static_cast<const tl::tl_tree_type *>(tree_type->children[0]);

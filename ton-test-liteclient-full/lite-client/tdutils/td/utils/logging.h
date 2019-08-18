@@ -19,7 +19,7 @@
 
 #include "td/utils/common.h"
 #include "td/utils/port/thread_local.h"
-#include "td/utils/Slice-decl.h"
+#include "td/utils/Slice.h"
 #include "td/utils/StackAllocator.h"
 #include "td/utils/StringBuilder.h"
 
@@ -73,30 +73,26 @@ inline bool no_return_func() {
 }
 
 // clang-format off
-#define DUMMY_CHECK(condition) LOG_IF(NEVER, !(condition))
+#define DUMMY_LOG_CHECK(condition) LOG_IF(NEVER, !(condition))
 
 #ifdef TD_DEBUG
   #if TD_MSVC
-    #define CHECK(condition)            \
+    #define LOG_CHECK(condition)        \
       __analysis_assume(!!(condition)); \
       LOG_IMPL(FATAL, FATAL, !(condition), #condition)
   #else
-    #define CHECK(condition) LOG_IMPL(FATAL, FATAL, !(condition) && no_return_func(), #condition)
+    #define LOG_CHECK(condition) LOG_IMPL(FATAL, FATAL, !(condition) && no_return_func(), #condition)
   #endif
 #else
-  #define CHECK DUMMY_CHECK
+  #define LOG_CHECK DUMMY_LOG_CHECK
 #endif
 
 #if NDEBUG
-  #define DCHECK DUMMY_CHECK
+  #define LOG_DCHECK DUMMY_LOG_CHECK
 #else
-  #define DCHECK CHECK
+  #define LOG_DCHECK LOG_CHECK
 #endif
 // clang-format on
-
-#define UNREACHABLE() \
-  LOG(FATAL);         \
-  ::td::process_fatal_error("Unreachable in " __FILE__ " at " TD_DEFINE_STR(__LINE__))
 
 constexpr int VERBOSITY_NAME(PLAIN) = -1;
 constexpr int VERBOSITY_NAME(FATAL) = 0;
@@ -115,7 +111,6 @@ extern int VERBOSITY_NAME(fd);
 extern int VERBOSITY_NAME(net_query);
 extern int VERBOSITY_NAME(td_requests);
 extern int VERBOSITY_NAME(actor);
-extern int VERBOSITY_NAME(buffer);
 extern int VERBOSITY_NAME(files);
 extern int VERBOSITY_NAME(sqlite);
 
@@ -151,6 +146,9 @@ class LogInterface {
     append(slice);
   }
   virtual void rotate() {
+  }
+  virtual vector<string> get_file_paths() {
+    return {};
   }
 };
 
@@ -282,6 +280,12 @@ class TsLog : public LogInterface {
     log_->rotate();
     exit_critical();
   }
+  vector<string> get_file_paths() override {
+    enter_critical();
+    auto result = log_->get_file_paths();
+    exit_critical();
+    return result;
+  }
 
  private:
   LogInterface *log_ = nullptr;
@@ -297,5 +301,3 @@ class TsLog : public LogInterface {
 };
 
 }  // namespace td
-
-#include "td/utils/Slice.h"

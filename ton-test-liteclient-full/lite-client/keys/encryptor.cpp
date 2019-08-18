@@ -49,17 +49,17 @@ td::Result<td::BufferSlice> EncryptorEd25519::encrypt(td::Slice data) {
   slice.remove_prefix(32);
   td::sha256(data, digest);
 
-  td::UInt256 key;
+  td::SecureString key(32);
   {
-    auto S = key.as_slice();
+    auto S = key.as_mutable_slice();
     S.copy_from(td::Slice(shared_secret).truncate(16));
     S.remove_prefix(16);
     S.copy_from(digest.copy().remove_prefix(16).truncate(16));
   }
 
-  td::UInt128 iv;
+  td::SecureString iv(16);
   {
-    auto S = iv.as_slice();
+    auto S = iv.as_mutable_slice();
     S.copy_from(digest.copy().truncate(4));
     S.remove_prefix(4);
     S.copy_from(td::Slice(shared_secret).remove_prefix(20).truncate(12));
@@ -87,16 +87,17 @@ td::Result<td::BufferSlice> DecryptorEd25519::decrypt(td::Slice data) {
   td::Slice digest = data.substr(0, 32);
   data.remove_prefix(32);
 
-  TRY_RESULT_PREFIX(shared_secret, td::Ed25519::compute_shared_secret(td::Ed25519::PublicKey(pub), pk_),
+  TRY_RESULT_PREFIX(shared_secret,
+                    td::Ed25519::compute_shared_secret(td::Ed25519::PublicKey(td::SecureString(pub)), pk_),
                     "failed to generate shared secret: ");
 
-  td::UInt256 key;
-  std::memcpy(key.raw, td::Slice(shared_secret).ubegin(), 16);
-  std::memcpy(key.raw + 16, digest.ubegin() + 16, 16);
+  td::SecureString key(32);
+  key.as_mutable_slice().copy_from(td::Slice(shared_secret).substr(0, 16));
+  key.as_mutable_slice().substr(16).copy_from(digest.substr(16, 16));
 
-  td::UInt128 iv;
-  std::memcpy(iv.raw, digest.ubegin(), 4);
-  std::memcpy(iv.raw + 4, td::Slice(shared_secret).ubegin() + 20, 12);
+  td::SecureString iv(16);
+  iv.as_mutable_slice().copy_from(digest.substr(0, 4));
+  iv.as_mutable_slice().substr(4).copy_from(td::Slice(shared_secret).substr(20, 12));
 
   td::BufferSlice res(data.size());
 
@@ -127,13 +128,13 @@ td::Result<td::BufferSlice> EncryptorAES::encrypt(td::Slice data) {
   slice.remove_prefix(32);
   td::sha256(data, digest);
 
-  td::UInt256 key;
-  std::memcpy(key.raw, shared_secret_.as_slice().ubegin(), 16);
-  std::memcpy(key.raw + 16, digest.ubegin() + 16, 16);
+  td::SecureString key(32);
+  key.as_mutable_slice().copy_from(shared_secret_.as_slice().substr(0, 16));
+  key.as_mutable_slice().substr(16).copy_from(digest.substr(16, 16));
 
-  td::UInt128 iv;
-  std::memcpy(iv.raw, digest.ubegin(), 4);
-  std::memcpy(iv.raw + 4, shared_secret_.as_slice().ubegin() + 20, 12);
+  td::SecureString iv(16);
+  iv.as_mutable_slice().copy_from(digest.substr(0, 4));
+  iv.as_mutable_slice().substr(4).copy_from(shared_secret_.as_slice().substr(20, 12));
 
   td::AesCtrState ctr;
   ctr.init(key, iv);
@@ -150,13 +151,13 @@ td::Result<td::BufferSlice> DecryptorAES::decrypt(td::Slice data) {
   td::Slice digest = data.substr(0, 32);
   data.remove_prefix(32);
 
-  td::UInt256 key;
-  std::memcpy(key.raw, shared_secret_.as_slice().ubegin(), 16);
-  std::memcpy(key.raw + 16, digest.ubegin() + 16, 16);
+  td::SecureString key(32);
+  key.as_mutable_slice().copy_from(shared_secret_.as_slice().substr(0, 16));
+  key.as_mutable_slice().substr(16).copy_from(digest.substr(16, 16));
 
-  td::UInt128 iv;
-  std::memcpy(iv.raw, digest.ubegin(), 4);
-  std::memcpy(iv.raw + 4, shared_secret_.as_slice().ubegin() + 20, 12);
+  td::SecureString iv(16);
+  iv.as_mutable_slice().copy_from(digest.substr(0, 4));
+  iv.as_mutable_slice().substr(4).copy_from(shared_secret_.as_slice().substr(20, 12));
 
   td::BufferSlice res(data.size());
 

@@ -6,6 +6,7 @@
 [subrepo]
 	remote = git@github.com:arseny30/tdutils.git
 	branch = master
-	commit = 06112d79dc03dc19fde0699e703eb1cb4d6fc6fb
-	parent = 676240cf4df3cec1668e604ec4a8975a80ebcdef
-	cmdver = 0.3.1
+	commit = 6cd860bb095065d264c55c15d35d8b073a4f2180
+	parent = ce4bbf3c37dcc2fdce25ba07d3d8432ce2d77d85
+	cmdver = 0.4.0
+	method = merge

@@ -2,6 +2,7 @@
 
 #include "td/utils/buffer.h"
 #include "td/utils/logging.h"
+#include "td/utils/misc.h"
 #include "td/utils/PathView.h"
 #include "td/utils/port/FileFd.h"
 #include "td/utils/Slice.h"
@@ -11,37 +12,52 @@
 
 namespace td {
 
-Result<BufferSlice> read_file(CSlice path, int64 size, int64 offset) {
-  TRY_RESULT(from_file, FileFd::open(path, FileFd::Read));
-  if (size == -1) {
-    size = from_file.get_size() - offset;
-  }
-  if (size < 0) {
-    return Status::Error("Failed to read file: invalid size or offset");
-  }
-  BufferWriter content{static_cast<size_t>(size), 0, 0};
-  TRY_RESULT(got_size, from_file.pread(content.as_slice(), offset));
-  if (got_size != static_cast<size_t>(size)) {
-    return Status::Error("Failed to read file");
-  }
-  from_file.close();
-  return content.as_buffer_slice();
+namespace {
+
+template <class T>
+T create_empty(size_t size);
+
+template <>
+string create_empty<string>(size_t size) {
+  return string(size, '\0');
 }
-Result<std::string> read_file_str(CSlice path, int64 size, int64 offset) {
+
+template <>
+BufferSlice create_empty<BufferSlice>(size_t size) {
+  return BufferSlice{size};
+}
+
+template <class T>
+Result<T> read_file_impl(CSlice path, int64 size, int64 offset) {
   TRY_RESULT(from_file, FileFd::open(path, FileFd::Read));
   if (size == -1) {
-    size = from_file.get_size() - offset;
+    TRY_RESULT(file_size, from_file.get_size());
+    size = file_size;
   }
   if (size < 0) {
-    return Status::Error("Failed to read file: invalid size or offset");
+    return Status::Error("Failed to read file: invalid size");
   }
-  std::string content(static_cast<size_t>(size), '\0');
-  TRY_RESULT(got_size, from_file.pread(content, offset));
+  if (offset < 0 || offset > size) {
+    return Status::Error("Failed to read file: invalid offset");
+  }
+  size -= offset;
+  auto content = create_empty<T>(narrow_cast<size_t>(size));
+  TRY_RESULT(got_size, from_file.pread(as_slice(content), offset));
   if (got_size != static_cast<size_t>(size)) {
     return Status::Error("Failed to read file");
   }
   from_file.close();
   return std::move(content);
+}
+
+}  // namespace
+
+Result<BufferSlice> read_file(CSlice path, int64 size, int64 offset) {
+  return read_file_impl<BufferSlice>(path, size, offset);
+}
+
+Result<string> read_file_str(CSlice path, int64 size, int64 offset) {
+  return read_file_impl<string>(path, size, offset);
 }
 
 // Very straightforward function. Don't expect much of it.
@@ -54,14 +70,14 @@ Status write_file(CSlice to, Slice data) {
   auto size = data.size();
   TRY_RESULT(to_file, FileFd::open(to, FileFd::Truncate | FileFd::Create | FileFd::Write));
   TRY_RESULT(written, to_file.write(data));
-  if (written != static_cast<size_t>(size)) {
+  if (written != size) {
     return Status::Error(PSLICE() << "Failed to write file: written " << written << " bytes instead of " << size);
   }
   to_file.close();
   return Status::OK();
 }
 
-static std::string clean_filename_part(Slice name, int max_length) {
+static string clean_filename_part(Slice name, int max_length) {
   auto is_ok = [](uint32 code) {
     if (code < 32) {
       return false;
@@ -115,7 +131,7 @@ static std::string clean_filename_part(Slice name, int max_length) {
   return new_name;
 }
 
-std::string clean_filename(CSlice name) {
+string clean_filename(CSlice name) {
   if (!check_utf8(name)) {
     return {};
   }

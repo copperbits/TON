@@ -10,8 +10,9 @@ namespace td {
 
 class TD_TL_writer_hpp : public TD_TL_writer {
  public:
-  TD_TL_writer_hpp(const std::string &tl_name, const std::string &string_type, const std::string &bytes_type)
-      : TD_TL_writer(tl_name, string_type, bytes_type) {
+  TD_TL_writer_hpp(const std::string &tl_name, const std::string &string_type, const std::string &bytes_type,
+                   const std::string &secure_string_type, const std::string &secure_bytes_type)
+      : TD_TL_writer(tl_name, string_type, bytes_type, secure_string_type, secure_bytes_type) {
   }
 
   bool is_documentation_generated() const override;

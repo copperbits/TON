@@ -364,6 +364,7 @@ class Result {
     other.status_ = Status::Error<-2>();
   }
   Result &operator=(Result &&other) {
+    CHECK(this != &other);
     if (status_.is_ok()) {
       value_.~T();
     }
@@ -439,19 +440,19 @@ class Result {
     return status_.move_as_error_prefix(prefix);
   }
   const T &ok() const {
-    CHECK(status_.is_ok()) << status_;
+    LOG_CHECK(status_.is_ok()) << status_;
     return value_;
   }
   T &ok_ref() {
-    CHECK(status_.is_ok()) << status_;
+    LOG_CHECK(status_.is_ok()) << status_;
     return value_;
   }
   const T &ok_ref() const {
-    CHECK(status_.is_ok()) << status_;
+    LOG_CHECK(status_.is_ok()) << status_;
     return value_;
   }
   T move_as_ok() {
-    CHECK(status_.is_ok()) << status_;
+    LOG_CHECK(status_.is_ok()) << status_;
     return std::move(value_);
   }
 

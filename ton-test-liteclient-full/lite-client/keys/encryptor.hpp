@@ -65,7 +65,7 @@ class EncryptorEd25519 : public Encryptor {
   td::Result<td::BufferSlice> encrypt(td::Slice data) override;
   td::Status check_signature(td::Slice message, td::Slice signature) override;
 
-  EncryptorEd25519(td::Bits256 key) : pub_(as_slice(key)) {
+  EncryptorEd25519(td::Bits256 key) : pub_(td::SecureString(as_slice(key))) {
   }
 };
 
@@ -76,7 +76,7 @@ class DecryptorEd25519 : public Decryptor {
  public:
   td::Result<td::BufferSlice> decrypt(td::Slice data) override;
   td::Result<td::BufferSlice> sign(td::Slice data) override;
-  DecryptorEd25519(td::Bits256 key) : pk_(as_slice(key)) {
+  DecryptorEd25519(td::Bits256 key) : pk_(td::SecureString(as_slice(key))) {
   }
 };
 

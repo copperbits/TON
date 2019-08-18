@@ -34,7 +34,7 @@ string HttpUrl::get_url() const {
     result += ':';
     result += to_string(specified_port_);
   }
-  CHECK(!query_.empty() && query_[0] == '/');
+  LOG_CHECK(!query_.empty() && query_[0] == '/') << query_;
   result += query_;
   return result;
 }
@@ -89,6 +89,9 @@ Result<HttpUrl> parse_url(MutableSlice url, HttpUrl::Protocol default_protocol) 
   if (host.empty()) {
     return Status::Error("URL host is empty");
   }
+  if (host == ".") {
+    return Status::Error("Host is invalid");
+  }
 
   int specified_port = port;
   if (port == 0) {
@@ -105,7 +108,7 @@ Result<HttpUrl> parse_url(MutableSlice url, HttpUrl::Protocol default_protocol) 
     query.remove_suffix(1);
   }
   if (query.empty()) {
-    query = "/";
+    query = Slice("/");
   }
   string query_str;
   if (query[0] != '/') {

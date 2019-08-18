@@ -2082,6 +2082,44 @@ void CppTypeCode::generate_skip_method(std::ostream& os, int options) {
   os << "}\n";
 }
 
+void CppTypeCode::generate_cons_tag_check(std::ostream& os, std::string nl, int cidx, bool force) {
+  const Constructor& constr = *(type.constructors.at(cidx));
+  if (!constr.tag_bits) {
+    os << nl << "return " << cons_enum_name[cidx] << ";";
+  } else if (force || cons_num == 1 || !cons_tag_exact.at(cidx)) {
+    os << nl << "return ";
+    int l = constr.tag_bits;
+    unsigned long long tag = (constr.tag >> (64 - l));
+    if (l < 64 || tag != ~0ULL) {
+      os << "cs.prefetch_ulong(" << l << ") == " << HexConstWriter{tag};
+    } else {
+      os << "cs.begins_with(" << l << ", " << HexConstWriter{tag} << ")";
+    }
+    os << " ? " << cons_enum_name[cidx] << " : -1;";
+  } else {
+    os << nl << "return cs.have(" << constr.tag_bits << ") ? " << cons_enum_name[cidx] << " : -1;";
+  }
+}
+
+void CppTypeCode::generate_check_tag_method(std::ostream& os) {
+  os << "\nint " << cpp_type_class_name << "::check_tag(const vm::CellSlice& cs) const {";
+  if (cons_num > 1) {
+    os << "\n  switch (get_tag(cs)) {\n";
+    for (int i = 0; i < cons_num; i++) {
+      os << "  case " << cons_enum_name[i] << ":";
+      generate_cons_tag_check(os, "\n    ", i);
+      os << "\n";
+    }
+    os << "  }\n  return -1;\n";
+  } else if (cons_num == 1) {
+    generate_cons_tag_check(os, "\n  ", 0);
+    os << "\n";
+  } else {
+    os << "\n  return -1;\n";
+  }
+  os << "}\n";
+}
+
 bool CppTypeCode::output_print_simple_field(std::ostream& os, const Field& field, std::string field_name,
                                             const TypeExpr* expr) {
   cpp_val_type cvt = detect_cpp_type(expr);
@@ -3042,6 +3080,7 @@ void CppTypeCode::generate_header(std::ostream& os, int options) {
   os << "  std::ostream& print_type(std::ostream& os) const override {";
   generate_print_type_body(os, "\n    ");
   os << "\n  }\n";
+  os << "  int check_tag(const vm::CellSlice& cs) const override;\n";
   os << "  int get_tag(const vm::CellSlice& cs) const override";
   if (inline_get_tag) {
     os << " {";
@@ -3066,6 +3105,7 @@ void CppTypeCode::generate_body(std::ostream& os, int options) {
     generate_get_tag_body(os, "\n  ");
     os << "\n}\n";
   }
+  generate_check_tag_method(os);
   options &= -4;
   if (!inline_skip) {
     generate_skip_method(os, options);

@@ -16,7 +16,7 @@ int TD_TL_writer_java::get_max_arity() const {
 
 bool TD_TL_writer_java::is_built_in_simple_type(const std::string &name) const {
   return name == "Bool" || name == "Int32" || name == "Int53" || name == "Int64" || name == "Double" ||
-         name == "String" || name == "Bytes";
+         name == "String" || name == "Bytes" || name == "SecureString" || name == "SecureBytes";
 }
 
 bool TD_TL_writer_java::is_built_in_complex_type(const std::string &name) const {
@@ -144,10 +144,10 @@ std::string TD_TL_writer_java::gen_type_name(const tl::tl_tree_type *tree_type) 
   if (name == "Double") {
     return "double";
   }
-  if (name == "String") {
+  if (name == "String" || name == "SecureString") {
     return "String";
   }
-  if (name == "Bytes") {
+  if (name == "Bytes" || name == "SecureBytes") {
     return "byte[]";
   }
 

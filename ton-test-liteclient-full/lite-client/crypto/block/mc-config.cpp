@@ -4,72 +4,77 @@
 #include "common/bitstring.h"
 #include "vm/dict.h"
 #include "td/utils/bits.h"
+#include "td/utils/uint128.h"
 #include "ton/ton-types.h"
 #include "ton/ton-shard.h"
 #include "crypto/openssl/digest.h"
-#include <absl/numeric/int128.h>
 #include <stack>
 #include <algorithm>
 
 namespace block {
 using td::Ref;
 
-td::Result<std::unique_ptr<Config>> Config::extract_config(std::shared_ptr<vm::StaticBagOfCellsDb> static_boc,
-                                                           int mode) {
-  auto rc = static_boc->get_root_count();
-  if (rc.is_error()) {
-    return rc.move_as_error();
-  }
-  if (rc.move_as_ok() != 1) {
-    return td::Status::Error(-668, "Masterchain state BoC is invalid");
-  }
-  auto root = static_boc->get_root_cell(0);
-  if (root.is_error()) {
-    return root.move_as_error();
-  }
-  return extract_config(root.move_as_ok(), mode);
+Config::Config(Ref<vm::Cell> config_root, const td::Bits256& config_addr, int _mode)
+    : mode(_mode), config_addr(config_addr), config_root(std::move(config_root)) {
 }
 
-td::Result<std::unique_ptr<Config>> Config::extract_config(Ref<vm::Cell> mc_state_root, int mode) {
+td::Result<std::unique_ptr<Config>> Config::unpack_config(Ref<vm::Cell> mc_state_root, const td::Bits256& config_addr,
+                                                          int mode) {
+  std::unique_ptr<Config> ptr{new Config(std::move(mc_state_root), config_addr, mode)};
+  TRY_STATUS(ptr->unpack());
+  return std::move(ptr);
+}
+
+td::Result<std::unique_ptr<Config>> Config::unpack_config(Ref<vm::CellSlice> config_csr, int mode) {
+  std::unique_ptr<Config> ptr{new Config(mode)};
+  TRY_STATUS(ptr->unpack(std::move(config_csr)));
+  return std::move(ptr);
+}
+
+td::Result<std::unique_ptr<Config>> Config::extract_from_key_block(Ref<vm::Cell> key_block_root, int mode) {
+  block::gen::Block::Record blk;
+  block::gen::BlockExtra::Record extra;
+  block::gen::McBlockExtra::Record mc_extra;
+  if (!(tlb::unpack_cell(key_block_root, blk) && tlb::unpack_cell(std::move(blk.extra), extra) &&
+        tlb::unpack_cell(extra.custom->prefetch_ref(), mc_extra) && mc_extra.key_block && mc_extra.config.not_null())) {
+    return td::Status::Error(-400, "cannot unpack extra header of key block to extract configuration");
+  }
+  return block::Config::unpack_config(std::move(mc_extra.config));
+}
+
+td::Result<std::unique_ptr<ConfigInfo>> ConfigInfo::extract_config(std::shared_ptr<vm::StaticBagOfCellsDb> static_boc,
+                                                                   int mode) {
+  TRY_RESULT(rc, static_boc->get_root_count());
+  if (rc != 1) {
+    return td::Status::Error(-668, "Masterchain state BoC is invalid");
+  }
+  TRY_RESULT(root, static_boc->get_root_cell(0));
+  return extract_config(std::move(root), mode);
+}
+
+td::Result<std::unique_ptr<ConfigInfo>> ConfigInfo::extract_config(Ref<vm::Cell> mc_state_root, int mode) {
   if (mc_state_root.is_null()) {
     return td::Status::Error("configuration state root cell is null");
   }
-  auto config = std::unique_ptr<Config>{new Config(std::move(mc_state_root), mode)};
-  auto res = config->unpack_wrapped();
-  if (res.is_ok()) {
-    return std::move(config);
-  } else {
-    return res;
-  }
+  auto config = std::unique_ptr<ConfigInfo>{new ConfigInfo(std::move(mc_state_root), mode)};
+  TRY_STATUS(config->unpack_wrapped());
+  return std::move(config);
 }
 
-Config::Config(Ref<vm::Cell> mc_state_root, int _mode) : mode(_mode), state_root(std::move(mc_state_root)) {
-  config_addr.set_zero();
+ConfigInfo::ConfigInfo(Ref<vm::Cell> mc_state_root, int _mode) : Config(_mode), state_root(std::move(mc_state_root)) {
   block_id.root_hash.set_zero();
   block_id.file_hash.set_zero();
 }
 
-td::Status Config::unpack_wrapped() {
+td::Status ConfigInfo::unpack_wrapped() {
   try {
     return unpack();
   } catch (vm::VmError err) {
-    return td::Status::Error(PSLICE() << err.get_msg());
+    return td::Status::Error(PSLICE() << "error unpacking block state header and configuration: " << err.get_msg());
   }
 }
 
-std::unique_ptr<vm::AugmentedDictionary> Config::create_accounts_dict() const {
-  if (mode & needAccountsRoot) {
-    return std::make_unique<vm::AugmentedDictionary>(accounts_root, 256, block::tlb::aug_ShardAccounts);
-  } else {
-    return nullptr;
-  }
-}
-
-const vm::AugmentedDictionary& Config::get_accounts_dict() const {
-  return *accounts_dict;
-}
-
-td::Status Config::unpack() {
+td::Status ConfigInfo::unpack() {
   gen::ShardStateUnsplit::Record root_info;
   if (!tlb::unpack_cell(state_root, root_info) || !root_info.global_id) {
     return td::Status::Error("configuration state root cannot be deserialized");
@@ -119,12 +124,78 @@ td::Status Config::unpack() {
   if ((mode & needShardHashes) && !ShardConfig::unpack(extra_info.shard_hashes)) {
     return td::Status::Error("cannot unpack Shard configuration");
   }
+  is_key_state_ = extra_info.r1.after_key_block;
+  if (extra_info.r1.last_key_block->size() > 1) {
+    auto& cs = extra_info.r1.last_key_block.write();
+    block::gen::ExtBlkRef::Record ext_ref;
+    if (!(cs.advance(1) && tlb::unpack_exact(cs, ext_ref))) {
+      return td::Status::Error("cannot unpack last_key_block from masterchain state");
+    }
+    last_key_block_.id = ton::BlockId{ton::masterchainId, ton::shardIdAll, ext_ref.seq_no};
+    last_key_block_.root_hash = ext_ref.root_hash;
+    last_key_block_.file_hash = ext_ref.file_hash;
+    last_key_block_lt_ = ext_ref.end_lt;
+  } else {
+    last_key_block_.invalidate();
+    last_key_block_.id.seqno = 0;
+    last_key_block_lt_ = 0;
+  }
+  // unpack configuration
+  TRY_STATUS(Config::unpack_wrapped(std::move(extra_info.config)));
+  // unpack previous masterchain block collection
+  std::unique_ptr<vm::AugmentedDictionary> prev_blocks_dict =
+      std::make_unique<vm::AugmentedDictionary>(extra_info.r1.prev_blocks, 32, block::tlb::aug_OldMcBlocksInfo);
+  if (block_id.id.seqno) {
+    block::gen::ExtBlkRef::Record extref = {};
+    auto ref = prev_blocks_dict->lookup(td::BitArray<32>::zero());
+    if (!(ref.not_null() && ref.write().advance(1) && tlb::csr_unpack(ref, extref) && !extref.seq_no)) {
+      return td::Status::Error("OldMcBlocks in masterchain state does not contain a valid zero state reference");
+    }
+    zerostate_id_.root_hash = extref.root_hash;
+    zerostate_id_.file_hash = extref.file_hash;
+  } else {
+    zerostate_id_.root_hash.set_zero();
+    zerostate_id_.file_hash.set_zero();
+  }
+  zerostate_id_.workchain = ton::masterchainId;
+  if (mode & needPrevBlocks) {
+    prev_blocks_dict_ = std::move(prev_blocks_dict);
+  }
+  // ...
+  cleanup();
+  return td::Status::OK();
+}
+
+td::Status Config::unpack_wrapped(Ref<vm::CellSlice> config_csr) {
+  try {
+    return unpack(std::move(config_csr));
+  } catch (vm::VmError err) {
+    return td::Status::Error(PSLICE() << "error unpacking masterchain configuration: " << err.get_msg());
+  }
+}
+
+td::Status Config::unpack_wrapped() {
+  try {
+    return unpack();
+  } catch (vm::VmError err) {
+    return td::Status::Error(PSLICE() << "error unpacking masterchain configuration: " << err.get_msg());
+  }
+}
+
+td::Status Config::unpack(Ref<vm::CellSlice> config_cs) {
   gen::ConfigParams::Record config_params;
-  if (!tlb::csr_unpack(extra_info.config, config_params)) {
+  if (!tlb::csr_unpack(std::move(config_cs), config_params)) {
     return td::Status::Error("cannot unpack ConfigParams");
   }
   config_addr = config_params.config_addr;
   config_root = std::move(config_params.config);
+  return unpack();
+}
+
+td::Status Config::unpack() {
+  if (config_root.is_null()) {
+    return td::Status::Error("configuration root not set");
+  }
   config_dict = std::make_unique<vm::Dictionary>(config_root, 32);
   if (mode & needValidatorSet) {
     auto vset_res = unpack_validator_set(get_config_param(34));
@@ -143,33 +214,30 @@ td::Status Config::unpack() {
       LOG(DEBUG) << "smc dictionary created";
     }
   }
-  std::unique_ptr<vm::Dictionary> prev_blocks_dict = std::make_unique<vm::Dictionary>(extra_info.r1.prev_blocks, 32);
-  if (block_id.id.seqno) {
-    block::gen::ExtBlkRef::Record extref = {};
-    if (!(tlb::csr_unpack_safe(prev_blocks_dict->lookup(td::BitArray<32>{1 - 1}), extref) && !extref.seq_no)) {
-      return td::Status::Error("OldMcBlocks in masterchain state does not contain a valid zero state reference");
-    }
-    zerostate_id_.root_hash = extref.root_hash;
-    zerostate_id_.file_hash = extref.file_hash;
-  } else {
-    zerostate_id_.root_hash.set_zero();
-    zerostate_id_.file_hash.set_zero();
-  }
-  zerostate_id_.workchain = ton::masterchainId;
-  if (mode & needPrevBlocks) {
-    prev_blocks_dict_ = std::move(prev_blocks_dict);
-  }
   if (mode & needWorkchainInfo) {
     TRY_RESULT(pair, unpack_workchain_list_ext(get_config_param(12)));
     workchains_ = std::move(pair.first);
     workchains_dict_ = std::move(pair.second);
   }
   // ...
-  cleanup();
   return td::Status::OK();
 }
 
-std::unique_ptr<vm::Dictionary> Config::extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root) {
+td::Status Config::visit_validator_params() const {
+  {
+    // current validator set
+    TRY_RESULT(vset, unpack_validator_set(get_config_param(34)));
+  }
+  auto vs = get_config_param(36);
+  if (vs.not_null()) {
+    // next validator set
+    TRY_RESULT(vset, unpack_validator_set(std::move(vs)));
+  }
+  get_catchain_validators_config();
+  return td::Status::OK();
+}
+
+std::unique_ptr<vm::Dictionary> ShardConfig::extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root) {
   gen::ShardStateUnsplit::Record root_info;
   gen::McStateExtra::Record extra_info;
   if (mc_state_root.not_null()                       //
@@ -179,6 +247,29 @@ std::unique_ptr<vm::Dictionary> Config::extract_shard_hashes_dict(Ref<vm::Cell> 
   } else {
     return {};
   }
+}
+
+std::unique_ptr<vm::AugmentedDictionary> ConfigInfo::create_accounts_dict() const {
+  if (mode & needAccountsRoot) {
+    return std::make_unique<vm::AugmentedDictionary>(accounts_root, 256, block::tlb::aug_ShardAccounts);
+  } else {
+    return nullptr;
+  }
+}
+
+const vm::AugmentedDictionary& ConfigInfo::get_accounts_dict() const {
+  return *accounts_dict;
+}
+
+bool ConfigInfo::get_last_key_block(ton::BlockIdExt& blkid, ton::LogicalTime& blklt, bool strict) const {
+  if (strict || !is_key_state_) {
+    blkid = last_key_block_;
+    blklt = last_key_block_lt_;
+  } else {
+    blkid = block_id;
+    blklt = lt;
+  }
+  return blkid.is_valid() && blkid.seqno();
 }
 
 td::Result<std::pair<WorkchainSet, std::unique_ptr<vm::Dictionary>>> Config::unpack_workchain_list_ext(
@@ -252,19 +343,26 @@ td::Result<std::unique_ptr<ValidatorSet>> Config::unpack_validator_set(Ref<vm::C
 bool Config::set_block_id_ext(const ton::BlockIdExt& block_id_ext) {
   if (block_id.id == block_id_ext.id) {
     block_id = block_id_ext;
-    if (!block_id.id.seqno) {
-      zerostate_id_.workchain = ton::masterchainId;
-      zerostate_id_.root_hash = block_id_ext.root_hash;
-      zerostate_id_.file_hash = block_id_ext.file_hash;
-    }
-    reset_mc_hash();
     return true;
   } else {
     return false;
   }
 }
 
-void Config::cleanup() {
+bool ConfigInfo::set_block_id_ext(const ton::BlockIdExt& block_id_ext) {
+  if (!Config::set_block_id_ext(block_id_ext)) {
+    return false;
+  }
+  if (!block_id.seqno()) {
+    zerostate_id_.workchain = ton::masterchainId;
+    zerostate_id_.root_hash = block_id_ext.root_hash;
+    zerostate_id_.file_hash = block_id_ext.file_hash;
+  }
+  reset_mc_hash();
+  return true;
+}
+
+void ConfigInfo::cleanup() {
   if (!(mode & needStateRoot)) {
     state_root.clear();
   }
@@ -449,7 +547,7 @@ Ref<McShardDescr> McShardDescr::from_block(Ref<vm::Cell> block_root, Ref<vm::Cel
   return res;
 }
 
-void Config::reset_mc_hash() {
+void ConfigInfo::reset_mc_hash() {
   if (block_id.is_masterchain() && !block_id.root_hash.is_zero()) {
     // TODO: use block_start_lt instead of lt if available
     set_mc_hash(Ref<McShardHash>(true, block_id.id, lt, lt, utime, block_id.root_hash, block_id.file_hash));
@@ -1085,27 +1183,34 @@ bool ShardConfig::set_shard_info(ton::ShardIdFull shard, Ref<vm::Cell> value) {
 
 bool Config::is_special_smartcontract(const ton::StdSmcAddress& addr) const {
   CHECK(special_smc_dict);
-  return special_smc_dict->lookup(addr).not_null();
+  return special_smc_dict->lookup(addr).not_null() || addr == config_addr;
 }
 
-td::Result<std::vector<ton::StdSmcAddress>> Config::get_special_smartcontracts() const {
+td::Result<std::vector<ton::StdSmcAddress>> Config::get_special_smartcontracts(bool without_config) const {
   if (!special_smc_dict) {
     return td::Status::Error(-666, "configuration loaded without fundamental smart contract list");
   }
   std::vector<ton::StdSmcAddress> res;
-  if (!special_smc_dict->check_for_each([&res](Ref<vm::CellSlice> cs_ref, td::ConstBitPtr key, int n) -> bool {
+  if (!special_smc_dict->check_for_each([&res, &without_config, conf_addr = config_addr.bits() ](
+          Ref<vm::CellSlice> cs_ref, td::ConstBitPtr key, int n) {
         if (cs_ref->size_ext() || n != 256) {
           return false;
         }
         res.emplace_back(key);
+        if (!without_config && key.equals(conf_addr, 256)) {
+          without_config = true;
+        }
         return true;
       })) {
     return td::Status::Error(-666, "invalid fundamental smart contract set in configuration parameter 31");
   }
+  if (!without_config) {
+    res.push_back(config_addr);
+  }
   return std::move(res);
 }
 
-td::Result<std::vector<std::pair<ton::StdSmcAddress, int>>> Config::get_special_ticktock_smartcontracts(
+td::Result<std::vector<std::pair<ton::StdSmcAddress, int>>> ConfigInfo::get_special_ticktock_smartcontracts(
     int tick_tock) const {
   if (!special_smc_dict) {
     return td::Status::Error(-666, "configuration loaded without fundamental smart contract list");
@@ -1135,7 +1240,7 @@ td::Result<std::vector<std::pair<ton::StdSmcAddress, int>>> Config::get_special_
   return std::move(res);
 }
 
-int Config::get_smc_tick_tock(td::ConstBitPtr smc_addr) const {
+int ConfigInfo::get_smc_tick_tock(td::ConstBitPtr smc_addr) const {
   if (!accounts_dict) {
     return -2;
   }
@@ -1157,11 +1262,16 @@ int Config::get_smc_tick_tock(td::ConstBitPtr smc_addr) const {
              : -2;
 }
 
-ton::CatchainSeqno Config::get_shard_cc_seqno(ton::ShardIdFull shard) const {
+ton::CatchainSeqno ConfigInfo::get_shard_cc_seqno(ton::ShardIdFull shard) const {
   return shard.is_masterchain() ? cc_seqno_ : ShardConfig::get_shard_cc_seqno(shard);
 }
 
 std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> Config::compute_validator_set(
+    ton::ShardIdFull shard, const block::ValidatorSet& vset, ton::UnixTime time, ton::CatchainSeqno cc_seqno) const {
+  return do_compute_validator_set(get_catchain_validators_config(), shard, vset, time, cc_seqno);
+}
+
+std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> ConfigInfo::compute_validator_set_cc(
     ton::ShardIdFull shard, const block::ValidatorSet& vset, ton::UnixTime time,
     ton::CatchainSeqno& cc_seqno_delta) const {
   if (cc_seqno_delta & -2) {
@@ -1197,12 +1307,7 @@ td::uint64 ValidatorSetPRNG::next_ulong() {
 
 td::uint64 ValidatorSetPRNG::next_ranged(td::uint64 range) {
   td::uint64 y = next_ulong();
-#if defined(ABSL_HAVE_INTRINSIC_INT128)
-  __int128 t = __int128(range) * y;
-#else
-  absl::uint128 t = absl::uint128(range) * y;
-#endif
-  return (td::uint64)(t >> 64);
+  return td::uint128(range).mult(y).hi();
 }
 
 inline bool operator<(td::uint64 pos, const ValidatorDescr& descr) {
@@ -1265,10 +1370,6 @@ std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> Co
   return nodes;
 }
 
-bool Config::rotated_all_shards() const {
-  return nx_cc_updated;
-}
-
 bool WorkchainInfo::unpack(ton::WorkchainId wc, vm::CellSlice& cs) {
   workchain = ton::workchainInvalid;
   if (wc == ton::workchainInvalid) {
@@ -1318,22 +1419,136 @@ Ref<WorkchainInfo> Config::get_workchain_info(ton::WorkchainId workchain_id) con
   }
 }
 
-bool Config::get_old_mc_block_id(ton::BlockSeqno seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt) const {
+bool ConfigInfo::get_old_mc_block_id(ton::BlockSeqno seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt) const {
   if (block_id.is_valid() && seqno == block_id.id.seqno) {
     blkid = block_id;
+    if (end_lt) {
+      *end_lt = lt;
+    }
     return true;
   } else {
     return block::get_old_mc_block_id(prev_blocks_dict_.get(), seqno, blkid, end_lt);
   }
 }
 
-bool Config::check_old_mc_block_id(const ton::BlockIdExt& blkid, bool strict) const {
-  return (!strict && block_id.is_valid() && blkid.id.seqno == block_id.id.seqno)
+bool ConfigInfo::check_old_mc_block_id(const ton::BlockIdExt& blkid, bool strict) const {
+  return (!strict && blkid.id.seqno == block_id.id.seqno && block_id.is_valid())
              ? blkid == block_id
              : block::check_old_mc_block_id(prev_blocks_dict_.get(), blkid);
 }
 
-Ref<vm::Cell> Config::lookup_library(td::ConstBitPtr root_hash) const {
+// returns block with min block.seqno and req_lt <= block.end_lt
+bool ConfigInfo::get_mc_block_by_lt(ton::LogicalTime req_lt, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt) const {
+  if (req_lt > lt) {
+    return false;
+  }
+  td::BitArray<32> key;
+  auto found = prev_blocks_dict_->traverse_extra(
+      key.bits(), 32,
+      [req_lt](td::ConstBitPtr key_prefix, int key_pfx_len, Ref<vm::CellSlice> extra, Ref<vm::CellSlice> value) {
+        unsigned long long found_lt;
+        if (!(extra.write().advance(1) && extra.write().fetch_ulong_bool(64, found_lt))) {
+          return -1;
+        }
+        if (found_lt < req_lt) {
+          return 0;  // all leaves in subtree have end_lt <= found_lt < req_lt, skip
+        }
+        return 6;  // visit left subtree, then right subtree; for leaf: accept and return to the top
+      });
+  if (found.first.not_null()) {
+    CHECK(unpack_old_mc_block_id(std::move(found.first), (unsigned)key.to_ulong(), blkid, end_lt));
+    return true;
+  }
+  if (block_id.is_valid()) {
+    blkid = block_id;
+    if (end_lt) {
+      *end_lt = lt;
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
+// returns key block with max block.seqno and block.seqno <= req_seqno
+bool ConfigInfo::get_prev_key_block(ton::BlockSeqno req_seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt) const {
+  if (block_id.is_valid() && is_key_state_ && block_id.seqno() <= req_seqno) {
+    blkid = block_id;
+    if (end_lt) {
+      *end_lt = lt;
+    }
+    return true;
+  }
+  td::BitArray<32> key;
+  auto found =
+      prev_blocks_dict_->traverse_extra(key.bits(), 32,
+                                        [req_seqno](td::ConstBitPtr key_prefix, int key_pfx_len,
+                                                    Ref<vm::CellSlice> extra, Ref<vm::CellSlice> value) -> int {
+                                          if (extra->prefetch_ulong(1) != 1) {
+                                            return 0;  // no key blocks in subtree, skip
+                                          }
+                                          unsigned x = (unsigned)key_prefix.get_uint(key_pfx_len);
+                                          unsigned d = 32 - key_pfx_len;
+                                          if (!d) {
+                                            return x <= req_seqno;
+                                          }
+                                          unsigned y = req_seqno >> (d - 1);
+                                          if (y < 2 * x) {
+                                            // (x << d) > req_seqno <=> x > (req_seqno >> d) = (y >> 1) <=> 2 * x > y
+                                            return 0;  // all nodes in subtree have block.seqno > req_seqno => skip
+                                          }
+                                          return y == 2 * x ? 1 /* visit only left */ : 5 /* visit right, then left */;
+                                        });
+  if (found.first.not_null()) {
+    CHECK(unpack_old_mc_block_id(std::move(found.first), (unsigned)key.to_ulong(), blkid, end_lt));
+    CHECK(blkid.seqno() <= req_seqno);
+    return true;
+  } else {
+    blkid.invalidate();
+    return false;
+  }
+}
+
+// returns key block with min block.seqno and block.seqno >= req_seqno
+bool ConfigInfo::get_next_key_block(ton::BlockSeqno req_seqno, ton::BlockIdExt& blkid, ton::LogicalTime* end_lt) const {
+  td::BitArray<32> key;
+  auto found = prev_blocks_dict_->traverse_extra(
+      key.bits(), 32,
+      [req_seqno](td::ConstBitPtr key_prefix, int key_pfx_len, Ref<vm::CellSlice> extra,
+                  Ref<vm::CellSlice> value) -> int {
+        if (extra->prefetch_ulong(1) != 1) {
+          return 0;  // no key blocks in subtree, skip
+        }
+        unsigned x = (unsigned)key_prefix.get_uint(key_pfx_len);
+        unsigned d = 32 - key_pfx_len;
+        if (!d) {
+          return x >= req_seqno;
+        }
+        unsigned y = req_seqno >> (d - 1);
+        if (y > 2 * x + 1) {
+          // ((x + 1) << d) <= req_seqno <=> (x+1) <= (req_seqno >> d) = (y >> 1) <=> 2*x+2 <= y <=> y > 2*x+1
+          return 0;  // all nodes in subtree have block.seqno < req_seqno => skip
+        }
+        return y == 2 * x + 1 ? 2 /* visit only right */ : 6 /* visit left, then right */;
+      });
+  if (found.first.not_null()) {
+    CHECK(unpack_old_mc_block_id(std::move(found.first), (unsigned)key.to_ulong(), blkid, end_lt));
+    CHECK(blkid.seqno() >= req_seqno);
+    return true;
+  }
+  if (block_id.is_valid() && is_key_state_ && block_id.seqno() >= req_seqno) {
+    blkid = block_id;
+    if (end_lt) {
+      *end_lt = lt;
+    }
+    return true;
+  } else {
+    blkid.invalidate();
+    return false;
+  }
+}
+
+Ref<vm::Cell> ConfigInfo::lookup_library(td::ConstBitPtr root_hash) const {
   if (!libraries_dict_) {
     return {};
   }

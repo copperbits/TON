@@ -14,20 +14,22 @@
 namespace td {
 
 struct BufferRaw {
+  explicit BufferRaw(size_t size) : data_size_(size) {
+  }
   size_t data_size_;
 
   // Constant after first reader is created.
   // May be change by writer before it.
   // So writer may do prepends till there is no reader created.
-  size_t begin_;
+  size_t begin_ = 0;
 
   // Write by writer.
   // Read by reader.
-  std::atomic<size_t> end_;
+  std::atomic<size_t> end_{0};
 
-  mutable std::atomic<int32> ref_cnt_;
-  std::atomic<bool> has_writer_;
-  bool was_reader_;
+  mutable std::atomic<int32> ref_cnt_{1};
+  std::atomic<bool> has_writer_{true};
+  bool was_reader_{false};
 
   alignas(4) unsigned char data_[1];
 };
@@ -279,6 +281,10 @@ class BufferWriter {
   MutableSlice as_slice() {
     auto end = buffer_->end_.load(std::memory_order_relaxed);
     return MutableSlice(buffer_->data_ + buffer_->begin_, buffer_->data_ + end);
+  }
+  Slice as_slice() const {
+    auto end = buffer_->end_.load(std::memory_order_relaxed);
+    return Slice(buffer_->data_ + buffer_->begin_, buffer_->data_ + end);
   }
 
   MutableSlice prepare_prepend() {
@@ -594,7 +600,7 @@ class ChainBufferReader {
   }
 
   ChainBufferReader cut_head(size_t offset) TD_WARN_UNUSED_RESULT {
-    CHECK(offset <= size()) << offset << " " << size();
+    LOG_CHECK(offset <= size()) << offset << " " << size();
     auto it = begin_.clone();
     it.advance(offset);
     return cut_head(std::move(it));
@@ -731,6 +737,8 @@ class BufferBuilder {
   BufferBuilder(Slice slice, size_t prepend_size, size_t append_size)
       : buffer_writer_(slice, prepend_size, append_size) {
   }
+  explicit BufferBuilder(BufferWriter &&buffer_writer) : buffer_writer_(std::move(buffer_writer)) {
+  }
 
   void append(BufferSlice slice);
   void append(Slice slice);
@@ -739,17 +747,30 @@ class BufferBuilder {
   void prepend(Slice slice);
 
   template <class F>
-  void for_each(F &&f) {
+  void for_each(F &&f) const & {
     for (auto &slice : reversed(to_prepend_)) {
-      f(slice);
+      f(slice.as_slice());
+    }
+    if (!buffer_writer_.empty()) {
+      f(buffer_writer_.as_slice());
+    }
+    for (auto &slice : to_append_) {
+      f(slice.as_slice());
+    }
+  }
+  template <class F>
+  void for_each(F &&f) && {
+    for (auto &slice : reversed(to_prepend_)) {
+      f(std::move(slice));
     }
     if (!buffer_writer_.empty()) {
       f(buffer_writer_.as_buffer_slice());
     }
     for (auto &slice : to_append_) {
-      f(slice);
+      f(std::move(slice));
     }
   }
+  size_t size() const;
 
   BufferSlice extract();
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "td/utils/logging.h"
+#include "td/utils/common.h"
 
 namespace td {
 

@@ -150,7 +150,7 @@ int BagOfCells::add_root(td::Ref<vm::Cell> add_root) {
   if (add_root.is_null()) {
     return 0;
   }
-  CHECK(add_root->get_virtualization() == 0) << "TODO: support serilization of virtualized cells";
+  LOG_CHECK(add_root->get_virtualization() == 0) << "TODO: support serilization of virtualized cells";
   //const Cell::Hash& hash = add_root->get_hash();
   //for (const auto& root_info : roots) {
   //if (root_info.cell->get_hash() == hash) {
@@ -886,7 +886,10 @@ unsigned long long BagOfCells::get_idx_entry_raw(int index) {
  * 
  */
 
-td::Result<Ref<Cell>> std_boc_deserialize(td::Slice data) {
+td::Result<Ref<Cell>> std_boc_deserialize(td::Slice data, bool can_be_empty) {
+  if (data.empty() && can_be_empty) {
+    return Ref<Cell>();
+  }
   BagOfCells boc;
   auto res = boc.deserialize(data);
   if (res.is_error()) {

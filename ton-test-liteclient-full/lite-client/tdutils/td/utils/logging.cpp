@@ -29,7 +29,6 @@ int VERBOSITY_NAME(mtproto) = VERBOSITY_NAME(DEBUG) + 7;
 int VERBOSITY_NAME(raw_mtproto) = VERBOSITY_NAME(DEBUG) + 10;
 int VERBOSITY_NAME(fd) = VERBOSITY_NAME(DEBUG) + 9;
 int VERBOSITY_NAME(actor) = VERBOSITY_NAME(DEBUG) + 10;
-int VERBOSITY_NAME(buffer) = VERBOSITY_NAME(DEBUG) + 10;
 int VERBOSITY_NAME(sqlite) = VERBOSITY_NAME(DEBUG) + 10;
 
 LogOptions log_options;
@@ -211,13 +210,13 @@ class DefaultLog : public LogInterface {
     switch (log_level) {
       case VERBOSITY_NAME(FATAL):
       case VERBOSITY_NAME(ERROR):
-        color = TC_RED;
+        color = Slice(TC_RED);
         break;
       case VERBOSITY_NAME(WARNING):
-        color = TC_YELLOW;
+        color = Slice(TC_YELLOW);
         break;
       case VERBOSITY_NAME(INFO):
-        color = TC_CYAN;
+        color = Slice(TC_CYAN);
         break;
     }
     if (!slice.empty() && slice.back() == '\n') {

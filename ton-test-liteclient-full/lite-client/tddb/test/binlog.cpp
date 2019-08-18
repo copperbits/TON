@@ -1,5 +1,6 @@
 #include "td/utils/tests.h"
 
+#include "td/utils/as.h"
 #include "td/utils/base64.h"
 #include "td/utils/benchmark.h"
 #include "td/utils/buffer.h"
@@ -12,6 +13,7 @@
 #include "td/utils/port/FileFd.h"
 #include "td/utils/port/path.h"
 #include "td/utils/port/IoSlice.h"
+#include "td/utils/UInt.h"
 #include "td/utils/Variant.h"
 #include "td/utils/VectorQueue.h"
 

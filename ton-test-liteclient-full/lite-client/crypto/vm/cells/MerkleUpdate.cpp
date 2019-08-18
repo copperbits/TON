@@ -1,8 +1,8 @@
 #include "vm/cells/MerkleUpdate.h"
 #include "vm/cells/MerkleProof.h"
 
-#include <absl/container/flat_hash_set.h>
-#include <absl/container/flat_hash_map.h>
+#include "td/utils/HashMap.h"
+#include "td/utils/HashSet.h"
 
 namespace vm {
 namespace detail {
@@ -19,8 +19,8 @@ class MerkleUpdateApply {
 
  private:
   using Key = std::pair<Cell::Hash, int>;
-  absl::flat_hash_map<Cell::Hash, Ref<Cell>> known_cells_;
-  absl::flat_hash_map<Key, Ref<Cell>> ready_cells_;
+  td::HashMap<Cell::Hash, Ref<Cell>> known_cells_;
+  td::HashMap<Key, Ref<Cell>> ready_cells_;
 
   void dfs_both(Ref<Cell> original, Ref<Cell> update_from, int merkle_depth) {
     CellSlice cs_update_from(NoVm(), update_from);
@@ -81,10 +81,10 @@ class MerkleUpdateValidator {
   }
 
  private:
-  absl::flat_hash_set<Cell::Hash> known_cells_;
+  td::HashSet<Cell::Hash> known_cells_;
   using Key = std::pair<Cell::Hash, int>;
-  absl::flat_hash_set<Key> visited_from_;
-  absl::flat_hash_set<Key> visited_to_;
+  td::HashSet<Key> visited_from_;
+  td::HashSet<Key> visited_to_;
 
   void dfs_from(Ref<Cell> cell, int merkle_depth) {
     if (!visited_from_.emplace(cell->get_hash(), merkle_depth).second) {
@@ -319,10 +319,10 @@ class MerkleCombine {
     }
   };
   using Key = std::pair<Cell::Hash, int>;
-  absl::flat_hash_map<Cell::Hash, Info> cells_;
-  absl::flat_hash_map<Key, Ref<Cell>> create_A_res_;
-  absl::flat_hash_map<Key, Ref<Cell>> create_D_res_;
-  absl::flat_hash_set<Key> visited_;
+  td::HashMap<Cell::Hash, Info> cells_;
+  td::HashMap<Key, Ref<Cell>> create_A_res_;
+  td::HashMap<Key, Ref<Cell>> create_D_res_;
+  td::HashSet<Key> visited_;
 
   void load_cells(Ref<Cell> cell, int merkle_depth) {
     if (!visited_.emplace(cell->get_hash(), merkle_depth).second) {

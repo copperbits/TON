@@ -85,6 +85,14 @@ struct BitPtrGen {
     offs += size;
     return *this;
   }
+  template <typename T>
+  void copy_from(const T& from) const {
+    copy_from(from.bits(), from.size());
+  }
+  template <typename T>
+  BitPtrGen& concat(const T& from) {
+    return concat(from.bits(), from.size());
+  }
   void fill(bool bit, unsigned size) {
     bitstring::bits_memset(*this, bit, size);
   }
@@ -95,6 +103,9 @@ struct BitPtrGen {
   }
   int compare(BitPtrGen<const Pt> other, std::size_t size, std::size_t* same_upto = nullptr) const {
     return bitstring::bits_memcmp(*this, other, size, same_upto);
+  }
+  bool equals(BitPtrGen<const Pt> other, std::size_t size) const {
+    return !bitstring::bits_memcmp(*this, other, size);
   }
   std::size_t scan(bool value, std::size_t len) const {
     return bitstring::bits_memscan(*this, len, value);
@@ -190,14 +201,14 @@ class BitSliceGen {
   }
   BitSliceGen(const BitSliceGen& bs, unsigned _offs, unsigned _len);
   BitSliceGen(BitSliceGen&& bs, unsigned _offs, unsigned _len);
-  BitSliceGen(Pt* _ptr, unsigned _len) : ref(Rf{false}), ptr(_ptr), offs(0), len(_len) {
+  BitSliceGen(Pt* _ptr, unsigned _len) : ref(), ptr(_ptr), offs(0), len(_len) {
   }
   ~BitSliceGen() {
   }
   Pt* get_ptr() const {
     return ptr;
   }
-  BitPtrGen<Pt> get_bitptr() const {
+  BitPtrGen<Pt> bits() const {
     return BitPtrGen<Pt>{ptr, (int)offs};
   }
   bool is_valid() const {
@@ -257,7 +268,16 @@ class BitSliceGen {
     return BitSliceGen(*this, from, bits);
   }
   void copy_to(BitPtr to) const {
-    bitstring::bits_memcpy(to, get_bitptr(), size());
+    bitstring::bits_memcpy(to, bits(), size());
+  }
+  int compare(ConstBitPtr other) const {
+    return bitstring::bits_memcmp(bits(), other, size());
+  }
+  bool operator==(ConstBitPtr other) const {
+    return !compare(other);
+  }
+  bool operator!=(ConstBitPtr other) const {
+    return compare(other);
   }
   std::string to_binary() const {
     return bitstring::bits_to_binary(ptr, offs, len);
@@ -481,6 +501,12 @@ class BitArray {
   BitSlice as_bitslice() const {
     return BitSlice{data(), n};
   }
+  operator BitString() const {
+    return BitString{as_bitslice()};
+  }
+  Ref<BitString> make_bitstring_ref() const {
+    return td::make_ref<BitString>(as_bitslice());
+  }
   unsigned long long to_ulong() const {
     return bitstring::bits_load_ulong(bits(), n);
   }
@@ -591,9 +617,15 @@ template <unsigned N>
 Slice as_slice(const BitArray<N>& value) {
   return value.as_slice();
 }
+
 template <unsigned N>
 MutableSlice as_slice(BitArray<N>& value) {
   return value.as_slice();
+}
+
+template <unsigned N>
+Ref<BitString> make_bitstring_ref(const BitArray<N>& value) {
+  return value.make_bitstring_ref();
 }
 
 }  // namespace td

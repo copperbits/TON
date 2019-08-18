@@ -377,11 +377,11 @@ bool store_validator_list_hash(vm::CellBuilder& cb) {
     return false;
   }
   auto vset = res.move_as_ok();
-  CHECK(vset) << "unpacked validator set is empty";
+  LOG_CHECK(vset) << "unpacked validator set is empty";
   auto ccvc = block::Config::unpack_catchain_validators_config(config_dict.lookup_ref(td::BitArray<32>{28}));
   ton::ShardIdFull shard{ton::masterchainId};
   auto nodes = block::Config::do_compute_validator_set(ccvc, shard, *vset, now, 0);
-  CHECK(!nodes.empty()) << "validator node list in unpacked validator set is empty";
+  LOG_CHECK(!nodes.empty()) << "validator node list in unpacked validator set is empty";
   ton::validator::ValidatorSetQ vsetq{0, shard, std::move(nodes)};
   return cb.store_long_bool(vsetq.get_validator_set_hash(), 32);
 }
@@ -393,7 +393,7 @@ bool store_custom(vm::CellBuilder& cb) {
   }
   vm::CellBuilder cb2, cb3;
   bool ok = true;
-  PDO(cb2.store_long_bool(0xcc1f, 16)  // masterchain_state_extra#cc1f
+  PDO(cb2.store_long_bool(0xcc21, 16)  // masterchain_state_extra#cc21
       && cb2.store_long_bool(0, 1)     // shard_hashes:ShardHashes = (HashmapE 32 ^(BinTree ShardDescr))
       && cb2.store_long_bool(0, 1)     // shard_fees:ShardFees = HashmapAugE 32 .. CurrencyCollection
       && block::tlb::t_CurrencyCollection.null_value(cb2)  // ...
@@ -401,7 +401,8 @@ bool store_custom(vm::CellBuilder& cb) {
       && store_validator_list_hash(cb3)                    // ^[ validator_list_hash_short:uint32
       && cb3.store_long_bool(0, 32)                        //   catchain_seqno:uint32
       && cb3.store_bool_bool(true)                         //   nx_cc_updated:Bool
-      && cb3.store_long_bool(0, 1 + 1)                     //   prev_blocks:OldMcBlocksInfo last_key_block:(Maybe ...)
+      && cb3.store_zeroes_bool(1 + 65)                     //   prev_blocks:OldMcBlocksInfo
+      && cb3.store_long_bool(2, 1 + 1)                     //   after_key_block:Bool last_key_block:(Maybe ...)
       && cb2.store_ref_bool(cb3.finalize())                // ]
       && cb.store_long_bool(1, 1)                          // just
       && cb.store_ref_bool(cb2.finalize()));
@@ -416,7 +417,7 @@ Ref<vm::Cell> create_state() {
   THRERR("workchain_id is unset, cannot generate state");
   PDO(workchain_id != wc_master || config_addr_set);
   THRERR("configuration smart contract must be selected");
-  PDO(cb.store_long_bool(0x9023afdf, 32)      // shard_state#9023afdf
+  PDO(cb.store_long_bool(0x9023afe1, 32)      // shard_state#9023afe1
       && cb.store_long_bool(global_id, 32));  // global_id:int32
   PDO(cb.store_long_bool(0, 8) && cb.store_long_bool(workchain_id, 32) &&
       cb.store_long_bool(0, 64)             // shard_id:ShardIdent

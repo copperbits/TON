@@ -11,12 +11,11 @@ std::unique_ptr<DataCell> DataCell::create_empty_data_cell(Info info) {
   return detail::CellWithUniquePtrStorage<DataCell>::create(info.get_storage_size(), info);
 }
 
-td::ThreadSafeCounter DataCell::total_data_cells;
 DataCell::DataCell(Info info) : info_(std::move(info)) {
-  total_data_cells.add(1);
+  get_thread_safe_counter().add(1);
 }
 DataCell::~DataCell() {
-  total_data_cells.add(-1);
+  get_thread_safe_counter().add(-1);
 }
 
 void DataCell::destroy_storage(char* storage) {

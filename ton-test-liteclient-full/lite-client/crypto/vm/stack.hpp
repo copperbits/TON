@@ -37,8 +37,8 @@ class Atom;
 
 using Tuple = td::Cnt<std::vector<StackEntry>>;
 
-extern struct from_object_t {
-} from_object;
+struct from_object_t {};
+constexpr from_object_t from_object{};
 
 class StackEntry {
  public:
@@ -125,6 +125,12 @@ class StackEntry {
   void swap(StackEntry& se) {
     ref.swap(se.ref);
     std::swap(tp, se.tp);
+  }
+  bool operator==(const StackEntry& other) const {
+    return tp == other.tp && ref == other.ref;
+  }
+  bool operator!=(const StackEntry& other) const {
+    return !(tp == other.tp && ref == other.ref);
   }
   Type type() const {
     return tp;
@@ -426,7 +432,9 @@ class Stack : public td::CntObject {
   void push_smallint(long long val);
   void push_bool(bool val);
   void push_string(std::string str);
+  void push_string(td::Slice slice);
   void push_bytes(std::string str);
+  void push_bytes(td::Slice slice);
   void push_cell(Ref<Cell> cell);
   void push_maybe_cell(Ref<Cell> cell);
   void push_maybe_cellslice(Ref<CellSlice> cs);
@@ -438,6 +446,14 @@ class Stack : public td::CntObject {
   void push_tuple(const std::vector<StackEntry>& components);
   void push_tuple(std::vector<StackEntry>&& components);
   void push_atom(Ref<Atom> atom);
+  template <typename T>
+  void push_object(Ref<T> obj) {
+    push({vm::from_object, std::move(obj)});
+  }
+  template <typename T, typename... Args>
+  void push_make_object(Args&&... args) {
+    push_object<T>(td::make_ref<T>(std::forward<Args>(args)...));
+  }
   template <typename T>
   void push_maybe(Ref<T> val) {
     if (val.is_null()) {

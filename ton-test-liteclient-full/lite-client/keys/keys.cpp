@@ -49,7 +49,7 @@ bool PublicKey::empty() const {
 }
 
 tl_object_ptr<ton_api::PublicKey> privkeys::Ed25519::pub_tl() const {
-  td::Ed25519::PrivateKey pkey(as_slice(data_));
+  td::Ed25519::PrivateKey pkey(td::SecureString(as_slice(data_)));
   auto r_public_key = pkey.get_public_key();
   if (r_public_key.is_error()) {
     return nullptr;
@@ -62,7 +62,7 @@ tl_object_ptr<ton_api::PublicKey> privkeys::Ed25519::pub_tl() const {
 }
 
 pubkeys::Ed25519 privkeys::Ed25519::pub() const {
-  td::Ed25519::PrivateKey pkey(as_slice(data_));
+  td::Ed25519::PrivateKey pkey(td::SecureString(as_slice(data_)));
   return pubkeys::Ed25519{pkey.get_public_key().move_as_ok()};
 }
 

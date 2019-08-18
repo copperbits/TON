@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
 
-set (BUILD_CREATE_STATE 0)
-
 if (NOT OPENSSL_FOUND)
   find_package(OpenSSL REQUIRED)
 endif()
@@ -155,7 +153,9 @@ set (BLOCK_SOURCE
   block/Binlog.cpp
   block/block.cpp
   block/block-db.cpp
+  block/check-proof.cpp
   block/mc-config.cpp
+  block/output-queue-merger.cpp
   block/transaction.cpp
   ${TLB_BLOCK_AUTO}
 
@@ -163,6 +163,8 @@ set (BLOCK_SOURCE
   block/block-db-impl.h
   block/block-db.h
   block/block.h
+  block/check-proof.h
+  block/output-queue-merger.h
   block/transaction.h
 )
 
@@ -195,7 +197,6 @@ add_library(ton_crypto STATIC ${TON_CRYPTO_SOURCE})
 target_include_directories(ton_crypto PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
 target_link_libraries(ton_crypto PUBLIC ${OPENSSL_CRYPTO_LIBRARY} tdutils)
-target_link_libraries_system(ton_crypto absl::base absl::container absl::hash)
 if (NOT WIN32)
   target_link_libraries(ton_crypto PUBLIC dl z)
 endif()
@@ -258,12 +259,3 @@ if (NOT CMAKE_CROSSCOMPILING)
   add_dependencies(ton_block tlb_generate_block)
 endif()
 
-if (BUILD_CREATE_STATE) 
-  add_executable(create-state block/create-state.cpp)
-  target_include_directories(create-state PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
-  target_link_libraries(create-state PUBLIC ton_crypto fift-lib ton_block adnl ton_validator validator_disk ton_validator)
-  if (WINGETOPT_FOUND)
-    target_link_libraries_system(create-state wingetopt)
-  endif()
-endif()

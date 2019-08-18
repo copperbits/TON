@@ -2,6 +2,8 @@
 #include "vm/cells/CellTraits.h"
 #include "common/bitstring.h"
 
+#include "td/utils/as.h"
+
 #include <array>
 namespace td {
 class StringBuilder;
@@ -64,3 +66,9 @@ struct hash<vm::CellHash> {
   }
 };
 }  // namespace std
+namespace vm {
+template <class H>
+H AbslHashValue(H h, const CellHash& cell_hash) {
+  return AbslHashValue(std::move(h), std::hash<vm::CellHash>()(cell_hash));
+}
+}  // namespace vm

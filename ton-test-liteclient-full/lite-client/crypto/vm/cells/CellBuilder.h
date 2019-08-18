@@ -21,7 +21,10 @@ class CellBuilder : public td::CntObject {
   unsigned refs_cnt;
   std::array<Ref<Cell>, Cell::max_refs> refs;
   mutable unsigned char data[Cell::max_bytes];
-  static td::ThreadSafeCounter total_cell_builders;
+  static td::NamedThreadSafeCounter::CounterRef get_thread_safe_counter() {
+    static auto res = td::NamedThreadSafeCounter::get_default().get_counter("CellBuilder");
+    return res;
+  }
 
  public:
   CellBuilder();
@@ -142,6 +145,7 @@ class CellBuilder : public td::CntObject {
   bool append_bitstring(Ref<td::BitString> bs_ref);
   bool append_bitstring_chk(const td::BitString& bs, unsigned size);
   bool append_bitstring_chk(Ref<td::BitString> bs, unsigned size);
+  bool append_bitslice(const td::BitSlice& bs);
   bool store_maybe_ref(Ref<Cell> cell);
   bool contents_equal(const CellSlice& cs) const;
   CellBuilder* make_copy() const override;
@@ -157,7 +161,7 @@ class CellBuilder : public td::CntObject {
   Ref<CellSlice> as_cellslice_ref() const&;
   Ref<CellSlice> as_cellslice_ref() &&;
   static td::int64 get_total_cell_builders() {
-    return total_cell_builders.sum();
+    return get_thread_safe_counter().sum();
   }
   int get_serialized_size() const {
     return ((bits + 23) >> 3);

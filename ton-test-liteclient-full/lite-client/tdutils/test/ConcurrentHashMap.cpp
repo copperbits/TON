@@ -6,7 +6,7 @@
 #include "td/utils/ConcurrentHashTable.h"
 #include <algorithm>
 
-#if TD_WITH_ABSEIL
+#if TD_HAVE_ABSL
 #include <absl/container/flat_hash_map.h>
 #else
 #include <unordered_map>
@@ -75,7 +75,7 @@ class ConcurrentHashMapMutex {
 
  private:
   std::mutex mutex_;
-#if TD_WITH_ABSEIL
+#if TD_HAVE_ABSL
   absl::flat_hash_map<KeyT, ValueT> hash_map_;
 #else
   std::unordered_map<KeyT, ValueT> hash_map_;
@@ -104,7 +104,7 @@ class ConcurrentHashMapSpinlock {
 
  private:
   td::SpinLock spinlock_;
-#if TD_WITH_ABSEIL
+#if TD_HAVE_ABSL
   absl::flat_hash_map<KeyT, ValueT> hash_map_;
 #else
   std::unordered_map<KeyT, ValueT> hash_map_;

@@ -25,18 +25,18 @@
 
 namespace td {
 
-Ed25519::PublicKey::PublicKey(Slice octet_string) : octet_string_(octet_string.str()) {
+Ed25519::PublicKey::PublicKey(SecureString octet_string) : octet_string_(std::move(octet_string)) {
 }
 
-string Ed25519::PublicKey::as_octet_string() const {
-  return octet_string_;
+SecureString Ed25519::PublicKey::as_octet_string() const {
+  return octet_string_.copy();
 }
 
-Ed25519::PrivateKey::PrivateKey(Slice octet_string) : octet_string_(octet_string.str()) {
+Ed25519::PrivateKey::PrivateKey(SecureString octet_string) : octet_string_(std::move(octet_string)) {
 }
 
-string Ed25519::PrivateKey::as_octet_string() const {
-  return octet_string_;
+SecureString Ed25519::PrivateKey::as_octet_string() const {
+  return octet_string_.copy();
 }
 
 #if OPENSSL_VERSION_NUMBER >= 0x10101000L
@@ -46,7 +46,7 @@ namespace detail {
 static const Slice PRIVATE_KEY_PREFIX = "\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x70\x04\x22\x04\x20";
 static const Slice PUBLIC_KEY_PREFIX = "\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00";
 
-Result<string> X25519_key_from_PKEY(EVP_PKEY *pkey, bool is_private) {
+Result<SecureString> X25519_key_from_PKEY(EVP_PKEY *pkey, bool is_private) {
   BIO *mem_bio = BIO_new(BIO_s_mem());
   SCOPE_EXIT {
     BIO_vfree(mem_bio);
@@ -58,49 +58,49 @@ Result<string> X25519_key_from_PKEY(EVP_PKEY *pkey, bool is_private) {
   }
 
   constexpr int MAX_LINE_LENGTH = 100;
-  char data[MAX_LINE_LENGTH + 1];
-  int len = BIO_gets(mem_bio, data, sizeof(data));
+  SecureString data(MAX_LINE_LENGTH + 1);
+  int len = BIO_gets(mem_bio, data.as_mutable_slice().data(), narrow_cast<int>(data.size()));
   if (len == 0 || len >= MAX_LINE_LENGTH) {
     return Status::Error("Can't read first PEM string");
   }
-  auto begin = trim(Slice(data, len));
+  auto begin = trim(data.as_slice().substr(0, len));
   if (!begins_with(begin, "-----BEGIN") || !ends_with(begin, "-----")) {
     return Status::Error("Wrong first PEM line");
   }
 
-  len = BIO_gets(mem_bio, data, sizeof(data));
+  len = BIO_gets(mem_bio, data.as_mutable_slice().data(), narrow_cast<int>(data.size()));
   if (len == 0 || len >= MAX_LINE_LENGTH) {
     return Status::Error("Can't read second PEM string");
   }
-  TRY_RESULT(key, base64_decode(trim(Slice(data, len))));
+  TRY_RESULT(key, base64_decode_secure(trim(data.as_slice().substr(0, len))));
   auto prefix = is_private ? PRIVATE_KEY_PREFIX : PUBLIC_KEY_PREFIX;
   if (key.size() != prefix.size() + 32 || !begins_with(key, prefix)) {
     return Status::Error("Wrong key format");
   }
 
-  len = BIO_gets(mem_bio, data, sizeof(data));
+  len = BIO_gets(mem_bio, data.as_mutable_slice().data(), narrow_cast<int>(data.size()));
   if (len == 0 || len >= MAX_LINE_LENGTH) {
     return Status::Error("Can't read third PEM string");
   }
 
-  auto end = trim(Slice(data, len));
+  auto end = trim(data.as_slice().substr(0, len));
   if (!begins_with(end, "-----END") || !ends_with(end, "-----")) {
     return Status::Error("Wrong third PEM line");
   }
 
-  len = BIO_gets(mem_bio, data, sizeof(data));
+  len = BIO_gets(mem_bio, data.as_mutable_slice().data(), narrow_cast<int>(data.size()));
   if (len != 0 || !BIO_eof(mem_bio)) {
     return Status::Error("Extra data after lastline");
   }
-  return key.substr(prefix.size());
+  return SecureString(key.as_slice().substr(prefix.size()));
 }
 
-EVP_PKEY *X25519_key_to_PKEY(string key, bool is_private) {
+EVP_PKEY *X25519_key_to_PKEY(Slice key, bool is_private) {
   auto func = is_private ? &EVP_PKEY_new_raw_private_key : &EVP_PKEY_new_raw_public_key;
-  return func(EVP_PKEY_ED25519, nullptr, Slice(key).ubegin(), key.size());
+  return func(EVP_PKEY_ED25519, nullptr, key.ubegin(), key.size());
 }
 
-Result<string> X25519_pem_from_PKEY(EVP_PKEY *pkey, bool is_private, Slice password) {
+Result<SecureString> X25519_pem_from_PKEY(EVP_PKEY *pkey, bool is_private, Slice password) {
   BIO *mem_bio = BIO_new(BIO_s_mem());
   SCOPE_EXIT {
     BIO_vfree(mem_bio);
@@ -113,7 +113,6 @@ Result<string> X25519_pem_from_PKEY(EVP_PKEY *pkey, bool is_private, Slice passw
   }
   char *data_ptr = nullptr;
   auto data_size = BIO_get_mem_data(mem_bio, &data_ptr);
-  LOG(ERROR) << password;
   return std::string(data_ptr, data_size);
 }
 
@@ -125,14 +124,11 @@ static int password_cb(char *buf, int size, int rwflag, void *u) {
   }
   if (rwflag == 0) {
     MutableSlice(buf, size).copy_from(password);
-    LOG(ERROR) << "Use: " << Slice(buf, password_size);
   }
   return password_size;
 }
 
 EVP_PKEY *X25519_pem_to_PKEY(Slice pem, Slice password) {
-  LOG(ERROR) << pem;
-  LOG(ERROR) << password;
   BIO *mem_bio = BIO_new_mem_buf(pem.ubegin(), narrow_cast<int>(pem.size()));
   SCOPE_EXIT {
     BIO_vfree(mem_bio);
@@ -179,10 +175,10 @@ Result<Ed25519::PublicKey> Ed25519::PrivateKey::get_public_key() const {
   };
 
   TRY_RESULT(key, detail::X25519_key_from_PKEY(pkey, false));
-  return Ed25519::PublicKey(key);
+  return Ed25519::PublicKey(std::move(key));
 }
 
-Result<string> Ed25519::PrivateKey::as_pem(Slice password) const {
+Result<SecureString> Ed25519::PrivateKey::as_pem(Slice password) const {
   auto pkey = detail::X25519_key_to_PKEY(octet_string_, true);
   if (pkey == nullptr) {
     return Status::Error("Can't import private key");
@@ -200,10 +196,10 @@ Result<Ed25519::PrivateKey> Ed25519::PrivateKey::from_pem(Slice pem, Slice passw
     return Status::Error("Can't import private key from pem");
   }
   TRY_RESULT(key, detail::X25519_key_from_PKEY(pkey, true));
-  return Ed25519::PrivateKey(key);
+  return Ed25519::PrivateKey(std::move(key));
 }
 
-Result<string> Ed25519::PrivateKey::sign(Slice data) const {
+Result<SecureString> Ed25519::PrivateKey::sign(Slice data) const {
   auto pkey = detail::X25519_key_to_PKEY(octet_string_, true);
   if (pkey == nullptr) {
     return Status::Error("Can't import private key");
@@ -224,12 +220,12 @@ Result<string> Ed25519::PrivateKey::sign(Slice data) const {
     return Status::Error("Can't init DigestSign");
   }
 
-  string res(64, '\0');
+  SecureString res(64, '\0');
   size_t len = 64;
-  if (EVP_DigestSign(md_ctx, MutableSlice(res).ubegin(), &len, data.ubegin(), data.size()) <= 0) {
+  if (EVP_DigestSign(md_ctx, res.as_mutable_slice().ubegin(), &len, data.ubegin(), data.size()) <= 0) {
     return Status::Error("Can't sign data");
   }
-  return res;
+  return std::move(res);
 }
 
 Status Ed25519::PublicKey::verify_signature(Slice data, Slice signature) const {
@@ -259,10 +255,10 @@ Status Ed25519::PublicKey::verify_signature(Slice data, Slice signature) const {
   return Status::Error("Wrong signature");
 }
 
-Result<string> Ed25519::compute_shared_secret(const PublicKey &public_key, const PrivateKey &private_key) {
+Result<SecureString> Ed25519::compute_shared_secret(const PublicKey &public_key, const PrivateKey &private_key) {
   BigNum p = BigNum::from_hex("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed").move_as_ok();
   auto public_y = public_key.as_octet_string();
-  public_y[31] = static_cast<char>(public_y[31] & 127);
+  public_y.as_mutable_slice()[31] = static_cast<char>(public_y[31] & 127);
   BigNum y = BigNum::from_le_binary(public_y);
   BigNum y2 = y.clone();
   y += 1;
@@ -327,11 +323,11 @@ Result<string> Ed25519::compute_shared_secret(const PublicKey &public_key, const
     return Status::Error("Unexpected result length");
   }
 
-  string result(result_len, '\0');
-  if (EVP_PKEY_derive(ctx, MutableSlice(result).ubegin(), &result_len) <= 0) {
+  SecureString result(result_len, '\0');
+  if (EVP_PKEY_derive(ctx, result.as_mutable_slice().ubegin(), &result_len) <= 0) {
     return Status::Error("Failed to compute shared secret");
   }
-  return result;
+  return std::move(result);
 }
 
 #else
@@ -341,11 +337,11 @@ Result<Ed25519::PrivateKey> Ed25519::generate_private_key() {
   if (!private_key.random_private_key(true)) {
     return Status::Error("Can't generate random private key");
   }
-  unsigned char private_key_buf[32];
-  if (!private_key.export_private_key(private_key_buf)) {
+  SecureString private_key_buf(32);
+  if (!private_key.export_private_key(private_key_buf.as_mutable_slice())) {
     return Status::Error("Failed to export private key");
   }
-  return PrivateKey(Slice(private_key_buf, 32));
+  return PrivateKey(std::move(private_key_buf));
 }
 
 Result<Ed25519::PublicKey> Ed25519::PrivateKey::get_public_key() const {
@@ -353,14 +349,14 @@ Result<Ed25519::PublicKey> Ed25519::PrivateKey::get_public_key() const {
   if (!private_key.import_private_key(Slice(octet_string_).ubegin())) {
     return Status::Error("Bad private key");
   }
-  unsigned char public_key[32];
-  if (!private_key.get_public_key().export_public_key(public_key)) {
+  SecureString public_key(32);
+  if (!private_key.get_public_key().export_public_key(public_key.as_mutable_slice())) {
     return Status::Error("Failed to export public key");
   }
-  return PublicKey(Slice(public_key, 32));
+  return PublicKey(std::move(public_key));
 }
 
-Result<string> Ed25519::PrivateKey::as_pem(Slice password) const {
+Result<SecureString> Ed25519::PrivateKey::as_pem(Slice password) const {
   return Status::Error("Not supported");
 }
 
@@ -368,13 +364,13 @@ Result<Ed25519::PrivateKey> Ed25519::PrivateKey::from_pem(Slice pem, Slice passw
   return Status::Error("Not supported");
 }
 
-Result<string> Ed25519::PrivateKey::sign(Slice data) const {
+Result<SecureString> Ed25519::PrivateKey::sign(Slice data) const {
   crypto::Ed25519::PrivateKey private_key;
   if (!private_key.import_private_key(Slice(octet_string_).ubegin())) {
     return Status::Error("Bad private key");
   }
-  string signature(crypto::Ed25519::sign_bytes, '\0');
-  if (!private_key.sign_message(signature, data)) {
+  SecureString signature(crypto::Ed25519::sign_bytes, '\0');
+  if (!private_key.sign_message(signature.as_mutable_slice(), data)) {
     return Status::Error("Failed to sign message");
   }
   return std::move(signature);
@@ -395,7 +391,7 @@ Status Ed25519::PublicKey::verify_signature(Slice data, Slice signature) const {
   return Status::Error("Wrong signature");
 }
 
-Result<string> Ed25519::compute_shared_secret(const PublicKey &public_key, const PrivateKey &private_key) {
+Result<SecureString> Ed25519::compute_shared_secret(const PublicKey &public_key, const PrivateKey &private_key) {
   crypto::Ed25519::PrivateKey tmp_private_key;
   if (!tmp_private_key.import_private_key(Slice(private_key.as_octet_string()).ubegin())) {
     return Status::Error("Bad private key");
@@ -404,8 +400,8 @@ Result<string> Ed25519::compute_shared_secret(const PublicKey &public_key, const
   if (!tmp_public_key.import_public_key(Slice(public_key.as_octet_string()).ubegin())) {
     return Status::Error("Bad public key");
   }
-  string shared_secret(32, '\0');
-  if (!tmp_private_key.compute_shared_secret(shared_secret, tmp_public_key)) {
+  SecureString shared_secret(32, '\0');
+  if (!tmp_private_key.compute_shared_secret(shared_secret.as_mutable_slice(), tmp_public_key)) {
     return Status::Error("Failed to compute shared secret");
   }
   return std::move(shared_secret);

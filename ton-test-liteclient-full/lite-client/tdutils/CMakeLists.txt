@@ -83,6 +83,7 @@ set(TDUTILS_SOURCE
   td/utils/BigNum.cpp
   td/utils/buffer.cpp
   td/utils/BufferedUdp.cpp
+  td/utils/check.cpp
   td/utils/crypto.cpp
   td/utils/FileLog.cpp
   td/utils/filesystem.cpp
@@ -101,8 +102,10 @@ set(TDUTILS_SOURCE
   td/utils/StackAllocator.cpp
   td/utils/Status.cpp
   td/utils/StringBuilder.cpp
+  td/utils/tests.cpp
   td/utils/Time.cpp
   td/utils/Timer.cpp
+  td/utils/TsFileLog.cpp
   td/utils/tests.cpp
   td/utils/tl_parsers.cpp
   td/utils/translit.cpp
@@ -152,6 +155,7 @@ set(TDUTILS_SOURCE
   td/utils/port/detail/WineventPoll.h
 
   td/utils/AesCtrByteFlow.h
+  td/utils/as.h
   td/utils/base64.h
   td/utils/benchmark.h
   td/utils/BigNum.h
@@ -161,7 +165,9 @@ set(TDUTILS_SOURCE
   td/utils/BufferedReader.h
   td/utils/BufferedUdp.h
   td/utils/ByteFlow.h
+  td/utils/CancellationToken.h
   td/utils/ChangesProcessor.h
+  td/utils/check.h
   td/utils/Closure.h
   td/utils/common.h
   td/utils/ConcurrentHashTable.h
@@ -223,12 +229,15 @@ set(TDUTILS_SOURCE
   td/utils/Time.h
   td/utils/TimedStat.h
   td/utils/Timer.h
+  td/utils/TsFileLog.h
   td/utils/tl_helpers.h
   td/utils/tl_parsers.h
   td/utils/tl_storers.h
   td/utils/translit.h
   td/utils/ThreadSafeCounter.h
   td/utils/type_traits.h
+  td/utils/uint128.h
+  td/utils/UInt.h
   td/utils/unicode.h
   td/utils/unique_ptr.h
   td/utils/utf8.h
@@ -247,6 +256,7 @@ set(TDUTILS_TEST_SOURCE
   ${CMAKE_CURRENT_SOURCE_DIR}/test/HazardPointers.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/heap.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/json.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/test/log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/misc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/MpmcQueue.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/MpmcWaiter.cpp
@@ -255,6 +265,7 @@ set(TDUTILS_TEST_SOURCE
   ${CMAKE_CURRENT_SOURCE_DIR}/test/port.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/pq.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/SharedObjectPool.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/test/SharedSlice.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/variant.cpp
   PARENT_SCOPE
 )
@@ -291,7 +302,8 @@ if (CRC32C_FOUND)
   target_link_libraries(tdutils PRIVATE crc32c)
 endif()
 if (ABSL_FOUND)
-  target_link_libraries(tdutils PRIVATE absl::base absl::time)
+  #target_link_libraries(tdutils PRIVATE absl::base absl::time)
+  target_link_libraries_system(tdutils absl::base absl::container absl::hash )
 endif()
 
 if (WIN32 AND WINGETOPT_FOUND)

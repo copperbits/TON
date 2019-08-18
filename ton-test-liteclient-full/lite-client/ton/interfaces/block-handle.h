@@ -12,6 +12,8 @@ struct BlockHandleImpl {
  public:
   virtual BlockIdExt id() const = 0;
   virtual bool received() const = 0;
+  virtual bool moved_to_storage() const = 0;
+  virtual bool deleted() const = 0;
   virtual bool inited_next_left() const = 0;
   virtual bool inited_next_right() const = 0;
   virtual bool inited_next() const = 0;
@@ -25,12 +27,14 @@ struct BlockHandleImpl {
   virtual bool inited_signatures() const = 0;
   virtual bool inited_split_after() const = 0;
   virtual bool inited_merge_before() const = 0;
+  virtual bool inited_is_key_block() const = 0;
   virtual bool split_after() const = 0;
   virtual bool merge_before() const = 0;
+  virtual bool is_key_block() const = 0;
   virtual bool inited_state_root_hash() const = 0;
   virtual bool received_state() const = 0;
-  virtual bool inited_state_file() const = 0;
   virtual bool inited_state_boc() const = 0;
+  virtual bool deleted_state_boc() const = 0;
   virtual bool need_flush() const = 0;
   virtual bool is_zero() const = 0;
   virtual bool is_archived() const = 0;
@@ -58,11 +62,14 @@ struct BlockHandleImpl {
   virtual void set_next(BlockIdExt next) = 0;
   virtual void set_prev(BlockIdExt prev) = 0;
   virtual void set_received() = 0;
+  virtual void set_moved_to_storage() = 0;
+  virtual void set_deleted() = 0;
   virtual void set_split(bool value) = 0;
   virtual void set_merge(bool value) = 0;
+  virtual void set_is_key_block(bool value) = 0;
   virtual void set_state_root_hash(RootHash hash) = 0;
-  virtual void set_state_file() = 0;
   virtual void set_state_boc() = 0;
+  virtual void set_deleted_state_boc() = 0;
   virtual void set_archived() = 0;
   virtual void set_applied() = 0;
 

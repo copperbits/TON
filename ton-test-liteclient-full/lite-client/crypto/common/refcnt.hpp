@@ -50,18 +50,14 @@ class CntObject {
     throw WriteError();
   }
   bool is_unique() const {
-    return cnt_.load(std::memory_order_relaxed) == 1;
+    return cnt_.load(std::memory_order_acquire) == 1;
   }
   int get_refcnt() const {
-    return cnt_.load(std::memory_order_relaxed);
+    // use std::memory_order_acquire
+    return cnt_.load(std::memory_order_acquire);
   }
   void assert_unique() const {
     assert(is_unique());
-  }
-  void dec_unsafe() const {
-    auto f = (cnt_.fetch_sub(1, std::memory_order_acq_rel) == 1);
-    (void)f;
-    assert(!f);
   }
 };
 

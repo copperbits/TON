@@ -1,7 +1,5 @@
 #include "td/utils/find_boundary.h"
 
-#include "td/utils/logging.h"
-
 #include <cstring>
 
 namespace td {

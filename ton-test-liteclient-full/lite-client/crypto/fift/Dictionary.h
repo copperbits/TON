@@ -20,7 +20,8 @@ class WordDef : public td::CntObject {
  public:
   WordDef() = default;
   virtual ~WordDef() override = default;
-  virtual void run(IntCtx& ctx) const = 0;
+  virtual Ref<WordDef> run_tail(IntCtx& ctx) const = 0;
+  void run(IntCtx& ctx) const;
   virtual bool is_list() const {
     return false;
   }
@@ -36,18 +37,32 @@ class StackWord : public WordDef {
   StackWordFunc f;
 
  public:
-  StackWord(StackWordFunc _f);
+  StackWord(StackWordFunc _f) : f(std::move(_f)) {
+  }
   ~StackWord() override = default;
-  void run(IntCtx& ctx) const override;
+  Ref<WordDef> run_tail(IntCtx& ctx) const override;
 };
 
 class CtxWord : public WordDef {
   CtxWordFunc f;
 
  public:
-  CtxWord(CtxWordFunc _f);
+  CtxWord(CtxWordFunc _f) : f(std::move(_f)) {
+  }
   ~CtxWord() override = default;
-  void run(IntCtx& ctx) const override;
+  Ref<WordDef> run_tail(IntCtx& ctx) const override;
+};
+
+typedef std::function<Ref<WordDef>(IntCtx&)> CtxTailWordFunc;
+
+class CtxTailWord : public WordDef {
+  CtxTailWordFunc f;
+
+ public:
+  CtxTailWord(CtxTailWordFunc _f) : f(std::move(_f)) {
+  }
+  ~CtxTailWord() override = default;
+  Ref<WordDef> run_tail(IntCtx& ctx) const override;
 };
 
 class WordList : public WordDef {
@@ -60,7 +75,7 @@ class WordList : public WordDef {
   WordList(const std::vector<Ref<WordDef>>& _list);
   WordList& push_back(Ref<WordDef> word_def);
   WordList& push_back(WordDef& wd);
-  void run(IntCtx& ctx) const override;
+  Ref<WordDef> run_tail(IntCtx& ctx) const override;
   void close();
   bool is_list() const override {
     return true;
@@ -88,6 +103,7 @@ class WordRef {
   WordRef(Ref<WordDef> _def, bool _act = false);
   WordRef(StackWordFunc func);
   WordRef(CtxWordFunc func, bool _act = false);
+  WordRef(CtxTailWordFunc func, bool _act = false);
   //WordRef(const std::vector<Ref<WordDef>>& word_list);
   //WordRef(std::vector<Ref<WordDef>>&& word_list);
   WordRef& operator=(const WordRef&) = default;
@@ -117,6 +133,7 @@ class Dictionary {
  public:
   WordRef* lookup(td::Slice name);
   void def_ctx_word(std::string name, CtxWordFunc func);
+  void def_ctx_tail_word(std::string name, CtxTailWordFunc func);
   void def_active_word(std::string name, CtxWordFunc func);
   void def_stack_word(std::string name, StackWordFunc func);
   void def_word(std::string name, WordRef word);

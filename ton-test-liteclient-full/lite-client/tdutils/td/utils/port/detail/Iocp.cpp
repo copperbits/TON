@@ -67,7 +67,7 @@ void Iocp::subscribe(const NativeFd &native_fd, Callback *callback) {
     auto error = OS_ERROR("CreateIoCompletionPort");
     LOG(FATAL) << error;
   }
-  CHECK(iocp_handle == iocp_handle_->fd()) << iocp_handle << " " << iocp_handle_->fd();
+  LOG_CHECK(iocp_handle == iocp_handle_->fd()) << iocp_handle << " " << iocp_handle_->fd();
 }
 
 IocpRef Iocp::get_ref() const {
@@ -82,14 +82,14 @@ void iocp_post(NativeFd &iocp_handle, size_t size, Iocp::Callback *callback, WSA
     LOG(FATAL) << error;
   }
 }
-}
+}  // namespace
 
 void Iocp::post(size_t size, Callback *callback, WSAOVERLAPPED *overlapped) {
   iocp_post(*iocp_handle_, size, callback, overlapped);
 }
 
 IocpRef::IocpRef(std::weak_ptr<NativeFd> iocp_handle) : iocp_handle_(std::move(iocp_handle)) {
-}	
+}
 
 bool IocpRef::post(size_t size, Iocp::Callback *callback, WSAOVERLAPPED *overlapped) {
   auto iocp_handle = iocp_handle_.lock();

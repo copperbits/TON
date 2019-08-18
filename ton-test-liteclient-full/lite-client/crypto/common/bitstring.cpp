@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstring>
 #include <limits>
+#include "td/utils/as.h"
 #include "td/utils/bits.h"
 #include "td/utils/misc.h"
 #include "crypto/openssl/digest.h"

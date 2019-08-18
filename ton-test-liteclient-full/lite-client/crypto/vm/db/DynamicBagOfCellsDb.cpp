@@ -6,6 +6,7 @@
 
 #include "td/utils/base64.h"
 #include "td/utils/format.h"
+#include "td/utils/ThreadSafeCounter.h"
 
 #include "vm/cellslice.h"
 
@@ -60,8 +61,10 @@ bool operator<(td::Slice a, const CellInfo &b) {
 class DynamicBagOfCellsDbImpl : public DynamicBagOfCellsDb, private ExtCellCreator {
  public:
   DynamicBagOfCellsDbImpl() {
+    get_thread_safe_counter().add(1);
   }
   ~DynamicBagOfCellsDbImpl() {
+    get_thread_safe_counter().add(-1);
     reset_cell_db_reader();
   }
   td::Result<Ref<Cell>> ext_cell(Cell::LevelMask level_mask, td::Slice hash, td::Slice depth) override {
@@ -174,13 +177,26 @@ class DynamicBagOfCellsDbImpl : public DynamicBagOfCellsDb, private ExtCellCreat
   std::vector<CellInfo *> visited_;
   Stats stats_diff_;
 
+  static td::NamedThreadSafeCounter::CounterRef get_thread_safe_counter() {
+    static auto res = td::NamedThreadSafeCounter::get_default().get_counter("DynamicBagOfCellsDb");
+    return res;
+  }
+
   class CellDbReaderImpl : public CellDbReader,
                            private ExtCellCreator,
                            public std::enable_shared_from_this<CellDbReaderImpl> {
    public:
     CellDbReaderImpl(std::unique_ptr<CellLoader> cell_loader) : db_(nullptr), cell_loader_(std::move(cell_loader)) {
+      if (cell_loader_) {
+        get_thread_safe_counter().add(1);
+      }
     }
     CellDbReaderImpl(DynamicBagOfCellsDb *db) : db_(db) {
+    }
+    ~CellDbReaderImpl() {
+      if (cell_loader_) {
+        get_thread_safe_counter().add(-1);
+      }
     }
     void set_loader(std::unique_ptr<CellLoader> cell_loader) {
       if (cell_loader_) {
@@ -189,6 +205,9 @@ class DynamicBagOfCellsDbImpl : public DynamicBagOfCellsDb, private ExtCellCreat
       }
       cell_loader_ = std::move(cell_loader);
       db_ = nullptr;
+      if (cell_loader_) {
+        get_thread_safe_counter().add(1);
+      }
     }
 
     td::Result<Ref<Cell>> ext_cell(Cell::LevelMask level_mask, td::Slice hash, td::Slice depth) override {
@@ -208,6 +227,10 @@ class DynamicBagOfCellsDbImpl : public DynamicBagOfCellsDb, private ExtCellCreat
     }
 
    private:
+    static td::NamedThreadSafeCounter::CounterRef get_thread_safe_counter() {
+      static auto res = td::NamedThreadSafeCounter::get_default().get_counter("DynamicBagOfCellsDbLoader");
+      return res;
+    }
     DynamicBagOfCellsDb *db_;
     std::unique_ptr<CellLoader> cell_loader_;
   };
@@ -220,6 +243,8 @@ class DynamicBagOfCellsDbImpl : public DynamicBagOfCellsDb, private ExtCellCreat
     }
     cell_db_reader_->set_loader(std::move(loader_));
     cell_db_reader_.reset();
+    //EXPERIMENTAL: clear cache to drop all references to old reader.
+    hash_table_ = {};
   }
 
   bool is_in_db(CellInfo &info) {

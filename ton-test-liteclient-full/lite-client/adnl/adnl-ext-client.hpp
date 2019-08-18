@@ -1,13 +1,16 @@
 #pragma once
 
+#include "auto/tl/lite_api.h"
 #include "adnl-ext-connection.hpp"
-#include "tl-utils/tl-utils.hpp"
+#include "tl-utils/lite-utils.hpp"
 #include "td/utils/Random.h"
 #include "adnl-query.h"
 #include "keys/encryptor.h"
 #include "adnl-ext-client.h"
 
 namespace ton {
+
+namespace adnl {
 
 class AdnlExtClientImpl;
 
@@ -51,7 +54,7 @@ class AdnlOutboundConnection : public AdnlExtConnection {
       return;
     }
     auto data = R.move_as_ok();
-    CHECK(data.size() == 256 - 32) << "size=" << data.size();
+    LOG_CHECK(data.size() == 256 - 32) << "size=" << data.size();
     S = d.as_slice();
     S.remove_prefix(32);
     CHECK(S.size() == data.size());
@@ -91,7 +94,7 @@ class AdnlExtClientImpl : public AdnlExtClient {
     auto q_id = generate_next_query_id();
     out_queries_.emplace(q_id, AdnlQuery::create(std::move(promise), std::move(P), name, timeout, q_id));
     if (!conn_.empty()) {
-      auto obj = create_tl_object<ton_api::adnl_message_query>(q_id, std::move(data));
+      auto obj = create_tl_object<lite_api::adnl_message_query>(q_id, std::move(data));
       td::actor::send_closure(conn_, &AdnlOutboundConnection::send, serialize_tl_object(obj, true));
     }
   }
@@ -126,5 +129,7 @@ class AdnlExtClientImpl : public AdnlExtClient {
 
   std::map<AdnlQueryId, td::actor::ActorId<AdnlQuery>> out_queries_;
 };
+
+}  // namespace adnl
 
 }  // namespace ton

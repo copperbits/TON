@@ -147,11 +147,11 @@ class Variant {
     return res;
   }
 
-  template <class T>
+  template <class T, std::enable_if_t<!std::is_same<std::decay_t<T>, Variant>::value, int> = 0>
   Variant(T &&t) {
     init_empty(std::forward<T>(t));
   }
-  template <class T>
+  template <class T, std::enable_if_t<!std::is_same<std::decay_t<T>, Variant>::value, int> = 0>
   Variant &operator=(T &&t) {
     clear();
     init_empty(std::forward<T>(t));
@@ -164,9 +164,9 @@ class Variant {
 
   template <class T>
   void init_empty(T &&t) {
-    CHECK(offset_ == npos) << offset_
+    LOG_CHECK(offset_ == npos) << offset_
 #if TD_CLANG || TD_GCC
-                           << ' ' << __PRETTY_FUNCTION__
+                               << ' ' << __PRETTY_FUNCTION__
 #endif
         ;
     offset_ = offset<T>();
@@ -281,4 +281,5 @@ template <int T, class... Types>
 auto &get(const Variant<Types...> &v) {
   return v.template get<T>();
 }
+
 }  // namespace td

@@ -12,11 +12,21 @@ set(TL_TON_API
   PARENT_SCOPE
 )
 
+set(TL_LITE_API
+  ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/lite_api.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/lite_api.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/lite_api.hpp
+  PARENT_SCOPE
+)
+
 set(TL_TONLIB_API
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api.h
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api.hpp
+  PARENT_SCOPE
+)
 
+set(TL_TONLIB_API_JSON
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api_json.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api_json.h
   PARENT_SCOPE

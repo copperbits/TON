@@ -1,8 +1,7 @@
 #include "vm/db/BlobView.h"
 
 #include "td/utils/port/FileFd.h"
-
-#include "absl/container/flat_hash_map.h"
+#include "td/utils/HashMap.h"
 
 #include "td/utils/format.h"
 #include "td/utils/port/RwMutex.h"
@@ -79,7 +78,7 @@ class FileBlobViewImpl : public BlobView {
   td::uint64 total_view_size_{0};
 
   td::RwMutex pages_rw_mutex_;
-  absl::flat_hash_map<td::uint64, td::BufferSlice> pages_;
+  td::HashMap<td::uint64, td::BufferSlice> pages_;
 
   std::mutex fd_mutex_;
 
@@ -117,7 +116,7 @@ class FileBlobViewImpl : public BlobView {
 };
 td::Result<std::unique_ptr<BlobView>> FileBlobView::create(td::CSlice file_path, td::uint64 file_size) {
   TRY_RESULT(fd, td::FileFd::open(file_path, td::FileFd::Flags::Read));
-  auto stat = fd.stat();
+  TRY_RESULT(stat, fd.stat());
   if (file_size == 0) {
     file_size = stat.size_;
   } else if (file_size != (td::uint64)stat.size_) {
@@ -144,7 +143,7 @@ class FileMemoryMappingBlobViewImpl : public BlobView {
 
 td::Result<std::unique_ptr<BlobView>> FileMemoryMappingBlobView::create(td::CSlice file_path, td::uint64 file_size) {
   TRY_RESULT(fd, td::FileFd::open(file_path, td::FileFd::Flags::Read));
-  auto stat = fd.stat();
+  TRY_RESULT(stat, fd.stat());
   if (file_size == 0) {
     file_size = stat.size_;
   } else if (file_size != (td::uint64)stat.size_) {

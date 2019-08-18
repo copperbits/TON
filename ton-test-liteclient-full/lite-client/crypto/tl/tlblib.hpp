@@ -91,6 +91,12 @@ class TLB {
   virtual int get_tag(const vm::CellSlice& cs) const {
     return -1;
   }
+  virtual int check_tag(const vm::CellSlice& cs) const {
+    return get_tag(cs);
+  }
+  bool has_valid_tag(const vm::CellSlice& cs) const {
+    return check_tag(cs) >= 0;
+  }
   virtual long long as_int(const vm::CellSlice& cs) const {
     return -1;
   }
@@ -780,7 +786,7 @@ struct Bits final : TLB {
 };
 
 template <class T>
-struct Maybe final : TLB_Complex {
+struct Maybe : TLB_Complex {
   T field_type;
   template <typename... Args>
   Maybe(Args... args) : field_type(args...) {

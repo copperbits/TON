@@ -113,7 +113,7 @@ class ConcurrentHashMap {
     return ValueT{};
   }
   static ValueT migrate_value() {
-    return (ValueT)(1); // c-style convertion because reinterpret_cast<int>(1) is CE in MSVC
+    return (ValueT)(1);  // c-style convertion because reinterpret_cast<int>(1) is CE in MSVC
   }
 
   ValueT insert(KeyT key, ValueT value) {
@@ -299,7 +299,7 @@ class ConcurrentHashMap {
       //LOG(ERROR) << node_key << " " << node_key;
       auto ok = migrate_to_hash_map_->with_value(
           node_key, true, [&](auto &node_value) { node_value.store(old_value, std::memory_order_relaxed); });
-      CHECK(ok) << "migration overflow";
+      LOG_CHECK(ok) << "migration overflow";
     }
   }
 };

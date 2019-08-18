@@ -6,6 +6,7 @@
 #include "td/utils/Status.h"
 
 #include <functional>
+#include <type_traits>
 #include <utility>
 
 namespace td {
@@ -34,6 +35,32 @@ Result<std::pair<FileFd, string>> mkstemp(CSlice dir) TD_WARN_UNUSED_RESULT;
 
 Result<string> mkdtemp(CSlice dir, Slice prefix) TD_WARN_UNUSED_RESULT;
 
-Status walk_path(CSlice path, const std::function<void(CSlice name, bool is_directory)> &func) TD_WARN_UNUSED_RESULT;
+class WalkPath {
+ public:
+  enum class Action { Continue, Abort, SkipDir };
+  enum class Type { EnterDir, ExitDir, NotDir };
+
+  template <class F, class R = decltype(std::declval<F>()("", Type::ExitDir))>
+  static TD_WARN_UNUSED_RESULT std::enable_if_t<std::is_same<R, Action>::value, Status> run(CSlice path, F &&func) {
+    return do_run(path, func);
+  }
+  template <class F, class R = decltype(std::declval<F>()("", Type::ExitDir))>
+  static TD_WARN_UNUSED_RESULT std::enable_if_t<!std::is_same<R, Action>::value, Status> run(CSlice path, F &&func) {
+    return do_run(path, [&](CSlice name, Type type) {
+      func(name, type);
+      return Action::Continue;
+    });
+  }
+
+ private:
+  static TD_WARN_UNUSED_RESULT Status do_run(CSlice path,
+                                             const std::function<WalkPath::Action(CSlice name, Type type)> &func);
+};
+
+// deprecated interface
+template <class F>
+TD_WARN_UNUSED_RESULT Status walk_path(CSlice path, F &&func) {
+  return WalkPath::run(path, func);
+}
 
 }  // namespace td
