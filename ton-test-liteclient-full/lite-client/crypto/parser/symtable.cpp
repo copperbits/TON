@@ -1,3 +1,7 @@
+#include "symtable.h"
+#include <sstream>
+#include <cassert>
+
 namespace sym {
 
 /*
@@ -6,45 +10,69 @@ namespace sym {
  *
  */
 
-typedef int var_idx_t;
-
-struct SymValBase {
-  enum { _Param, _Var, _Func, _Typename };
-  int type;
-  int idx;
-  SymValBase(int _type, int _idx) : type(_type), idx(_idx) {
-  }
-  virtual ~SymValBase() = default;
-};
-
-/*
- *
- *   SYMBOL TABLE
- *
- */
-
 int scope_level;
 
-struct SymDef {
-  int level;
-  src::sym_idx_t sym_idx;
-  SymValBase* value;
-  src::SrcLocation loc;
-  SymDef(int lvl, src::sym_idx_t idx, const src::SrcLocation& _loc = {}, SymValBase* val = 0)
-      : level(lvl), sym_idx(idx), value(val), loc(_loc) {
-  }
-  bool has_name() const {
-    return sym_idx;
-  }
-  std::string name() const {
-    return src::symbols.get_name(sym_idx);
-  }
-};
+SymTable<100003> symbols;
 
-SymDef* sym_def[src::symbols.hprime];
-SymDef* global_sym_def[src::symbols.hprime];
+SymDef* sym_def[symbols.hprime];
+SymDef* global_sym_def[symbols.hprime];
 std::vector<std::pair<int, SymDef>> symbol_stack;
 std::vector<src::SrcLocation> scope_opened_at;
+
+std::string Symbol::unknown_symbol_name(sym_idx_t i) {
+  if (!i) {
+    return "_";
+  } else {
+    std::ostringstream os;
+    os << "SYM#" << i;
+    return os.str();
+  }
+}
+
+sym_idx_t SymTableBase::gen_lookup(std::string str, int mode, sym_idx_t idx) {
+  unsigned long long h1 = 1, h2 = 1;
+  for (char c : str) {
+    h1 = ((h1 * 239) + (unsigned char)(c)) % p;
+    h2 = ((h2 * 17) + (unsigned char)(c)) % (p - 1);
+  }
+  ++h2;
+  ++h1;
+  while (true) {
+    if (sym_table[h1]) {
+      if (sym_table[h1]->str == str) {
+        return (mode & 2) ? not_found : sym_idx_t(h1);
+      }
+      h1 += h2;
+      if (h1 > p) {
+        h1 -= p;
+      }
+    } else {
+      if (!(mode & 1)) {
+        return not_found;
+      }
+      if (def_sym >= ((long)p * 3) / 4) {
+        throw SymTableOverflow{def_sym};
+      }
+      sym_table[h1] = std::make_unique<Symbol>(str, idx <= 0 ? sym_idx_t(h1) : -idx);
+      ++def_sym;
+      return sym_idx_t(h1);
+    }
+  }
+}
+
+SymTableBase& SymTableBase::add_keyword(std::string str, sym_idx_t idx) {
+  if (idx <= 0) {
+    idx = ++def_kw;
+  }
+  sym_idx_t res = gen_lookup(str, -1, idx);
+  if (!res) {
+    throw SymTableKwRedef{str};
+  }
+  if (idx < max_kw_idx) {
+    keywords[idx] = res;
+  }
+  return *this;
+}
 
 void open_scope(src::Lexer& lex) {
   ++scope_level;
@@ -80,7 +108,7 @@ void close_scope(src::Lexer& lex) {
   scope_opened_at.pop_back();
 }
 
-SymDef* lookup_symbol(src::sym_idx_t idx, int flags = 3) {
+SymDef* lookup_symbol(sym_idx_t idx, int flags) {
   if (!idx) {
     return nullptr;
   }
@@ -93,11 +121,11 @@ SymDef* lookup_symbol(src::sym_idx_t idx, int flags = 3) {
   return nullptr;
 }
 
-SymDef* lookup_symbol(std::string name, int flags = 3) {
-  return lookup_symbol(src::symbols.lookup(name), flags);
+SymDef* lookup_symbol(std::string name, int flags) {
+  return lookup_symbol(symbols.lookup(name), flags);
 }
 
-SymDef* define_global_symbol(src::sym_idx_t name_idx, bool force_new = false, const src::SrcLocation& loc = {}) {
+SymDef* define_global_symbol(sym_idx_t name_idx, bool force_new, const src::SrcLocation& loc) {
   if (!name_idx) {
     return nullptr;
   }
@@ -108,7 +136,7 @@ SymDef* define_global_symbol(src::sym_idx_t name_idx, bool force_new = false, co
   return global_sym_def[name_idx] = new SymDef(0, name_idx, loc);
 }
 
-SymDef* define_symbol(src::sym_idx_t name_idx, bool force_new = false, const src::SrcLocation& loc = {}) {
+SymDef* define_symbol(sym_idx_t name_idx, bool force_new, const src::SrcLocation& loc) {
   if (!name_idx) {
     return nullptr;
   }

@@ -8,6 +8,7 @@
 #include "td/actor/actor.h"
 #include "crypto/common/bitstring.h"
 #include "crypto/Ed25519.h"
+#include "common/errorcode.h"
 
 namespace ton {
 
@@ -249,12 +250,33 @@ class Ed25519 {
     data_ = obj.key_;
   }
   Ed25519(td::Bits256 id) : data_(id) {
+    id.set_zero_s();
+  }
+  Ed25519(td::Slice data) {
+    CHECK(data.size() == 32);
+    data_.as_slice().copy_from(data);
   }
   Ed25519() {
   }
   Ed25519(td::Ed25519::PrivateKey pk);
   td::Ed25519::PrivateKey export_key() {
     return td::Ed25519::PrivateKey{td::SecureString(data_.as_slice())};
+  }
+  td::SecureString export_as_slice() const {
+    td::SecureString s{36};
+    auto id = ton_api::pk_ed25519::ID;
+    s.as_mutable_slice().copy_from(td::Slice{reinterpret_cast<const td::uint8 *>(&id), 4});
+    s.as_mutable_slice().remove_prefix(4).copy_from(data_.as_slice());
+    return s;
+  }
+  bool exportable() const {
+    return true;
+  }
+  static td::Result<Ed25519> import(td::Slice slice) {
+    if (slice.size() != 32) {
+      return td::Status::Error(ErrorCode::error, "bad length");
+    }
+    return Ed25519{slice};
   }
   tl_object_ptr<ton_api::pk_ed25519> tl() const {
     return create_tl_object<ton_api::pk_ed25519>(data_);
@@ -279,6 +301,22 @@ class AES {
     CHECK(data.size() == 32);
     data_.as_slice().copy_from(data);
   }
+  td::SecureString export_as_slice() const {
+    td::SecureString s{40};
+    auto id = ton_api::pk_aes::ID;
+    s.as_mutable_slice().copy_from(td::Slice{reinterpret_cast<const td::uint8 *>(&id), 4});
+    s.as_mutable_slice().remove_prefix(4).copy_from(data_.as_slice());
+    return s;
+  }
+  bool exportable() const {
+    return true;
+  }
+  static td::Result<AES> import(td::Slice slice) {
+    if (slice.size() != 32) {
+      return td::Status::Error(ErrorCode::error, "bad length");
+    }
+    return AES{slice};
+  }
   tl_object_ptr<ton_api::pk_aes> tl() const {
     return create_tl_object<ton_api::pk_aes>(data_);
   }
@@ -300,6 +338,12 @@ class Unenc {
   }
   Unenc(const Unenc &obj) {
     data_ = obj.data_.clone();
+  }
+  td::SecureString export_as_slice() const {
+    UNREACHABLE();
+  }
+  bool exportable() const {
+    return false;
   }
   tl_object_ptr<ton_api::pk_unenc> tl() const {
     return create_tl_object<ton_api::pk_unenc>(data_.clone());
@@ -323,6 +367,12 @@ class Overlay {
   Overlay(const Overlay &obj) {
     data_ = obj.data_.clone();
   }
+  td::SecureString export_as_slice() const {
+    UNREACHABLE();
+  }
+  bool exportable() const {
+    return false;
+  }
   tl_object_ptr<ton_api::pk_overlay> tl() const {
     return create_tl_object<ton_api::pk_overlay>(data_.clone());
   }
@@ -340,6 +390,12 @@ class PrivateKey {
  private:
   class Empty {
    public:
+    td::SecureString export_as_slice() const {
+      UNREACHABLE();
+    }
+    bool exportable() const {
+      return false;
+    }
     tl_object_ptr<ton_api::PrivateKey> tl() const {
       UNREACHABLE();
     }
@@ -364,6 +420,9 @@ class PrivateKey {
 
   PublicKey compute_public_key() const;
   PublicKeyHash compute_short_id() const;
+  td::SecureString export_as_slice() const;
+  static td::Result<PrivateKey> import(td::Slice s);
+  bool exportable() const;
   tl_object_ptr<ton_api::PrivateKey> tl() const;
 
   td::Result<std::unique_ptr<Decryptor>> create_decryptor() const;

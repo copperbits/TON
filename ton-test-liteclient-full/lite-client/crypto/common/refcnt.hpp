@@ -38,7 +38,13 @@ class CntObject {
   }
   CntObject(const CntObject& other) : CntObject() {
   }
-  void operator=(const CntObject& other) {
+  CntObject(CntObject&& other) : CntObject() {
+  }
+  CntObject& operator=(const CntObject& other) {
+    return *this;
+  }
+  CntObject& operator=(CntObject&& other) {
+    return *this;
   }
   virtual ~CntObject() {
     auto cnt = cnt_.load(std::memory_order_relaxed);
@@ -132,6 +138,9 @@ struct RefValue<Cnt<T>> {
 
 struct static_cast_ref {};
 
+namespace detail {
+void safe_delete(const CntObject* ptr);
+}
 template <class T>
 class Ref {
   T* ptr;
@@ -306,7 +315,7 @@ class Ref {
   template <class S>
   static void release_shared(S* obj, int cnt = 1) {
     if (obj->dec(cnt)) {
-      delete obj;
+      detail::safe_delete(obj);
     }
   }
   template <class S>

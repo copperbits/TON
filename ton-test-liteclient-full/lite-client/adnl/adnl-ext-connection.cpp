@@ -159,20 +159,11 @@ td::Status AdnlExtConnection::receive_packet(td::BufferSlice data) {
     // keepalive
     return td::Status::OK();
   }
-  if (data.size() == 12) {
-    auto F = fetch_tl_object<ton_api::tcp_ping>(data.clone(), true);
-    if (F.is_ok()) {
-      auto f = F.move_as_ok();
-      auto obj = create_tl_object<ton_api::tcp_pong>(f->random_id_);
-      send(serialize_tl_object(obj, true));
-      return td::Status::OK();
-    }
-  }
-  if (data.size() == 12) {
-    auto F = fetch_tl_object<ton_api::tcp_pong>(data.clone(), true);
-    if (F.is_ok()) {
-      return td::Status::OK();
-    }
+
+  bool processed = false;
+  TRY_STATUS(process_custom_packet(data, processed));
+  if (processed) {
+    return td::Status::OK();
   }
 
   return process_packet(std::move(data));

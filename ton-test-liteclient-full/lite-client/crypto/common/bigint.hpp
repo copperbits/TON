@@ -421,7 +421,7 @@ class BigIntG {
   }
 
   template <int len2>
-  bool operator!=(const BigIntG<len2, Tr>& y) {
+  bool operator!=(const BigIntG<len2, Tr>& y) const {
     return !(*this == y);
   }
 
@@ -433,7 +433,7 @@ class BigIntG {
     return as_any_int().eq_any(y);
   }
 
-  bool operator!=(word_t y) {
+  bool operator!=(word_t y) const {
     return !(*this == y);
   }
   bool mul_add_short_bool(word_t y, word_t z) {

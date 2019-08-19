@@ -24,8 +24,8 @@ class CellSlice : public td::CntObject {
   mutable unsigned zd;
 
  public:
-  const long long fetch_long_eof = (static_cast<unsigned long long>(-1LL) << 63);
-  const unsigned long long fetch_ulong_eof = (unsigned long long)-1LL;
+  static constexpr long long fetch_long_eof = (static_cast<unsigned long long>(-1LL) << 63);
+  static constexpr unsigned long long fetch_ulong_eof = (unsigned long long)-1LL;
   struct CellReadError {};
 
   CellSlice(NoVm, Ref<Cell> cell_ref);

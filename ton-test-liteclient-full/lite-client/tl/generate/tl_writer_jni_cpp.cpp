@@ -94,6 +94,8 @@ std::string TD_TL_writer_jni_cpp::gen_vector_fetch(std::string field_name, const
   std::string template_type;
   if (vector_type == string_type) {
     template_type = "std::string";
+  } else if (vector_type == secure_string_type) {
+    template_type = secure_string_type;
   } else if (vector_type.compare(0, 11, "std::vector") == 0) {
     const tl::tl_tree_type *child = static_cast<const tl::tl_tree_type *>(t->children[0]);
     template_type = gen_type_name(child);
@@ -146,10 +148,14 @@ std::string TD_TL_writer_jni_cpp::gen_type_fetch(const std::string &field_name, 
       return "env->CallObjectMethod(p, td::jni::LongGetValueMethodID)";
     } else if (name == "Double") {
       return "env->CallObjectMethod(p, td::jni::DoubleGetValueMethodID)";
-    } else if (name == "String" || name == "SecureString") {
+    } else if (name == "String") {
       return "td::jni::from_jstring(env, (jstring)p)";
-    } else if (name == "Bytes" || name == "SecureBytes") {
+    } else if (name == "Bytes") {
       return "td::jni::from_bytes(env, (jbyteArray)p)";
+    } else if (name == "SecureString") {
+      return "td::jni::from_jstring_secure(env, (jstring)p)";
+    } else if (name == "SecureBytes") {
+      return "td::jni::from_bytes_secure(env, (jbyteArray)p)";
     }
   }
 
@@ -161,10 +167,14 @@ std::string TD_TL_writer_jni_cpp::gen_type_fetch(const std::string &field_name, 
     res = "env->GetLongField(p, " + field_name + "fieldID)";
   } else if (name == "Double") {
     res = "env->GetDoubleField(p, " + field_name + "fieldID)";
-  } else if (name == "String" || name == "SecureString") {
+  } else if (name == "String") {
     res = "td::jni::fetch_string(env, p, " + field_name + "fieldID)";
-  } else if (name == "Bytes" || name == "SecureBytes") {
+  } else if (name == "Bytes") {
     res = "td::jni::from_bytes(env, (jbyteArray)td::jni::fetch_object(env, p, " + field_name + "fieldID))";
+  } else if (name == "SecureString") {
+    res = "td::jni::fetch_string_secure(env, p, " + field_name + "fieldID)";
+  } else if (name == "SecureBytes") {
+    res = "td::jni::from_bytes_secure(env, (jbyteArray)td::jni::fetch_object(env, p, " + field_name + "fieldID))";
   } else if (name == "Vector") {
     const tl::tl_tree_type *child = static_cast<const tl::tl_tree_type *>(tree_type->children[0]);
     res = gen_vector_fetch(field_name, child, vars, parser_type);
@@ -243,8 +253,8 @@ std::string TD_TL_writer_jni_cpp::gen_vector_store(const std::string &field_name
     assert(false);  // TODO
   }
   if (vector_type == "std::int32_t" || vector_type == "std::int64_t" || vector_type == "double" ||
-      vector_type == string_type || vector_type.compare(0, 11, "std::vector") == 0 ||
-      vector_type.compare(0, 10, "object_ptr") == 0) {
+      vector_type == string_type || vector_type == secure_string_type ||
+      vector_type.compare(0, 11, "std::vector") == 0 || vector_type.compare(0, 10, "object_ptr") == 0) {
     return "{ "
            "auto arr_tmp_ = td::jni::store_vector(env, " +
            field_name +
@@ -286,7 +296,8 @@ std::string TD_TL_writer_jni_cpp::gen_type_store(const std::string &field_name, 
   }
 
   std::string res;
-  if (name == "Int32" || name == "Int53" || name == "Int64" || name == "Double" || name == "Bool" || name == "String") {
+  if (name == "Int32" || name == "Int53" || name == "Int64" || name == "Double" || name == "Bool" || name == "String" ||
+      name == "SecureString") {
     if (storer_type == 1) {
       res = "s.store_field(\"" + get_pretty_field_name(field_name) + "\", " + field_name + ");";
     } else if (name == "Bool") {
@@ -297,18 +308,30 @@ std::string TD_TL_writer_jni_cpp::gen_type_store(const std::string &field_name, 
       res = "env->SetLongField(s, " + field_name + "fieldID, " + field_name + ");";
     } else if (name == "Double") {
       res = "env->SetDoubleField(s, " + field_name + "fieldID, " + field_name + ");";
-    } else if (name == "String" || name == "SecureString") {
+    } else if (name == "String") {
       res = "{ jstring nextString = td::jni::to_jstring(env, " + field_name +
+            "); if (nextString) { env->SetObjectField(s, " + field_name +
+            "fieldID, nextString); env->DeleteLocalRef(nextString); } }";
+    } else if (name == "SecureString") {
+      res = "{ jstring nextString = td::jni::to_jstring_secure(env, " + field_name +
             "); if (nextString) { env->SetObjectField(s, " + field_name +
             "fieldID, nextString); env->DeleteLocalRef(nextString); } }";
     } else {
       assert(false);
     }
-  } else if (name == "Bytes" || name == "SecureBytes") {
+  } else if (name == "Bytes") {
     if (storer_type == 1) {
       res = "s.store_bytes_field(\"" + get_pretty_field_name(field_name) + "\", " + field_name + ");";
     } else {
       res = "{ jbyteArray nextBytes = td::jni::to_bytes(env, " + field_name +
+            "); if (nextBytes) { env->SetObjectField(s, " + field_name +
+            "fieldID, nextBytes); env->DeleteLocalRef(nextBytes); } }";
+    }
+  } else if (name == "SecureBytes") {
+    if (storer_type == 1) {
+      res = "s.store_bytes_field(\"" + get_pretty_field_name(field_name) + "\", " + field_name + ");";
+    } else {
+      res = "{ jbyteArray nextBytes = td::jni::to_bytes_secure(env, " + field_name +
             "); if (nextBytes) { env->SetObjectField(s, " + field_name +
             "fieldID, nextBytes); env->DeleteLocalRef(nextBytes); } }";
     }

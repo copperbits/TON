@@ -14,6 +14,8 @@ td::BufferSlice serialize_tl_object(const ton_api::Object *T, bool boxed);
 td::BufferSlice serialize_tl_object(const ton_api::Function *T, bool boxed);
 td::BufferSlice serialize_tl_object(const ton_api::Object *T, bool boxed, td::BufferSlice &&suffix);
 td::BufferSlice serialize_tl_object(const ton_api::Function *T, bool boxed, td::BufferSlice &&suffix);
+td::BufferSlice serialize_tl_object(const ton_api::Object *T, bool boxed, td::Slice suffix);
+td::BufferSlice serialize_tl_object(const ton_api::Function *T, bool boxed, td::Slice suffix);
 
 td::UInt256 get_tl_object_sha256(const ton_api::Object *T);
 

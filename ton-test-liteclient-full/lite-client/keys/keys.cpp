@@ -113,6 +113,47 @@ PublicKeyHash PrivateKey::compute_short_id() const {
   return PublicKeyHash{res};
 }
 
+td::SecureString PrivateKey::export_as_slice() const {
+  td::SecureString res;
+  priv_key_.visit([&](auto &obj) { res = obj.export_as_slice(); });
+  return res;
+}
+
+bool PrivateKey::exportable() const {
+  bool res;
+  priv_key_.visit([&](auto &obj) { res = obj.exportable(); });
+  return res;
+}
+
+td::Result<PrivateKey> PrivateKey::import(td::Slice s) {
+  if (s.size() < 4) {
+    return td::Status::Error(ErrorCode::protoviolation, "too short key");
+  }
+  td::int32 id;
+  td::MutableSlice{reinterpret_cast<char *>(&id), 4}.copy_from(s.copy().truncate(4));
+  s.remove_prefix(4);
+  switch (id) {
+    case ton_api::pk_ed25519::ID: {
+      auto R = privkeys::Ed25519::import(s);
+      if (R.is_error()) {
+        return R.move_as_error();
+      } else {
+        return R.move_as_ok();
+      }
+    } break;
+    case ton_api::pk_aes::ID: {
+      auto R = privkeys::AES::import(s);
+      if (R.is_error()) {
+        return R.move_as_error();
+      } else {
+        return R.move_as_ok();
+      }
+    } break;
+    default:
+      return td::Status::Error(ErrorCode::protoviolation, PSTRING() << "unknown magic " << id);
+  }
+}
+
 tl_object_ptr<ton_api::PrivateKey> PrivateKey::tl() const {
   tl_object_ptr<ton_api::PrivateKey> res;
   priv_key_.visit([&](auto &obj) { res = obj.tl(); });

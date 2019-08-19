@@ -28,6 +28,18 @@ inline AccountIdPrefixFull extract_addr_prefix(WorkchainId workchain, td::ConstB
   return AccountIdPrefixFull{workchain, extract_top64(addr)};
 }
 
+inline int count_matching_bits(AccountIdPrefix x, AccountIdPrefix y) {
+  return x == y ? 64 : td::count_leading_zeroes64(x ^ y);
+}
+
+inline int count_matching_bits(AccountIdPrefixFull x, AccountIdPrefixFull y) {
+  if (x.workchain != y.workchain) {
+    return td::count_leading_zeroes32(x.workchain ^ y.workchain);
+  } else {
+    return 32 + count_matching_bits(x.account_id_prefix, y.account_id_prefix);
+  }
+}
+
 inline td::uint32 shard_prefix_length(ShardId shard) {
   return shard ? 63 - td::count_trailing_zeroes_non_zero64(shard) : 0;
 }
@@ -63,7 +75,7 @@ inline bool shard_contains(ShardIdFull parent, ShardIdFull child) {
   return parent.workchain == child.workchain && shard_contains(parent.shard, child.shard);
 }
 
-inline bool shard_contains(ShardIdFull parent, AccountIdPrefixFull child) {
+inline bool shard_contains(ShardIdFull parent, const AccountIdPrefixFull& child) {
   return parent.workchain == child.workchain && shard_contains(parent.shard, child.account_id_prefix);
 }
 
@@ -85,7 +97,7 @@ inline ShardId shard_intersection(ShardId x, ShardId y) {
 }
 
 inline ShardIdFull shard_intersection(ShardIdFull x, ShardIdFull y) {
-  return {x.workchain, shard_intersection(x. shard, y.shard)};
+  return {x.workchain, shard_intersection(x.shard, y.shard)};
 }
 
 inline bool is_right_child(ShardId x) {

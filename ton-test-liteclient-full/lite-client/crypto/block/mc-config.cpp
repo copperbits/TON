@@ -1,5 +1,6 @@
 #include "mc-config.h"
 #include "block/block.h"
+#include "block/block-parse.h"
 #include "block/block-auto.h"
 #include "common/bitstring.h"
 #include "vm/dict.h"
@@ -101,7 +102,7 @@ td::Status ConfigInfo::unpack() {
     accounts_dict = std::make_unique<vm::AugmentedDictionary>(accounts_root, 256, block::tlb::aug_ShardAccounts);
     LOG(DEBUG) << "accounts dictionary created";
   }
-  state_extra_root = root_info.custom->prefetch_ref();
+  state_extra_root_ = root_info.custom->prefetch_ref();
   if (!is_masterchain()) {
     if (mode & (needShardHashes | needValidatorSet | needSpecialSmc | needPrevBlocks | needWorkchainInfo)) {
       return td::Status::Error("cannot extract masterchain-specific configuration data from a non-masterchain state");
@@ -110,9 +111,9 @@ td::Status ConfigInfo::unpack() {
     return td::Status::OK();
   }
   gen::McStateExtra::Record extra_info;
-  if (!tlb::unpack_cell(state_extra_root, extra_info)) {
-    vm::load_cell_slice(state_extra_root).print_rec(std::cerr);
-    block::gen::t_McStateExtra.print_ref(std::cerr, state_extra_root);
+  if (!tlb::unpack_cell(state_extra_root_, extra_info)) {
+    vm::load_cell_slice(state_extra_root_).print_rec(std::cerr);
+    block::gen::t_McStateExtra.print_ref(std::cerr, state_extra_root_);
     return td::Status::Error("state extra information is invalid");
   }
   gen::ValidatorInfo::Record validator_info;
@@ -198,11 +199,11 @@ td::Status Config::unpack() {
   }
   config_dict = std::make_unique<vm::Dictionary>(config_root, 32);
   if (mode & needValidatorSet) {
-    auto vset_res = unpack_validator_set(get_config_param(34));
+    auto vset_res = unpack_validator_set(get_config_param(35, 34));
     if (vset_res.is_error()) {
       return vset_res.move_as_error();
     }
-    cur_validators = vset_res.move_as_ok();
+    cur_validators_ = vset_res.move_as_ok();
   }
   if (mode & needSpecialSmc) {
     LOG(DEBUG) << "needSpecialSmc flag set";
@@ -228,10 +229,12 @@ td::Status Config::visit_validator_params() const {
     // current validator set
     TRY_RESULT(vset, unpack_validator_set(get_config_param(34)));
   }
-  auto vs = get_config_param(36);
-  if (vs.not_null()) {
-    // next validator set
-    TRY_RESULT(vset, unpack_validator_set(std::move(vs)));
+  for (int i = 32; i < 38; i++) {
+    // prev/current/next persistent and temporary validator sets
+    auto vs = get_config_param(i);
+    if (vs.not_null()) {
+      TRY_RESULT(vset, unpack_validator_set(std::move(vs)));
+    }
   }
   get_catchain_validators_config();
   return td::Status::OK();
@@ -319,9 +322,14 @@ td::Result<std::unique_ptr<ValidatorSet>> Config::unpack_validator_set(Ref<vm::C
     if (descr_cs.is_null()) {
       return td::Status::Error("indices in a validator set dictionary must be integers 0..total-1");
     }
-    gen::ValidatorDescr::Record descr;
-    if (!tlb::csr_unpack(std::move(descr_cs), descr)) {
-      return td::Status::Error(PSLICE() << "validator #" << i << " is absent in a validator set dictionary");
+    gen::ValidatorDescr::Record_validator_addr descr;
+    if (!tlb::csr_unpack(descr_cs, descr)) {
+      descr.adnl_addr.set_zero();
+      if (!(gen::t_ValidatorDescr.unpack_validator(descr_cs.write(), descr.public_key, descr.weight) &&
+            descr_cs->empty_ext())) {
+        return td::Status::Error(PSLICE() << "validator #" << i
+                                          << " has an invalid ValidatorDescr record in the validator set dictionary");
+      }
     }
     gen::SigPubKey::Record sig_pubkey;
     if (!tlb::csr_unpack(std::move(descr.public_key), sig_pubkey)) {
@@ -334,7 +342,7 @@ td::Result<std::unique_ptr<ValidatorSet>> Config::unpack_validator_set(Ref<vm::C
     if (descr.weight > ~(ptr->total_weight)) {
       return td::Status::Error("total weight of all validators in validator set exceeds 2^64");
     }
-    ptr->list.emplace_back(sig_pubkey.pubkey, descr.weight, ptr->total_weight);
+    ptr->list.emplace_back(sig_pubkey.pubkey, descr.weight, ptr->total_weight, descr.adnl_addr);
     ptr->total_weight += descr.weight;
   }
   return std::move(ptr);
@@ -367,7 +375,7 @@ void ConfigInfo::cleanup() {
     state_root.clear();
   }
   if (!(mode & needStateExtraRoot)) {
-    state_extra_root.clear();
+    state_extra_root_.clear();
   }
 }
 
@@ -376,6 +384,18 @@ Ref<vm::Cell> Config::get_config_param(int idx) const {
     return {};
   }
   return config_dict->lookup_ref(td::BitArray<32>{idx});
+}
+
+Ref<vm::Cell> Config::get_config_param(int idx, int idx2) const {
+  if (!config_dict) {
+    return {};
+  }
+  auto res = config_dict->lookup_ref(td::BitArray<32>{idx});
+  if (res.not_null()) {
+    return res;
+  } else {
+    return config_dict->lookup_ref(td::BitArray<32>{idx2});
+  }
 }
 
 td::Result<std::unique_ptr<BlockLimits>> Config::get_block_limits(bool is_masterchain) const {
@@ -429,6 +449,13 @@ CatchainValidatorsConfig Config::get_catchain_validators_config() const {
   return unpack_catchain_validators_config(get_config_param(28));
 }
 
+// compares all fields except fsm*, before_merge_, nx_cc_updated_, next_catchain_seqno_
+bool McShardHash::basic_info_equal(const McShardHash& other) const {
+  return blk_ == other.blk_ && start_lt_ == other.start_lt_ && end_lt_ == other.end_lt_ &&
+         gen_utime_ == other.gen_utime_ && min_ref_mc_seqno_ == other.min_ref_mc_seqno_ &&
+         before_split_ == other.before_split_ && want_split_ == other.want_split_ && want_merge_ == other.want_merge_;
+}
+
 void McShardHash::set_fsm(FsmState fsm, ton::UnixTime fsm_utime, ton::UnixTime fsm_interval) {
   fsm_ = fsm;
   fsm_utime_ = fsm_utime;
@@ -442,7 +469,7 @@ Ref<McShardHash> McShardHash::unpack(vm::CellSlice& cs, ton::ShardIdFull id) {
   }
   auto res = Ref<McShardHash>(true, ton::BlockId{id, (unsigned)descr.seq_no}, descr.start_lt, descr.end_lt,
                               descr.gen_utime, descr.root_hash, descr.file_hash, descr.min_ref_mc_seqno,
-                              descr.next_catchain_seqno, descr.next_validator_shard, descr.nx_cc_updated,
+                              descr.next_catchain_seqno, descr.next_validator_shard, /* descr.nx_cc_updated */ false,
                               descr.before_split, descr.before_merge, descr.want_split, descr.want_merge);
   McShardHash& sh = res.unique_write();
   switch (gen::t_FutureSplitMerge.get_tag(*(descr.split_merge_at))) {
@@ -477,7 +504,7 @@ bool McShardHash::pack(vm::CellBuilder& cb) const {
         && cb.store_bool_bool(before_merge_)              // before_merge:Bool
         && cb.store_bool_bool(want_split_)                // want_split:Bool
         && cb.store_bool_bool(want_merge_)                // want_merge:Bool
-        && cb.store_bool_bool(nx_cc_updated_)             // nx_cc_updated:Bool
+        && cb.store_bool_bool(false)                      // nx_cc_updated:Bool
         && cb.store_long_bool(0, 3)                       // flags:(## 3) { flags = 0 }
         && cb.store_long_bool(next_catchain_seqno_, 32)   // next_catchain_seqno:uint32
         && cb.store_long_bool(next_validator_shard_, 64)  // next_validator_shard:uint64
@@ -515,6 +542,23 @@ Ref<McShardHash> McShardHash::from_block(Ref<vm::Cell> block_root, const ton::Fi
                           shard.shard_pfx, false, info.before_split, false, info.want_split, info.want_merge);
 }
 
+McShardDescr::McShardDescr(const McShardDescr& other)
+    : McShardHash(other)
+    , block_root(other.block_root)
+    , state_root(other.state_root)
+    , processed_upto(other.processed_upto) {
+  set_queue_root(other.outmsg_root);
+}
+
+McShardDescr& McShardDescr::operator=(const McShardDescr& other) {
+  McShardHash::operator=(other);
+  block_root = other.block_root;
+  outmsg_root = other.outmsg_root;
+  processed_upto = other.processed_upto;
+  set_queue_root(other.outmsg_root);
+  return *this;
+}
+
 Ref<McShardDescr> McShardDescr::from_block(Ref<vm::Cell> block_root, Ref<vm::Cell> state_root,
                                            const ton::FileHash& fhash) {
   if (block_root.is_null()) {
@@ -545,6 +589,44 @@ Ref<McShardDescr> McShardDescr::from_block(Ref<vm::Cell> block_root, Ref<vm::Cel
   res.unique_write().block_root = std::move(block_root);
   res.unique_write().state_root = std::move(state_root);
   return res;
+}
+
+Ref<McShardDescr> McShardDescr::from_state(ton::BlockIdExt blkid, Ref<vm::Cell> state_root) {
+  if (state_root.is_null()) {
+    return {};
+  }
+  block::gen::ShardStateUnsplit::Record info;
+  block::gen::OutMsgQueueInfo::Record qinfo;
+  block::ShardId shard;
+  if (!(tlb::unpack_cell(state_root, info) && shard.deserialize(info.shard_id.write()) &&
+        tlb::unpack_cell(info.out_msg_queue_info, qinfo))) {
+    LOG(DEBUG) << "cannot create McShardDescr from a shardchain state";
+    return {};
+  }
+  if (ton::ShardIdFull(shard) != ton::ShardIdFull(blkid) || info.seq_no != blkid.seqno()) {
+    LOG(DEBUG) << "shard id mismatch, cannot construct McShardDescr";
+    return {};
+  }
+  auto res = Ref<McShardDescr>(true, blkid.id, info.gen_lt, info.gen_lt, info.gen_utime, blkid.root_hash,
+                               blkid.file_hash, info.min_ref_mc_seqno, 0, shard.shard_pfx, false, info.before_split);
+  res.unique_write().state_root = state_root;
+  res.unique_write().set_queue_root(qinfo.out_queue->prefetch_ref(0));
+  return res;
+}
+
+bool McShardDescr::set_queue_root(Ref<vm::Cell> queue_root) {
+  outmsg_root = std::move(queue_root);
+  out_msg_queue = std::make_unique<vm::AugmentedDictionary>(outmsg_root, 352, block::tlb::aug_OutMsgQueue);
+  return true;
+}
+
+void McShardDescr::disable() {
+  block_root.clear();
+  state_root.clear();
+  outmsg_root.clear();
+  out_msg_queue.reset();
+  processed_upto.reset();
+  McShardHash::disable();
 }
 
 void ConfigInfo::reset_mc_hash() {
@@ -910,6 +992,22 @@ bool ShardConfig::has_workchain(ton::WorkchainId workchain) const {
   return shard_hashes_dict_ && shard_hashes_dict_->key_exists(td::BitArray<32>{workchain});
 }
 
+std::vector<ton::WorkchainId> ShardConfig::get_workchains() const {
+  if (!shard_hashes_dict_) {
+    return {};
+  }
+  std::vector<ton::WorkchainId> res;
+  if (!shard_hashes_dict_->check_for_each([&res](Ref<vm::CellSlice> val, td::ConstBitPtr key, int n) {
+        CHECK(n == 32);
+        ton::WorkchainId w = (int)key.get_int(32);
+        res.push_back(w);
+        return true;
+      })) {
+    return {};
+  }
+  return res;
+}
+
 bool ShardConfig::new_workchain(ton::WorkchainId workchain, const ton::RootHash& zerostate_root_hash,
                                 const ton::FileHash& zerostate_file_hash) {
   if (!shard_hashes_dict_ || has_workchain(workchain)) {
@@ -920,7 +1018,7 @@ bool ShardConfig::new_workchain(ton::WorkchainId workchain, const ton::RootHash&
   return cb.store_zeroes_bool(1 + 32 + 64 * 2)  // bt_leaf$0 ; shard_descr$_ seq_no:uint32 start_lt:uint64 end_lt:uint64
          && cb.store_bits_bool(zerostate_root_hash)  // root_hash:bits256
          && cb.store_bits_bool(zerostate_file_hash)  // file_hash:bits256
-         && cb.store_long_bool(8, 8)                 // ... nx_cc_updated:Bool ...
+         && cb.store_long_bool(0, 8)                 // ... nx_cc_updated:Bool ...
          && cb.store_long_bool(0, 32)                // next_catchain_seqno:uint32
          && cb.store_long_bool(1ULL << 63, 64)       // next_validator_shard:uint64
          && cb.store_long_bool(~0U, 32)              // min_ref_mc_seqno:uint32
@@ -1040,7 +1138,7 @@ td::Result<bool> ShardConfig::may_update_shard_block_info(Ref<McShardHash> new_i
                                        << new_info->next_catchain_seqno_ << " but previous shard configuration expects "
                                        << old_cc_seqno + before_merge);
   }
-  if (new_info->end_lt_ > lt_limit) {
+  if (new_info->end_lt_ >= lt_limit) {
     return td::Status::Error(-666, PSTRING() << "the top shard block update has end_lt " << new_info->end_lt_
                                              << " which is larger than the current limit " << lt_limit);
   }
@@ -1266,14 +1364,24 @@ ton::CatchainSeqno ConfigInfo::get_shard_cc_seqno(ton::ShardIdFull shard) const 
   return shard.is_masterchain() ? cc_seqno_ : ShardConfig::get_shard_cc_seqno(shard);
 }
 
-std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> Config::compute_validator_set(
-    ton::ShardIdFull shard, const block::ValidatorSet& vset, ton::UnixTime time, ton::CatchainSeqno cc_seqno) const {
+std::vector<ton::ValidatorDescr> Config::compute_validator_set(ton::ShardIdFull shard, const block::ValidatorSet& vset,
+                                                               ton::UnixTime time, ton::CatchainSeqno cc_seqno) const {
   return do_compute_validator_set(get_catchain_validators_config(), shard, vset, time, cc_seqno);
 }
 
-std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> ConfigInfo::compute_validator_set_cc(
-    ton::ShardIdFull shard, const block::ValidatorSet& vset, ton::UnixTime time,
-    ton::CatchainSeqno& cc_seqno_delta) const {
+std::vector<ton::ValidatorDescr> Config::compute_validator_set(ton::ShardIdFull shard, ton::UnixTime time,
+                                                               ton::CatchainSeqno cc_seqno) const {
+  if (!cur_validators_) {
+    return {};
+  } else {
+    return compute_validator_set(shard, *cur_validators_, time, cc_seqno);
+  }
+}
+
+std::vector<ton::ValidatorDescr> ConfigInfo::compute_validator_set_cc(ton::ShardIdFull shard,
+                                                                      const block::ValidatorSet& vset,
+                                                                      ton::UnixTime time,
+                                                                      ton::CatchainSeqno& cc_seqno_delta) const {
   if (cc_seqno_delta & -2) {
     return {};
   }
@@ -1321,11 +1429,21 @@ const ValidatorDescr& ValidatorSet::at_weight(td::uint64 weight_pos) const {
   return *--it;
 }
 
-std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> Config::do_compute_validator_set(
-    const block::CatchainValidatorsConfig& ccv_conf, ton::ShardIdFull shard, const block::ValidatorSet& vset,
-    ton::UnixTime time, ton::CatchainSeqno cc_seqno) {
+std::vector<ton::ValidatorDescr> ValidatorSet::export_validator_set() const {
+  std::vector<ton::ValidatorDescr> l;
+  l.reserve(list.size());
+  for (const auto& node : list) {
+    l.emplace_back(node.pubkey, node.weight, node.adnl_addr);
+  }
+  return l;
+}
+
+std::vector<ton::ValidatorDescr> Config::do_compute_validator_set(const block::CatchainValidatorsConfig& ccv_conf,
+                                                                  ton::ShardIdFull shard,
+                                                                  const block::ValidatorSet& vset, ton::UnixTime time,
+                                                                  ton::CatchainSeqno cc_seqno) {
   LOG(DEBUG) << "in Config::do_compute_validator_set() for " << shard.to_str() << " ; cc_seqno=" << cc_seqno;
-  std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> nodes;
+  std::vector<ton::ValidatorDescr> nodes;
   bool is_mc = shard.is_masterchain();
   unsigned count = std::min<unsigned>(is_mc ? vset.main : ccv_conf.shard_val_num, vset.total);
   CHECK((unsigned)vset.total == vset.list.size());
@@ -1338,7 +1456,8 @@ std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> Co
     // TODO: write a more clever validator list selection algorithm
     // (if we really need one for the masterchain)
     for (unsigned i = 0; i < count; i++) {
-      nodes.emplace_back(vset.list[i].pubkey, vset.list[i].weight);
+      const auto& v = vset.list[i];
+      nodes.emplace_back(v.pubkey, v.weight, v.adnl_addr);
     }
     return nodes;
   }
@@ -1359,7 +1478,7 @@ std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> Co
     }
     auto& entry = vset.at_weight(p);
     // LOG(DEBUG) << "vset entry #" << i << ": rem_wt=" << total_wt << ", total_wt=" << vset.total_weight << ", op=" << op << ", p=" << p << "; entry.cum_wt=" << entry.cum_weight << ", entry.wt=" << entry.weight << " " << entry.cum_weight / entry.weight;
-    nodes.emplace_back(entry.pubkey, 1);  // NB: shardchain validator lists have all weights = 1
+    nodes.emplace_back(entry.pubkey, 1, entry.adnl_addr);  // NB: shardchain validator lists have all weights = 1
     CHECK(total_wt >= entry.weight);
     total_wt -= entry.weight;
     std::pair<td::uint64, td::uint64> new_hole{entry.cum_weight, entry.weight};
@@ -1368,6 +1487,14 @@ std::vector<std::pair<ton::validator::ValidatorFullId, ton::ValidatorWeight>> Co
     holes.insert(it, new_hole);
   }
   return nodes;
+}
+
+std::vector<ton::ValidatorDescr> Config::compute_total_validator_set(int next) const {
+  auto res = unpack_validator_set(get_config_param(next < 0 ? 32 : (next ? 36 : 34)));
+  if (res.is_error()) {
+    return {};
+  }
+  return res.move_as_ok()->export_validator_set();
 }
 
 bool WorkchainInfo::unpack(ton::WorkchainId wc, vm::CellSlice& cs) {

@@ -48,12 +48,35 @@ extern RefInt256& operator^=(RefInt256& x, RefInt256 y);
 extern RefInt256& operator<<=(RefInt256& x, int y);
 extern RefInt256& operator>>=(RefInt256& x, int y);
 
-extern bool operator==(RefInt256 x, RefInt256 y);
-extern bool operator!=(RefInt256 x, RefInt256 y);
-extern bool operator<(RefInt256 x, RefInt256 y);
-extern bool operator>(RefInt256 x, RefInt256 y);
-extern bool operator<=(RefInt256 x, RefInt256 y);
-extern bool operator>=(RefInt256 x, RefInt256 y);
+template <typename T>
+bool operator==(RefInt256 x, T y) {
+  return cmp(x, y) == 0;
+}
+
+template <typename T>
+bool operator!=(RefInt256 x, T y) {
+  return cmp(x, y) != 0;
+}
+
+template <typename T>
+bool operator<(RefInt256 x, T y) {
+  return cmp(x, y) < 0;
+}
+
+template <typename T>
+bool operator>(RefInt256 x, T y) {
+  return cmp(x, y) > 0;
+}
+
+template <typename T>
+bool operator<=(RefInt256 x, T y) {
+  return cmp(x, y) <= 0;
+}
+
+template <typename T>
+bool operator>=(RefInt256 x, T y) {
+  return cmp(x, y) >= 0;
+}
 
 extern int cmp(RefInt256 x, RefInt256 y);
 extern int cmp(RefInt256 x, long long y);

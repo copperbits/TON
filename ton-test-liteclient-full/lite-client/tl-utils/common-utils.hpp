@@ -17,6 +17,11 @@ td::BufferSlice serialize_tl_object(const tl_object_ptr<Tp> &T, bool boxed, td::
 }
 
 template <class Tp>
+td::BufferSlice serialize_tl_object(const tl_object_ptr<Tp> &T, bool boxed, td::Slice suffix) {
+  return serialize_tl_object(T.get(), boxed, std::move(suffix));
+}
+
+template <class Tp>
 td::UInt256 get_tl_object_sha256(const tl_object_ptr<Tp> &T) {
   return get_tl_object_sha256(T.get());
 }

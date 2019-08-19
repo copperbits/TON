@@ -333,9 +333,11 @@ struct GasLimits {
   }
   void change_limit(long long _limit);
   void consume(long long amount) {
+    // LOG(DEBUG) << "consume " << amount << " gas (" << gas_remaining << " remaining)";
     gas_remaining -= amount;
   }
   bool try_consume(long long amount) {
+    // LOG(DEBUG) << "try consume " << amount << " gas (" << gas_remaining << " remaining)";
     return (gas_remaining -= amount) >= 0;
   }
   void gas_exception() const;

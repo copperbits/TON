@@ -17,9 +17,9 @@
 #include "common/refcnt.hpp"
 #include "common/bigint.hpp"
 #include "common/refint.h"
-#include "srcread.hpp"
-#include "lexer.hpp"
-#include "symtable.hpp"
+#include "parser/srcread.h"
+#include "parser/lexer.h"
+#include "parser/symtable.h"
 #include "td/utils/Slice-decl.h"
 #include "td/utils/format.h"
 #include "td/utils/crypto.h"
@@ -40,29 +40,29 @@ namespace src {
 enum { _Eof = -1, _Ident = 0, _Number, _Special, _Eq = 0x80, _Leq, _Geq, _Neq, _Type, _EMPTY };
 
 void define_keywords() {
-  symbols.add_kw_char('+');
-  symbols.add_kw_char('-');
-  symbols.add_kw_char('*');
-  symbols.add_kw_char(':');
-  symbols.add_kw_char(';');
-  symbols.add_kw_char('(');
-  symbols.add_kw_char(')');
-  symbols.add_kw_char('{');
-  symbols.add_kw_char('}');
-  symbols.add_kw_char('[');
-  symbols.add_kw_char(']');
-  symbols.add_kw_char('=');
-  symbols.add_kw_char('_');
-  symbols.add_kw_char('?');
-  symbols.add_kw_char('~');
-  symbols.add_kw_char('^');
+  sym::symbols.add_kw_char('+')
+      .add_kw_char('-')
+      .add_kw_char('*')
+      .add_kw_char(':')
+      .add_kw_char(';')
+      .add_kw_char('(')
+      .add_kw_char(')')
+      .add_kw_char('{')
+      .add_kw_char('}')
+      .add_kw_char('[')
+      .add_kw_char(']')
+      .add_kw_char('=')
+      .add_kw_char('_')
+      .add_kw_char('?')
+      .add_kw_char('~')
+      .add_kw_char('^');
 
-  symbols.add_keyword("==", _Eq);
-  symbols.add_keyword("<=", _Leq);
-  symbols.add_keyword(">=", _Geq);
-  symbols.add_keyword("!=", _Neq);
-  symbols.add_keyword("Type", _Type);
-  symbols.add_keyword("EMPTY", _EMPTY);
+  sym::symbols.add_keyword("==", _Eq)
+      .add_keyword("<=", _Leq)
+      .add_keyword(">=", _Geq)
+      .add_keyword("!=", _Neq)
+      .add_keyword("Type", _Type)
+      .add_keyword("EMPTY", _EMPTY);
 }
 
 // parses constant bitstrings in format \#[0-9a-f]*_? or \$[01]*_?
@@ -129,6 +129,10 @@ int lexem_is_special(std::string str) {
   return get_special_value(str) ? Lexem::Special : 0;
 }
 
+}  // namespace src
+
+namespace sym {
+
 enum class IdSc : char { undef = 0, lc = 1, uc = 2 };
 // subclass:
 // 1 = first letter or first letter after last . is lowercase
@@ -158,14 +162,14 @@ int compute_symbol_subclass(std::string str) {
 }
 
 inline bool is_lc_ident(sym_idx_t idx) {
-  return src::symbols.get_subclass(idx) == (int)IdSc::lc;
+  return symbols.get_subclass(idx) == (int)IdSc::lc;
 }
 
 inline bool is_uc_ident(sym_idx_t idx) {
-  return src::symbols.get_subclass(idx) == (int)IdSc::uc;
+  return symbols.get_subclass(idx) == (int)IdSc::uc;
 }
 
-}  // namespace src
+}  // namespace sym
 
 namespace tlbc {
 
@@ -791,7 +795,7 @@ namespace tlbc {
 
 using src::Lexem;
 using src::Lexer;
-using src::sym_idx_t;
+using sym::sym_idx_t;
 
 /*
  * 
@@ -927,7 +931,7 @@ Field& Constructor::new_field(const src::SrcLocation& field_where, bool implicit
 }
 
 std::string Field::get_name() const {
-  return src::symbols.get_name(name);
+  return sym::symbols.get_name(name);
 }
 
 // register symbol in local symbol table
@@ -958,7 +962,7 @@ bool TypeExpr::close(const src::SrcLocation& loc) {
     type->args.resize(type->arity, 0);
   } else if (type->arity != (int)args.size()) {
     throw src::ParseError{where,
-                          std::string{"operator `"} + src::symbols.get_name(type->type_name) +
+                          std::string{"operator `"} + sym::symbols.get_name(type->type_name) +
                               "` applied with incorrect number of arguments, partial type applications not supported"};
     return false;
   }
@@ -974,7 +978,7 @@ bool TypeExpr::close(const src::SrcLocation& loc) {
       if (!is_eq) {
         if (x & Type::_IsPos) {
           throw src::ParseError{arg->where, std::string{"passed an argument of incorrect polarity to `"} +
-                                                src::symbols.get_name(type->type_name) + "`"};
+                                                sym::symbols.get_name(type->type_name) + "`"};
         }
         x |= Type::_IsNeg;
       } else if (neg_cnt == 2) {
@@ -1004,7 +1008,7 @@ TypeExpr* TypeExpr::mk_apply_empty(const src::SrcLocation& loc, sym_idx_t name, 
 
 void Type::print_name(std::ostream& os) const {
   if (type_name) {
-    os << src::symbols.get_name(type_name);
+    os << sym::symbols.get_name(type_name);
   } else {
     os << "TYPE_" << type_idx;
   }
@@ -1012,7 +1016,7 @@ void Type::print_name(std::ostream& os) const {
 
 std::string Type::get_name() const {
   if (type_name) {
-    return src::symbols.get_name(type_name);
+    return sym::symbols.get_name(type_name);
   } else {
     std::ostringstream os;
     os << "TYPE_" << type_idx;
@@ -1021,7 +1025,7 @@ std::string Type::get_name() const {
 }
 
 std::string Constructor::get_name() const {
-  return src::symbols.get_name(constr_name);
+  return sym::symbols.get_name(constr_name);
 }
 
 std::string Constructor::get_qualified_name() const {
@@ -1046,7 +1050,7 @@ void TypeExpr::show(std::ostream& os, const Constructor* cs, int prio, int mode)
         os << '~';
       }
       if (param_name > 0) {
-        os << src::symbols.get_name(param_name);
+        os << sym::symbols.get_name(param_name);
       } else {
         os << '_' << i + 1;
       }
@@ -1616,8 +1620,8 @@ void parse_implicit_param(Lexer& lex, Constructor& cs) {
 
 sym::SymDef* register_new_type(const src::SrcLocation& loc, sym_idx_t name) {
   // unknown identifier, declare new type
-  if (!src::is_uc_ident(name)) {
-    throw src::ParseError{loc, std::string{"implicitly defined type `"} + src::symbols.get_name(name) +
+  if (!sym::is_uc_ident(name)) {
+    throw src::ParseError{loc, std::string{"implicitly defined type `"} + sym::symbols.get_name(name) +
                                    "` must begin with an uppercase letter"};
   }
   sym::SymDef* sym_def = sym::define_global_symbol(name, true, loc);
@@ -1659,7 +1663,7 @@ void Constructor::show(std::ostream& os, int mode) const {
   if (mode & 4) {
     os << '[';
   } else {
-    os << src::symbols.get_name(constr_name);
+    os << sym::symbols.get_name(constr_name);
   }
   if (!(mode & 8)) {
     show_tag(os, tag);
@@ -1692,7 +1696,7 @@ void Constructor::show(std::ostream& os, int mode) const {
   if (type_defined) {
     type_defined->print_name(os);
   } else {
-    os << src::symbols.get_name(type_name);
+    os << sym::symbols.get_name(type_name);
   }
   for (int i = 0; i < type_arity; i++) {
     os << ' ';
@@ -1732,14 +1736,14 @@ void Constructor::check_assign_tag() {
       set_tag(computed_tag);
       if (show_tag_warnings) {
         std::ostringstream os;
-        os << "constructor `" << src::symbols.get_name(type_name) << "::" << src::symbols.get_name(constr_name)
+        os << "constructor `" << sym::symbols.get_name(type_name) << "::" << sym::symbols.get_name(constr_name)
            << "` had no tag, assigned ";
         show_tag(os, computed_tag);
         where.show_warning(os.str());
       }
     } else if (tag != computed_tag && show_tag_warnings) {
       std::ostringstream os;
-      os << "constructor `" << src::symbols.get_name(type_name) << "::" << src::symbols.get_name(constr_name)
+      os << "constructor `" << sym::symbols.get_name(type_name) << "::" << sym::symbols.get_name(constr_name)
          << "` has explicit tag ";
       show_tag(os, tag);
       os << " different from its computed tag ";
@@ -1753,8 +1757,8 @@ void Constructor::check_assign_tag() {
 
 void Type::bind_constructor(const src::SrcLocation& loc, Constructor* cs) {
   if (is_final) {
-    throw src::ParseError{loc, std::string{"cannot add new constructor `"} + src::symbols.get_name(cs->constr_name) +
-                                   "` to a finalized type `" + src::symbols.get_name(type_name) + "`"};
+    throw src::ParseError{loc, std::string{"cannot add new constructor `"} + sym::symbols.get_name(cs->constr_name) +
+                                   "` to a finalized type `" + sym::symbols.get_name(type_name) + "`"};
   }
   if (arity < 0) {
     arity = cs->type_arity;
@@ -1762,7 +1766,7 @@ void Type::bind_constructor(const src::SrcLocation& loc, Constructor* cs) {
     args.resize(arity, 0);
   } else {
     if (arity != cs->type_arity) {
-      throw src::ParseError{loc, std::string{"parametrized type `"} + src::symbols.get_name(type_name) +
+      throw src::ParseError{loc, std::string{"parametrized type `"} + sym::symbols.get_name(type_name) +
                                      "` redefined with different arity"};
     }
   }
@@ -1774,12 +1778,12 @@ void Type::bind_constructor(const src::SrcLocation& loc, Constructor* cs) {
     int& x = args[i];
     x |= (expr->is_nat ? _IsNat : _IsType);
     if ((x & (_IsNat | _IsType)) == (_IsNat | _IsType)) {
-      throw src::ParseError{expr->where, std::string{"formal parameter to type `"} + src::symbols.get_name(type_name) +
+      throw src::ParseError{expr->where, std::string{"formal parameter to type `"} + sym::symbols.get_name(type_name) +
                                              "` has incorrect type"};
     }
     x |= (negated ? _IsNeg : _IsPos);
     if ((x & (_IsPos | _IsNeg)) == (_IsPos | _IsNeg)) {
-      throw src::ParseError{expr->where, std::string{"formal parameter to type `"} + src::symbols.get_name(type_name) +
+      throw src::ParseError{expr->where, std::string{"formal parameter to type `"} + sym::symbols.get_name(type_name) +
                                              "` has incorrect polarity"};
     }
     if (cs->param_const_val.at(i) < 0) {
@@ -1819,8 +1823,8 @@ void Type::bind_constructor(const src::SrcLocation& loc, Constructor* cs) {
   if (cs->constr_name) {
     for (auto c : constructors) {
       if (c->constr_name == cs->constr_name) {
-        std::string tname = src::symbols.get_name(type_name);
-        std::string cname = tname + "::" + src::symbols.get_name(cs->constr_name);
+        std::string tname = sym::symbols.get_name(type_name);
+        std::string cname = tname + "::" + sym::symbols.get_name(cs->constr_name);
         c->where.show_note(std::string{"constructor `"} + cname + "` first defined here");
         throw src::ParseError{cs->where, std::string{"constructor `"} + cname + "` redefined"};
       }
@@ -1958,7 +1962,7 @@ TypeExpr* parse_term(Lexer& lex, Constructor& cs, int mode) {
       }
       sym_def = register_new_type(lex.cur().loc, name);
       if (verbosity > 2) {
-        std::cerr << "implicitly defined new type `" << src::symbols.get_name(name) << "`" << std::endl;
+        std::cerr << "implicitly defined new type `" << sym::symbols.get_name(name) << "`" << std::endl;
       }
     }
     if (!sym_def->value) {
@@ -2105,7 +2109,7 @@ TypeExpr* parse_expr10(Lexer& lex, Constructor& cs, int mode) {
     return expr;
   }
   // std::cerr << "parse <=>, mode " << mode << std::endl;
-  src::sym_idx_t op_name = lex.cur().val;
+  sym_idx_t op_name = lex.cur().val;
   src::SrcLocation where = lex.cur().loc;
   expr->close(where);
   if (!(mode & 1)) {
@@ -2199,7 +2203,7 @@ void parse_field_list(Lexer& lex, Constructor& cs) {
 }
 
 void parse_constructor_def(Lexer& lex) {
-  if (lex.tp() != '_' && (lex.tp() != src::_Ident || !src::is_lc_ident(lex.cur().val))) {
+  if (lex.tp() != '_' && (lex.tp() != src::_Ident || !sym::is_lc_ident(lex.cur().val))) {
     throw src::ParseError{lex.cur().loc, "constructor name lowercase identifier expected"};
   }
   sym::open_scope(lex);
@@ -2214,13 +2218,13 @@ void parse_constructor_def(Lexer& lex) {
     assert(tag);
     lex.next();
   }
-  //std::cerr << "parsing constructor `" << src::symbols.get_name(constr_name) << "` with tag " << std::hex << tag
+  //std::cerr << "parsing constructor `" << sym::symbols.get_name(constr_name) << "` with tag " << std::hex << tag
   //          << std::dec << std::endl;
   auto cs_ref = new Constructor(where, constr_name, 0, tag);
   Constructor& cs = *cs_ref;
   parse_field_list(lex, cs);
   lex.expect('=');
-  if (lex.tp() != src::_Ident || !src::is_uc_ident(lex.cur().val)) {
+  if (lex.tp() != src::_Ident || !sym::is_uc_ident(lex.cur().val)) {
     throw src::ParseError{lex.cur().loc, "type name uppercase identifier expected"};
   }
   Lexem type_lex = lex.cur();
@@ -2229,7 +2233,7 @@ void parse_constructor_def(Lexer& lex) {
   if (!sym_def) {
     sym_def = register_new_type(lex.cur().loc, type_name);
     if (verbosity > 2) {
-      std::cerr << "defined new type `" << src::symbols.get_name(type_name) << "`" << std::endl;
+      std::cerr << "defined new type `" << sym::symbols.get_name(type_name) << "`" << std::endl;
     }
     assert(sym_def);
   }
@@ -2321,7 +2325,7 @@ bool parse_source_stdin() {
 
 Type* define_builtin_type(std::string name_str, std::string args, bool produces_nat, int size = -1, int min_size = -1,
                           bool any_bits = false, int is_int = 0) {
-  sym_idx_t name = src::symbols.lookup_add(name_str);
+  sym_idx_t name = sym::symbols.lookup_add(name_str);
   assert(name_str.size() && name);
   int arity = (int)args.size();
   types.emplace_back(types_num++, name, produces_nat, arity, true, true);
@@ -2350,7 +2354,7 @@ Type* define_builtin_type(std::string name_str, std::string args, bool produces_
 }
 
 Type* lookup_type(std::string name_str) {
-  sym_idx_t name = src::symbols.lookup(name_str);
+  sym_idx_t name = sym::symbols.lookup(name_str);
   if (name) {
     auto sym_def = sym::lookup_symbol(name);
     if (sym_def) {
@@ -2390,10 +2394,10 @@ void define_builtins() {
   Eq_type = define_builtin_type("=", "##", false, 0, 0, true);
   Less_type = define_builtin_type("<", "##", false, 0, 0, true);
   Leq_type = define_builtin_type("<=", "##", false, 0, 0, true);
-  Nat_name = src::symbols.lookup("#");
-  Eq_name = src::symbols.lookup("=");
-  Less_name = src::symbols.lookup("<");
-  Leq_name = src::symbols.lookup("<=");
+  Nat_name = sym::symbols.lookup("#");
+  Eq_name = sym::symbols.lookup("=");
+  Less_name = sym::symbols.lookup("<");
+  Leq_name = sym::symbols.lookup("<=");
   builtin_types_num = types_num;
 }
 
@@ -2895,7 +2899,7 @@ void dump_all_types() {
       assert(sym_def);
       throw src::ParseError{
           sym_def ? sym_def->loc : src::SrcLocation{},
-          std::string{"implicitly defined type `"} + src::symbols.get_name(type.type_name) + "` has no constructors"};
+          std::string{"implicitly defined type `"} + sym::symbols.get_name(type.type_name) + "` has no constructors"};
     }
   }
 }
