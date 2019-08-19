@@ -43,7 +43,7 @@ This is open development community and **enthusiasts research place**. We will p
 
 Code was downloaded from https://test.ton.org/download.html
 
-Last codebase update was performed on June 5, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`edd57971cba5cff9b219a1c99401a7315176ac9ab30afc9df0b1ed39e1dbc009`.
+Last codebase update was performed on August 19, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`f50d33c79b7314a2aa81cd61a5ed7265da3af64159965f87032cac2a1724b939`.
 
 ### Source code check
 
@@ -51,8 +51,8 @@ Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a co
 
 ## What we already did:
 - 📖 Documentations:
-  - 🐧 Added build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/ubuntu16.04.sh)
-  - 📩 Explain in [video on YouTube](https://www.youtube.com/watch?v=J7K2nq5lf7I) and [text on GitHub](/docs/Mac_tutorial.md), how to start Lite Client on macOS and send transactions to TON network
+  - 🐧 Added build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ubuntu16.04.sh)
+  - 📩 Explain in [video on YouTube](https://www.youtube.com/watch?v=J7K2nq5lf7I) and [text on GitHub](/docs/Copperbits_docs/Mac_tutorial.md), how to start Lite Client on macOS and send transactions to TON network
   - 🇨🇳 Wrote an [article](https://mp.weixin.qq.com/s/WLlD088acBDfjUM4bCEd0A) about the TON in Chinese and began to translate [TON whitepaper into Сhinese](https://drive.google.com/file/d/1acH4j7zY_XhsOUGsup4byssMXlp5000O/view) (by toozWu)
 
 - Helpful sources:
@@ -62,8 +62,8 @@ Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a co
   - 💸 Made a UI friendly [faucet for TON](https://faucet.copperbits.io/)
   - 🔁 Created [mirror with updates it builds binaries and docker container on any changes in source code](https://github.com/poma/ton-lite-client) updates any 5 minutes (former TON-mirror)
   - 📣 Created Telegram bot post message about updates [here](https://t.me/ton_research) and [here](https://t.me/TrackingTONupdates) - with any new commits into original repo
-  - ✨ Created [Webserver](/docs/WEB_SERVER.md) which realizes a web client for TON
-  - 🌐 [Public node](https://explorer.test.ton.cryptoprocessing.io/api) of [web client for TON](/docs/WEB_SERVER.md)
+  - ✨ Created [Webserver](/docs/Copperbits_docs/WEB_SERVER.md) which realizes a web client for TON
+  - 🌐 [Public node](https://explorer.test.ton.cryptoprocessing.io/api) of [web client for TON](/docs/Copperbits_docs/WEB_SERVER.md)
 
 - 🎓 Now we are writing video tutorials, writing manuals / FAQ / HOWTO how to use TON.
 
@@ -118,16 +118,16 @@ docker exec ton fift test.fif
 - Go to command line, where binary placed
 - Run:
 ```bash
-./test-lite-client -C ton-lite-client-test1.config.json
+./lite-client -C ton-lite-client-test1.config.json
 ```
 - run `help` to get started
 
-More detailed instruction you can find [here](/docs/Mac_tutorial.md).
+More detailed instruction you can find [here](/docs/Copperbits_docs/Mac_tutorial.md).
 
 ## Tutorial
 
 All educational thing we moved it to [docs](/docs) folder.
-You will find here [original readme](/docs/README.md), with additions of community-based tools and educational materials.
+You will find here [original readme](/docs/Original_docs/README.md), with additions of community-based tools and educational materials.
 
 
 ## Contributing

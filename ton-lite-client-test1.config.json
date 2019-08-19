@@ -1,8 +1,6 @@
 {
-  "@type": "config.global",
-  "liteclients": [
+  "liteservers": [
     {
-      "@type": "liteclient.config.global",
       "ip": 1137658550,
       "port": 4924,
       "id": {

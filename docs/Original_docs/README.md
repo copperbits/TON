@@ -41,7 +41,7 @@ General information, compilation and installation instructions
 
 _(reformated a bit, for markdown support)_
 
-This is a distribution of a preliminary version of the TON Blockchain Lite Client along with the relevant portions of the TON Blockchain Library. It is not necessarily representative of the totality of the TON Blockchain code developed so far; rather it is a simplified stable version, containing only those files that are necessary for compiling the Lite Client, and sometimes outdated versions of these files sufficient for this purpose.
+This archive is a distribution of a preliminary version of the TON Blockchain Lite Client along with the relevant portions of the TON Blockchain Library. It is not necessarily representative of the totality of the TON Blockchain code developed so far; rather it is a simplified stable version, containing only those files that are necessary for compiling the Lite Client, and sometimes outdated versions of these files sufficient for this purpose.
 
 Use this software at your own risk; consult the DISCLAIMER for more information.
 
@@ -62,7 +62,7 @@ The TON Blockchain Test Network is updated quite often, so we cannot guarantee t
   ```bash
   cd ~/liteclient-build
   cmake ~/lite-client
-  cmake --build . --target test-lite-client
+  cmake --build . --target lite-client
   ```
 You might also want to build some extra utilities useful for smart-contract development:
 
@@ -79,15 +79,16 @@ You might also want to build some extra utilities useful for smart-contract deve
 5. Run the Lite Client:
 
   ```bash
-  ./test-lite-client -C ton-lite-client-test1.config.json
+  ./lite-client/lite-client -C ton-lite-client-test1.config.json
   ```
 
   If everything was installed successfully, the Lite Client will connect to a special server (a full node for the TON Blockchain Test Network #1) and will send some queries to the server.
   If you indicate a writeable "database" directory as an extra argument to the client, it will download and save the block and the state corresponding to the newest masterchain block:
 
   ```bash
-  ./test-lite-client -C ton-lite-client-test1.config.json -D ~/ton-db-dir
+  ./lite-client/lite-client -C ton-lite-client-test1.config.json -D ~/ton-db-dir
   ```
+
   Basic help info can be obtained by typing "help" into the Lite Client. Type "quit" or press Ctrl-C to exit.
 
 6. Now you can create new smart contracts, examine the state of existing smart contracts, send external messages to smart contracts and so on. You can also use Fift (if you have compiled it) to compile, execute, and debug your smart contracts locally.
