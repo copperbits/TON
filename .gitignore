@@ -1,6 +1,5 @@
 .DS_Store
 ton-test-liteclient-full/lite-client-build
-ton-test-liteclient-full/lite-client/tl/generate
-ton-test-liteclient-full/lite-client/tdutils/generate
+ton-test-liteclient-full/lite-client/tl/generate/auto/tl/*
 ton-test-liteclient-full/lite-client/crypto/block/*auto*
 ton-test-liteclient-full/lite-client-check
