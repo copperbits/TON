@@ -33,7 +33,84 @@ void AdnlExtClientImpl::alarm() {
 
     conn_ = td::actor::create_actor<AdnlOutboundConnection>(td::actor::ActorOptions().with_name("outconn").with_poll(),
                                                             fd.move_as_ok(), std::make_unique<Cb>(actor_id(this)), dst_,
-                                                            actor_id(this));
+                                                            local_id_, actor_id(this));
+  }
+}
+
+td::Status AdnlOutboundConnection::process_custom_packet(td::BufferSlice &data, bool &processed) {
+  if (data.size() == 12) {
+    auto F = fetch_tl_object<ton_api::tcp_pong>(data.clone(), true);
+    if (F.is_ok()) {
+      processed = true;
+      return td::Status::OK();
+    }
+  }
+  if (!local_id_.empty() && nonce_.size() != 0) {
+    auto F = fetch_tl_object<ton_api::tcp_authentificationNonce>(data.clone(), true);
+    if (F.is_ok()) {
+      auto f = F.move_as_ok();
+      if (f->nonce_.size() == 0 || f->nonce_.size() > 512) {
+        return td::Status::Error(ErrorCode::protoviolation, "bad nonce size");
+      }
+      td::SecureString ss{nonce_.size() + f->nonce_.size()};
+      ss.as_mutable_slice().copy_from(nonce_.as_slice());
+      ss.as_mutable_slice().remove_prefix(nonce_.size()).copy_from(f->nonce_.as_slice());
+
+      TRY_RESULT(dec, local_id_.create_decryptor());
+      TRY_RESULT(B, dec->sign(ss.as_slice()));
+
+      auto obj =
+          create_tl_object<ton_api::tcp_authentificationComplete>(local_id_.compute_public_key().tl(), std::move(B));
+      send(serialize_tl_object(obj, true));
+
+      nonce_.clear();
+
+      processed = true;
+      return td::Status::OK();
+    }
+  }
+  return td::Status::OK();
+}
+
+void AdnlOutboundConnection::start_up() {
+  AdnlExtConnection::start_up();
+  auto X = dst_.pubkey().create_encryptor();
+  if (X.is_error()) {
+    LOG(ERROR) << "failed to init encryptor: " << X.move_as_error();
+    stop();
+    return;
+  }
+  auto enc = X.move_as_ok();
+
+  td::BufferSlice d{256};
+  auto id = dst_.compute_short_id();
+  auto S = d.as_slice();
+  S.copy_from(id.as_slice());
+  S.remove_prefix(32);
+  S.truncate(256 - 64 - 32);
+  td::Random::secure_bytes(S);
+  init_crypto(S);
+
+  auto R = enc->encrypt(S);
+  if (R.is_error()) {
+    LOG(ERROR) << "failed to  encrypt: " << R.move_as_error();
+    stop();
+    return;
+  }
+  auto data = R.move_as_ok();
+  LOG_CHECK(data.size() == 256 - 32) << "size=" << data.size();
+  S = d.as_slice();
+  S.remove_prefix(32);
+  CHECK(S.size() == data.size());
+  S.copy_from(data.as_slice());
+
+  send_uninit(std::move(d));
+
+  if (!local_id_.empty()) {
+    nonce_ = td::SecureString{32};
+    td::Random::secure_bytes(nonce_.as_mutable_slice());
+    auto obj = create_tl_object<ton_api::tcp_authentificate>(td::BufferSlice{nonce_.as_slice()});
+    send(serialize_tl_object(obj, true));
   }
 }
 
@@ -49,6 +126,13 @@ void AdnlExtClientImpl::check_ready(td::Promise<td::Unit> promise) {
 td::actor::ActorOwn<AdnlExtClient> AdnlExtClient::create(AdnlNodeIdFull dst, td::IPAddress dst_addr,
                                                          std::unique_ptr<AdnlExtClient::Callback> callback) {
   return td::actor::create_actor<AdnlExtClientImpl>("extclient", std::move(dst), dst_addr, std::move(callback));
+}
+
+td::actor::ActorOwn<AdnlExtClient> AdnlExtClient::create(AdnlNodeIdFull dst, PrivateKey local_id,
+                                                         td::IPAddress dst_addr,
+                                                         std::unique_ptr<AdnlExtClient::Callback> callback) {
+  return td::actor::create_actor<AdnlExtClientImpl>("extclient", std::move(dst), std::move(local_id), dst_addr,
+                                                    std::move(callback));
 }
 
 td::Status AdnlOutboundConnection::process_packet(td::BufferSlice data) {

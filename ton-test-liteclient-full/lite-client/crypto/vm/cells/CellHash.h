@@ -69,6 +69,6 @@ struct hash<vm::CellHash> {
 namespace vm {
 template <class H>
 H AbslHashValue(H h, const CellHash& cell_hash) {
-  return AbslHashValue(std::move(h), std::hash<vm::CellHash>()(cell_hash));
+  return H::combine(std::move(h), std::hash<vm::CellHash>()(cell_hash));
 }
 }  // namespace vm

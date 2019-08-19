@@ -1817,6 +1817,19 @@ TEST(TonDb, StackOverflow) {
     LOG(ERROR) << "C";
   } catch (...) {
   }
+
+  struct A : public td::CntObject {
+    explicit A(td::Ref<A> next) : next(next) {
+    }
+    td::Ref<A> next;
+  };
+  {
+    td::Ref<A> head;
+    for (int i = 0; i < 10000000; i++) {
+      td::Ref<A> new_head = td::Ref<A>(true, std::move(head));
+      head = std::move(new_head);
+    }
+  }
 }
 
 TEST(TonDb, BocRespectsUsageCell) {

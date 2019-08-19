@@ -29,8 +29,11 @@ using ValidatorSessionId = td::Bits256;
 constexpr WorkchainId masterchainId = -1, basechainId = 0, workchainInvalid = 0x80000000;
 constexpr ShardId shardIdAll = (1ULL << 63);
 
-constexpr unsigned split_merge_delay = 100;     // prepare (delay) split/merge for 100 seconds
-constexpr unsigned split_merge_interval = 100;  // split/merge is enabled during 60 second interval
+constexpr unsigned split_merge_delay = 100;        // prepare (delay) split/merge for 100 seconds
+constexpr unsigned split_merge_interval = 100;     // split/merge is enabled during 60 second interval
+constexpr unsigned min_split_merge_interval = 30;  // split/merge interval must be at least 30 seconds
+constexpr unsigned max_split_merge_delay =
+    1000;  // end of split/merge interval must be at most 1000 seconds in the future
 
 static inline int shard_pfx_len(ShardId shard) {
   return shard ? 63 - td::count_trailing_zeroes_non_zero64(shard) : 0;
@@ -381,6 +384,18 @@ struct Ed25519_PublicKey {
   }
   operator td::UInt256() const {
     return Bits256_2_UInt256(_pubkey);
+  }
+};
+
+struct ValidatorDescr {
+  /* ton::validator::ValidatorFullId */ Ed25519_PublicKey key;
+  ValidatorWeight weight;
+  /* adnl::AdnlNodeIdShort */ Bits256 addr;
+  ValidatorDescr(const Ed25519_PublicKey& key_, ValidatorWeight weight_) : key(key_), weight(weight_) {
+    addr.set_zero();
+  }
+  ValidatorDescr(const Ed25519_PublicKey& key_, ValidatorWeight weight_, const Bits256& addr_)
+      : key(key_), weight(weight_), addr(addr_) {
   }
 };
 

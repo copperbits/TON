@@ -7,6 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "td/utils/Slice.h"
+#include "td/utils/SharedSlice.h"
+
 namespace td {
 namespace jni {
 
@@ -58,6 +61,7 @@ class JvmThreadDetacher {
 std::unique_ptr<JNIEnv, JvmThreadDetacher> get_jni_env(JavaVM *java_vm, jint jni_version);
 
 std::string fetch_string(JNIEnv *env, jobject o, jfieldID id);
+SecureString fetch_string_secure(JNIEnv *env, jobject o, jfieldID id);
 
 inline jobject fetch_object(JNIEnv *env, const jobject &o, const jfieldID &id) {
   // null return object is implicitly allowed
@@ -73,12 +77,16 @@ inline void reset_parse_error() {
 }
 
 std::string from_jstring(JNIEnv *env, jstring s);
+SecureString from_jstring_secure(JNIEnv *env, jstring s);
 
 jstring to_jstring(JNIEnv *env, const std::string &s);
+jstring to_jstring_secure(JNIEnv *env, Slice s);
 
 std::string from_bytes(JNIEnv *env, jbyteArray arr);
+SecureString from_bytes_secure(JNIEnv *env, jbyteArray arr);
 
-jbyteArray to_bytes(JNIEnv *env, const std::string &b);
+jbyteArray to_bytes(JNIEnv *env, Slice b);
+jbyteArray to_bytes_secure(JNIEnv *env, Slice b);
 
 void init_vars(JNIEnv *env, const char *td_api_java_package);
 
@@ -89,6 +97,8 @@ jlongArray store_vector(JNIEnv *env, const std::vector<std::int64_t> &v);
 jdoubleArray store_vector(JNIEnv *env, const std::vector<double> &v);
 
 jobjectArray store_vector(JNIEnv *env, const std::vector<std::string> &v);
+
+jobjectArray store_vector(JNIEnv *env, const std::vector<SecureString> &v);
 
 template <class T>
 jobjectArray store_vector(JNIEnv *env, const std::vector<T> &v) {
@@ -172,6 +182,26 @@ struct FetchVector<std::string> {
       for (jsize i = 0; i < length; i++) {
         jstring str = (jstring)env->GetObjectArrayElement(arr, i);
         result.push_back(jni::from_jstring(env, str));
+        if (str) {
+          env->DeleteLocalRef(str);
+        }
+      }
+      env->DeleteLocalRef(arr);
+    }
+    return result;
+  }
+};
+
+template <>
+struct FetchVector<SecureString> {
+  static std::vector<SecureString> fetch(JNIEnv *env, jobjectArray arr) {
+    std::vector<SecureString> result;
+    if (arr != nullptr) {
+      jsize length = env->GetArrayLength(arr);
+      result.reserve(length);
+      for (jsize i = 0; i < length; i++) {
+        jstring str = (jstring)env->GetObjectArrayElement(arr, i);
+        result.push_back(jni::from_jstring_secure(env, str));
         if (str) {
           env->DeleteLocalRef(str);
         }

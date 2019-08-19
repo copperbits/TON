@@ -208,6 +208,15 @@ Ref<Cell> DictionaryFixed::finish_create_fork(CellBuilder& cb, Ref<Cell> c1, Ref
   return cb.finalize();
 }
 
+bool DictionaryFixed::check_fork_raw(Ref<CellSlice> cs_ref, int n) const {
+  if (cs_ref.is_null()) {
+    return false;
+  }
+  Ref<Cell> c1, c2;
+  CellSlice& cs = cs_ref.write();
+  return cs.fetch_ref_to(c1) && cs.fetch_ref_to(c2) && check_fork(cs, std::move(c1), std::move(c2), n);
+}
+
 /*
  * 
  *  Label parser (HmLabel n ~l) for all dictionary types
@@ -1725,6 +1734,7 @@ static inline bool set_bit(td::BitPtr ptr, bool value = true) {
   return true;
 }
 
+// mode: +1 = check augmentation of dict1, +2 = ... of dict2
 bool DictionaryFixed::dict_scan_diff(Ref<Cell> dict1, Ref<Cell> dict2, td::BitPtr key_buffer, int n, int total_key_len,
                                      const scan_diff_func_t& diff_func, int mode, int skip1, int skip2) const {
   // skip1: remove that much first bits from all keys in dictionary dict1 (its keys are actually n + skip1 bits long)
@@ -1741,10 +1751,17 @@ bool DictionaryFixed::dict_scan_diff(Ref<Cell> dict1, Ref<Cell> dict2, td::BitPt
     if (label.l_bits >= n) {
       assert(label.l_bits == n);
       // leaf in dict2, empty dict1
-      return diff_func(key_buffer + label.l_bits - total_key_len, total_key_len, {}, std::move(label.remainder));
+      auto key = key_buffer + label.l_bits - total_key_len;
+      if ((mode & 2) && !check_leaf(label.remainder, key, total_key_len)) {
+        throw VmError{Excno::dict_err, "invalid leaf in the second dictionary being compared"};
+      }
+      return diff_func(key, total_key_len, {}, std::move(label.remainder));
     }
     n -= label.l_bits + 1;
     key_buffer += label.l_bits + 1;
+    if ((mode & 2) && !check_fork_raw(label.remainder, n + 1)) {
+      throw VmError{Excno::dict_err, "invalid fork in the second dictionary being compared"};
+    }
     // compare {} with each of children of dict2
     for (unsigned sw = 0; sw < 2; sw++) {
       key_buffer[-1] = (bool)sw;
@@ -1761,10 +1778,17 @@ bool DictionaryFixed::dict_scan_diff(Ref<Cell> dict1, Ref<Cell> dict2, td::BitPt
     if (label.l_bits >= n) {
       assert(label.l_bits == n);
       // leaf in dict1, empty dict2
-      return diff_func(key_buffer + label.l_bits - total_key_len, total_key_len, std::move(label.remainder), {});
+      auto key = key_buffer + label.l_bits - total_key_len;
+      if ((mode & 1) && !check_leaf(label.remainder, key, total_key_len)) {
+        throw VmError{Excno::dict_err, "invalid leaf in the first dictionary being compared"};
+      }
+      return diff_func(key, total_key_len, std::move(label.remainder), {});
     }
     n -= label.l_bits + 1;
     key_buffer += label.l_bits + 1;
+    if ((mode & 1) && !check_fork_raw(label.remainder, n + 1)) {
+      throw VmError{Excno::dict_err, "invalid fork in the first dictionary being compared"};
+    }
     // compare each of children of dict1 with {}
     for (unsigned sw = 0; sw < 2; sw++) {
       key_buffer[-1] = (bool)sw;
@@ -1806,13 +1830,25 @@ bool DictionaryFixed::dict_scan_diff(Ref<Cell> dict1, Ref<Cell> dict2, td::BitPt
     label2.skip_label();
     if (c == n) {
       // our two dictionaries are in fact leafs with matching edge labels (keys)
+      auto key = key_buffer + n - total_key_len;
+      if ((mode & 1) && !check_leaf(label1.remainder, key, total_key_len)) {
+        throw VmError{Excno::dict_err, "invalid leaf in the first dictionary being compared"};
+      }
+      if ((mode & 2) && !check_leaf(label2.remainder, key, total_key_len)) {
+        throw VmError{Excno::dict_err, "invalid leaf in the second dictionary being compared"};
+      }
       return label1.remainder->contents_equal(*label2.remainder) ||
-             diff_func(key_buffer + n - total_key_len, total_key_len, std::move(label1.remainder),
-                       std::move(label2.remainder));
+             diff_func(key, total_key_len, std::move(label1.remainder), std::move(label2.remainder));
     }
     assert(c < n);
     key_buffer += c + 1;
     n -= c + 1;
+    if ((mode & 1) && !check_fork_raw(label1.remainder, n + 1)) {
+      throw VmError{Excno::dict_err, "invalid fork in the first dictionary being compared"};
+    }
+    if ((mode & 2) && !check_fork_raw(label2.remainder, n + 1)) {
+      throw VmError{Excno::dict_err, "invalid fork in the second dictionary being compared"};
+    }
     for (unsigned sw = 0; sw <= 1; sw++) {
       key_buffer[-1] = (bool)sw;
       // compare left and then right subtrees
@@ -1826,6 +1862,9 @@ bool DictionaryFixed::dict_scan_diff(Ref<Cell> dict1, Ref<Cell> dict2, td::BitPt
   if (c == l1) {
     assert(c < l2);
     dict1.clear();
+    if ((mode & 1) && !check_fork_raw(label1.remainder, n - c)) {
+      throw VmError{Excno::dict_err, "invalid fork in the first dictionary being compared"};
+    }
     // children of root node of dict1
     auto c1 = label1.remainder->prefetch_ref(0);
     auto c2 = label1.remainder->prefetch_ref(1);
@@ -1852,8 +1891,11 @@ bool DictionaryFixed::dict_scan_diff(Ref<Cell> dict1, Ref<Cell> dict2, td::BitPt
   } else {
     assert(c == l2 && c < l1);
     dict2.clear();
-    // children of root node of dict2
     label2.skip_label();  // dict2 had shorter label anyway, label1 is already unpacked
+    if ((mode & 2) && !check_fork_raw(label2.remainder, n - c)) {
+      throw VmError{Excno::dict_err, "invalid fork in the second dictionary being compared"};
+    }
+    // children of root node of dict2
     auto c1 = label2.remainder->prefetch_ref(0);
     auto c2 = label2.remainder->prefetch_ref(1);
     label2.remainder.clear();
@@ -1892,6 +1934,68 @@ bool DictionaryFixed::scan_diff(DictionaryFixed& dict2, const scan_diff_func_t& 
   } catch (CombineError) {
     return false;
   }
+}
+
+bool DictionaryFixed::dict_validate_check(Ref<Cell> dict, td::BitPtr key_buffer, int n, int total_key_len,
+                                          const DictionaryFixed::foreach_func_t& foreach_func,
+                                          bool invert_first) const {
+  //LOG(DEBUG) << "dict_validate_check for " << total_key_len - n << "-bit key prefix " << (key_buffer - n + total_key_len).to_hex(total_key_len - n);
+  if (dict.is_null()) {
+    return true;
+  }
+  LabelParser label{std::move(dict), n, label_mode()};
+  int l = label.l_bits;
+  label.extract_label_to(key_buffer);
+  if (l == n) {
+    // leaf node, value left in label.remainder
+    vm::CellSlice cs{*label.remainder};
+    auto key = key_buffer + n - total_key_len;
+    if (!(check_leaf(cs, key, total_key_len) && foreach_func(std::move(label.remainder), key, total_key_len))) {
+      LOG(DEBUG) << "invalid dictionary leaf node with " << total_key_len << "-bit key " << key.to_hex(total_key_len);
+      return false;
+    }
+    return true;
+  }
+  assert(l >= 0 && l < n);
+  // a fork with two children, c1 and c2
+  auto c1 = label.remainder.write().fetch_ref();
+  auto c2 = label.remainder.unique_write().fetch_ref();
+  key_buffer += l + 1;
+  n -= l + 1;
+  if (!check_fork(label.remainder.write(), c1, c2, n + 1)) {
+    LOG(DEBUG) << "invalid dictionary fork augmentation for fork node with " << total_key_len - n - 1
+               << "-bit key prefix " << (key_buffer + n - total_key_len).to_hex(total_key_len - n - 1);
+    return false;
+  }
+  label.remainder.clear();
+  if (l) {
+    invert_first = false;
+  } else if (invert_first) {
+    std::swap(c1, c2);
+  }
+  key_buffer[-1] = invert_first;
+  // recursive check_foreach applied to both children
+  if (!dict_validate_check(std::move(c1), key_buffer, n, total_key_len, foreach_func)) {
+    return false;
+  }
+  key_buffer[-1] = !invert_first;
+  return dict_validate_check(std::move(c2), key_buffer, n, total_key_len, foreach_func);
+}
+
+bool DictionaryFixed::validate_check(const DictionaryFixed::foreach_func_t& foreach_func, bool invert_first) {
+  if (!validate()) {
+    return false;
+  }
+  if (is_empty()) {
+    return true;
+  }
+  int key_len = get_key_bits();
+  unsigned char key_buffer[max_key_bytes];
+  return dict_validate_check(get_root_cell(), td::BitPtr{key_buffer}, key_len, key_len, foreach_func, invert_first);
+}
+
+bool DictionaryFixed::validate_all() {
+  return validate_check([](Ref<CellSlice> value, td::ConstBitPtr key, int n) { return true; }) || invalidate();
 }
 
 /*
@@ -2020,6 +2124,11 @@ Ref<vm::CellSlice> AugmentationData::extract_extra(Ref<vm::CellSlice> cs_ref) co
   return skip_extra(cs) && cs_ref.write().cut_tail(cs) ? std::move(cs_ref) : Ref<CellSlice>{};
 }
 
+bool AugmentationData::extract_extra_to(vm::CellSlice& cs, vm::CellSlice& extra) const {
+  extra = cs;
+  return cs.is_valid() && skip_extra(cs) && extra.cut_tail(cs);
+}
+
 }  // namespace dict
 
 using dict::AugmentationData;
@@ -2075,8 +2184,20 @@ bool AugmentedDictionary::validate() {
     if (root_cell.not_null()) {
       return invalidate();
     }
+    vm::CellSlice cs{*root};
+    if (!cs.advance(1)) {
+      return invalidate();
+    }
     if (non_empty) {
-      root_cell = root->prefetch_ref();
+      root_cell = cs.fetch_ref();
+      auto root_extra = get_root_extra();
+      if (!(root_extra.not_null() && root_extra->contents_equal(cs))) {
+        return invalidate();
+      }
+    } else {
+      if (!aug.check_empty(cs)) {
+        return invalidate();
+      }
     }
   } else if (root.not_null()) {
     return invalidate();
@@ -2158,11 +2279,15 @@ Ref<CellSlice> AugmentedDictionary::get_node_extra(Ref<Cell> cell_ref, int n) co
   }
   LabelParser label{std::move(cell_ref), n, 2};
   label.skip_label();
-  if (label.l_bits == n || label.remainder.write().advance_refs(2)) {
+  if (label.l_bits == n) {
     return aug.extract_extra(std::move(label.remainder));
-  } else {
-    return {};
+  } else if (label.remainder.write().advance_refs(2)) {
+    vm::CellSlice cs{*label.remainder};
+    if (aug.skip_extra(cs) && cs.empty_ext()) {
+      return std::move(label.remainder);
+    }
   }
+  return {};
 }
 
 Ref<CellSlice> AugmentedDictionary::get_root_extra() const {
@@ -2243,6 +2368,20 @@ Ref<Cell> AugmentedDictionary::lookup_delete_ref(td::ConstBitPtr key, int key_le
 
 std::pair<Ref<CellSlice>, Ref<CellSlice>> AugmentedDictionary::lookup_delete_extra(td::ConstBitPtr key, int key_len) {
   return decompose_value_extra(lookup_delete_with_extra(key, key_len));
+}
+
+bool AugmentedDictionary::check_leaf(CellSlice& cs, td::ConstBitPtr key, int key_len) const {
+  vm::CellSlice extra;
+  return aug.extract_extra_to(cs, extra) && aug.check_leaf_key_extra(cs, extra, key, key_len);
+}
+
+bool AugmentedDictionary::check_fork(CellSlice& cs, Ref<Cell> c1, Ref<Cell> c2, int n) const {
+  if (n <= 0) {
+    return false;
+  }
+  auto extra1 = get_node_extra(std::move(c1), n - 1);
+  auto extra2 = get_node_extra(std::move(c2), n - 1);
+  return extra1.not_null() && extra2.not_null() && aug.check_fork(cs, extra1.write(), extra2.write());
 }
 
 Ref<Cell> AugmentedDictionary::finish_create_leaf(CellBuilder& cb, const CellSlice& value) const {
@@ -2468,6 +2607,18 @@ std::pair<Ref<CellSlice>, Ref<CellSlice>> AugmentedDictionary::traverse_extra(td
     return {};
   }
   return dict_traverse_extra(get_root_cell(), key_buffer, key_len, traverse_node);
+}
+
+bool AugmentedDictionary::validate_check_extra(const AugmentedDictionary::foreach_extra_func_t& foreach_extra_func,
+                                               bool invert_first) {
+  const AugmentationData& augm = aug;
+  int key_len = get_key_bits();
+  return validate_check(
+      [&foreach_extra_func, &augm, key_len](Ref<CellSlice> value_extra, td::ConstBitPtr key, int value) {
+        auto extra = augm.extract_extra(value_extra.write());
+        return extra.not_null() && foreach_extra_func(std::move(value_extra), std::move(extra), key, key_len);
+      },
+      invert_first);
 }
 
 }  // namespace vm

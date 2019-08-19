@@ -7,6 +7,7 @@ endif()
 set (TON_CRYPTO_SOURCE
   Ed25519.cpp
   common/bigint.cpp
+  common/refcnt.cpp
   common/refint.cpp
   common/bitstring.cpp
   common/util.cpp
@@ -143,6 +144,30 @@ set (FIFT_SOURCE
   fift/words.h
 )
 
+set (PARSER_SOURCE
+  parser/srcread.cpp
+  parser/lexer.cpp
+  parser/symtable.cpp
+
+  parser/srcread.h
+  parser/lexer.h
+  parser/symtable.h
+)
+
+set (FUNC_LIB_SOURCE
+  func/keywords.cpp
+  func/unify-types.cpp
+  func/parse-func.cpp
+  func/abscode.cpp
+  func/gen-abscode.cpp
+  func/analyzer.cpp
+  func/asmops.cpp
+  func/builtins.cpp
+  func/stack-transform.cpp
+  func/optimize.cpp
+  func/codegen.cpp
+)
+
 set(TLB_BLOCK_AUTO
   ${CMAKE_CURRENT_SOURCE_DIR}/block/block-auto.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/block/block-auto.h
@@ -153,6 +178,7 @@ set (BLOCK_SOURCE
   block/Binlog.cpp
   block/block.cpp
   block/block-db.cpp
+  block/block-parse.cpp
   block/check-proof.cpp
   block/mc-config.cpp
   block/output-queue-merger.cpp
@@ -163,6 +189,7 @@ set (BLOCK_SOURCE
   block/block-db-impl.h
   block/block-db.h
   block/block.h
+  block/block-parse.h
   block/check-proof.h
   block/output-queue-merger.h
   block/transaction.h
@@ -222,16 +249,20 @@ if (WINGETOPT_FOUND)
   target_link_libraries_system(fift wingetopt)
 endif()
 
-add_executable(func func/func.cpp)
+add_library(src_parser ${PARSER_SOURCE})
+target_include_directories(src_parser PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_link_libraries(src_parser PUBLIC ton_crypto)
+
+add_executable(func func/func.cpp ${FUNC_LIB_SOURCE})
 target_include_directories(func PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
-target_link_libraries(func PUBLIC ton_crypto)
+target_link_libraries(func PUBLIC ton_crypto src_parser)
 if (WINGETOPT_FOUND)
   target_link_libraries_system(func wingetopt)
 endif()
 
 add_executable(tlbc tl/tlbc.cpp)
-target_include_directories(tlbc PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/func>)
-target_link_libraries(tlbc PUBLIC ton_crypto)
+target_include_directories(tlbc PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_link_libraries(tlbc PUBLIC ton_crypto src_parser)
 if (WINGETOPT_FOUND)
   target_link_libraries_system(tlbc wingetopt)
 endif()

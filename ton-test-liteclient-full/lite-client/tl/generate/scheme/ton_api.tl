@@ -22,6 +22,10 @@ testVectorBytes value:(vector bytes) = TestObject;
 
 tcp.pong random_id:long = tcp.Pong;
 
+tcp.authentificate nonce:bytes = tcp.Message;
+tcp.authentificationNonce nonce:bytes = tcp.Message;
+tcp.authentificationComplete key:PublicKey signature:bytes = tcp.Message;
+
 fec.raptorQ data_size:int symbol_size:int symbols_count:int = fec.Type;
 fec.roundRobin data_size:int symbol_size:int symbols_count:int = fec.Type;
 fec.online data_size:int symbol_size:int symbols_count:int = fec.Type;
@@ -60,7 +64,7 @@ adnl.address.udp6 ip:int128 port:int = adnl.Address;
 
 adnl.addressList addrs:(vector adnl.Address) version:int reinit_date:int priority:int expire_at:int = adnl.AddressList;
 
-adnl.node id:PublicKey addr_list:adnl.addressList signature:bytes = adnl.Node;
+adnl.node id:PublicKey addr_list:adnl.addressList = adnl.Node;
 adnl.nodes nodes:(vector adnl.node) = adnl.Nodes;
 
 ---functions---
@@ -280,7 +284,7 @@ hashable.vector value:(vector int) = Hashable;
 hashable.validatorSessionOldRound seqno:int block:int signatures:int = Hashable;
 hashable.validatorSessionRoundAttempt seqno:int votes:int precommitted:int = Hashable;
 hashable.validatorSessionRound locked_round:int locked_block:int seqno:int precommitted:Bool
-          approved_blocks:int signatures:int attempts:int = Hashable;
+          first_attempt:int approved_blocks:int signatures:int attempts:int = Hashable;
 hashable.blockSignature signature:int = Hashable;
 hashable.sentBlock src:int root_hash:int file_hash:int collated_data_file_hash:int = Hashable; 
 hashable.sentBlockEmpty = Hashable;
@@ -457,26 +461,89 @@ db.lt.status.value total_shards:int = db.lt.status.Value;
 
 ---types---
 
-id.config.local id:PrivateKey addr_list:adnl.addressList = id.config.Local;
+id.config.local id:PrivateKey = id.config.Local;
 dht.config.local id:adnl.id.short = dht.config.Local;
-dht.config.random.local cnt:int addr_list:adnl.addressList = dht.config.Local;
-overlay.config.local name:bytes id:adnl.id.short = overlay.config.Local;
-overlay.config.random.local cnt:int name:bytes addr_list:adnl.addressList = overlay.config.Local;
-catchain.config.local tag:int256 id:adnl.id.short = catchain.config.Local;
+dht.config.random.local cnt:int = dht.config.Local;
 liteserver.config.local id:PrivateKey port:int = liteserver.config.Local;
-dummyworkchain0.config.local id:adnl.id.short = dummyworkchain0.config.Local;
+liteserver.config.random.local port:int = liteserver.config.Local;
 validator.config.local id:adnl.id.short = validator.config.Local;
 validator.config.random.local addr_list:adnl.addressList = validator.config.Local;
-config.local udp_ports:(vector int) tcp_ports:(vector int) local_ids:(vector id.config.local) dht:(vector dht.config.Local) public_overlays:(vector overlay.config.Local) catchains:(vector catchain.config.local) dummy0:(vector dummyworkchain0.config.local) validators:(vector validator.config.Local) liteservers:(vector liteserver.config.local) = config.Local;
+control.config.local priv:PrivateKey pub:int256 port:int = control.config.Local;
+config.local local_ids:(vector id.config.local) dht:(vector dht.config.Local) validators:(vector validator.config.Local) liteservers:(vector liteserver.config.Local) control:(vector control.config.local) = config.Local;
 
 dht.config.global static_nodes:dht.nodes k:int a:int = dht.config.Global;
 adnl.config.global static_nodes:adnl.nodes = adnl.config.Global;
 catchain.config.global tag:int256 nodes:(vector PublicKey) = catchain.config.Global;
-liteclient.config.global id:PublicKey ip:int port:int = liteserver.config.Global;
 dummyworkchain0.config.global zero_state_hash:int256 = dummyworkchain0.config.Global;
-validator.config.global zero_state_root_hash:int256 zero_state_file_hash:int256 = validator.config.Global;
-config.global adnl:adnl.config.global dht:dht.config.global catchains:(vector catchain.config.global) dummy0:(vector dummyworkchain0.config.global)
-        validators:(vector validator.config.global) liteclients:(vector liteclient.config.global) = config.Global;
+validator.config.global zero_state:tonNode.blockIdExt init_block:tonNode.blockIdExt = validator.config.Global;
+config.global adnl:adnl.config.global dht:dht.config.global validator:validator.config.global = config.Global;
+
+liteserver.desc id:PublicKey ip:int port:int = liteserver.Desc;
+liteclient.config.global liteservers:(vector liteserver.desc) = liteclient.config.Global;
+
+engine.adnl id:int256 category:int = engine.Adnl;
+engine.addr ip:int port:int is_proxy:Bool categories:(vector int) priority_categories:(vector int) = engine.Addr;
+engine.dht id:int256 = engine.Dht;
+engine.fullNode id:int256 adnl:int256 expire_at:int = engine.FullNode;
+engine.validatorTempKey key:int256 expire_at:int = engine.ValidatorTempKey;
+engine.validatorAdnlAddress id:int256 expire_at:int = engine.ValidatorAdnlAddress;
+engine.validator id:int256 temp_keys:(vector engine.validatorTempKey) adnl_addrs:(vector engine.validatorAdnlAddress) expire_at:int = engine.Validator;
+engine.liteServer id:int256 port:int = engine.LiteServer;
+engine.controlProcess id:int256 permissions:int = engine.ControlProcess;
+engine.controlInterface id:int256 port:int allowed:(vector engine.controlProcess) = engine.ControlInterface; 
+engine.gc ids:(vector int256) = engine.Gc;
+
+engine.dht.config dht:(vector engine.dht) gc:engine.gc = engine.dht.Config;
+engine.validator.config addrs:(vector engine.addr) adnl:(vector engine.adnl) 
+        dht:(vector engine.dht) fullnode:engine.fullNode 
+        validators:(vector engine.validator) liteservers:(vector engine.liteServer) 
+        control:(vector engine.controlInterface)
+        gc:engine.gc = engine.validator.Config; 
 
 ---functions---
 
+---types---
+
+engine.validator.keyHash key_hash:int256 = engine.validator.KeyHash;
+engine.validator.signature signature:bytes = engine.validator.Signature;
+
+engine.validator.oneStat key:string value:string = engine.validator.OneStat;
+engine.validator.stats stats:(vector engine.validator.oneStat) = engine.validator.Stats;
+
+engine.validator.controlQueryError code:int message:string = engine.validator.ControlQueryError;
+
+engine.validator.time time:int = engine.validator.Time;
+engine.validator.success = engine.validator.Success;
+
+---functions---
+
+engine.validator.setPassword password:bytes = engine.validator.Success;
+engine.validator.changePassword old_password:bytes new_password:bytes = engine.validator.Success;
+
+engine.validator.getTime = engine.validator.Time;
+engine.validator.importLocalKey key_hash:int256 = engine.validator.KeyHash;
+engine.validator.importPrivateKey key:PrivateKey = engine.validator.KeyHash;
+engine.validator.exportPrivateKey key_hash:int256 = PrivateKey;
+engine.validator.exportPublicKey key_hash:int256 = PublicKey;
+engine.validator.generateKeyPair = engine.validator.KeyHash;
+engine.validator.addAdnlId key_hash:int256 category:int = engine.validator.Success;
+engine.validator.addDhtId key_hash:int256 = engine.validator.Success;
+engine.validator.addValidatorPermanentKey key_hash:int256 ttl:int = engine.validator.Success;
+engine.validator.addValidatorTempKey permanent_key_hash:int256 key_hash:int256 ttl:int = engine.validator.Success;
+engine.validator.addValidatorAdnlAddress permanent_key_hash:int256 key_hash:int256 ttl:int = engine.validator.Success;
+engine.validator.delAdnlId = engine.validator.Success;
+engine.validator.delDhtId = engine.validator.Success;
+engine.validator.delValidatorPermanentKey key_hash:int256 = engine.validator.Success;
+engine.validator.delValidatorTempKey key_hash:int256 = engine.validator.Success;
+engine.validator.delValidatorAdnlAddress key_hash:int256 = engine.validator.Success;
+engine.validator.addListeningPort ip:int port:int categories:(vector int) priority_categories:(vector int) = engine.validator.Success;
+engine.validator.addProxy ip:int port:int categories:(vector int) = engine.validator.Success;
+engine.validator.delListeningPort ip:int port:int categories:(vector int) priority_categories:(vector int) = engine.validator.Success;
+engine.validator.delProxy ip:int port:int categories:(vector int) = engine.validator.Success;
+
+engine.validator.sign data:bytes = engine.validator.Signature;
+
+engine.validator.getStats = engine.validator.Stats;
+engine.validator.getConfig = engine.validator.Config;
+
+engine.validator.controlQuery data:bytes = Object;

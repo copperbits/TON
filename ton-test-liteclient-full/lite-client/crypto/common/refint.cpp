@@ -195,30 +195,6 @@ int sgn(RefInt256 x) {
   return x->sgn();
 }
 
-bool operator==(RefInt256 x, RefInt256 y) {
-  return cmp(x, y) == 0;
-}
-
-bool operator!=(RefInt256 x, RefInt256 y) {
-  return cmp(x, y) != 0;
-}
-
-bool operator<(RefInt256 x, RefInt256 y) {
-  return cmp(x, y) < 0;
-}
-
-bool operator>(RefInt256 x, RefInt256 y) {
-  return cmp(x, y) > 0;
-}
-
-bool operator<=(RefInt256 x, RefInt256 y) {
-  return cmp(x, y) <= 0;
-}
-
-bool operator>=(RefInt256 x, RefInt256 y) {
-  return cmp(x, y) >= 0;
-}
-
 extern RefInt256 make_refint(long long x) {
   auto xx = td::RefInt256{true, x};
   xx.unique_write().normalize();

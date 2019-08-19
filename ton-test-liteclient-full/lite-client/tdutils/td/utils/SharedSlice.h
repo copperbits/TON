@@ -1,10 +1,10 @@
 #pragma once
 #include "td/utils/Slice.h"
-#include "td/utils/buffer.h"
 #include <atomic>
 #include <memory>
 
 namespace td {
+class BufferSlice;
 namespace detail {
 struct SharedSliceHeader {
   explicit SharedSliceHeader(size_t size) : refcnt_{1}, size_{0} {
@@ -117,9 +117,7 @@ class UnsafeSharedSlice {
       auto header = reinterpret_cast<HeaderT *>(ptr);
       if (header->dec()) {
         if (zero_on_destruct) {
-          auto sz = sizeof(HeaderT) + header->size();
-          //TODO: better cleanup
-          memset(ptr, 0, sz);
+          MutableSlice(ptr, sizeof(HeaderT) + header->size()).fill_zero_secure();
         }
         std::default_delete<char[]>()(ptr);
       }
@@ -154,9 +152,7 @@ class SharedSlice {
     return impl_.as_slice();
   }
 
-  td::BufferSlice clone_as_buffer_slice() const {
-    return td::BufferSlice{as_slice().str()};
-  }
+  td::BufferSlice clone_as_buffer_slice() const;
 
   operator Slice() const {
     return as_slice();
@@ -340,4 +336,17 @@ class UniqueSliceImpl {
 
 using UniqueSlice = UniqueSliceImpl<false>;
 using SecureString = UniqueSliceImpl<true>;
+
+inline MutableSlice as_mutable_slice(UniqueSharedSlice &unique_shared_slice) {
+  return unique_shared_slice.as_mutable_slice();
+}
+
+inline MutableSlice as_mutable_slice(UniqueSlice &unique_slice) {
+  return unique_slice.as_mutable_slice();
+}
+
+inline MutableSlice as_mutable_slice(SecureString &secure_string) {
+  return secure_string.as_mutable_slice();
+}
+
 }  // namespace td

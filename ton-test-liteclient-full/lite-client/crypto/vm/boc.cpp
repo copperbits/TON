@@ -76,12 +76,12 @@ td::Result<Ref<DataCell>> CellSerializationInfo::create_data_cell(td::Slice cell
   for (int k = 0; k < refs_cnt; k++) {
     cb.store_ref(std::move(refs[k]));
   }
-  auto res = cb.finalize(special);
+  auto res = cb.finalize_novm(special);
   if (res.is_null()) {
     return td::Status::Error("CellBuilder::finalize failed");
   }
   if (res->is_special() != special) {
-    return td::Status::Error("is_special missmatch");
+    return td::Status::Error("is_special mismatch");
   }
   if (res->get_level_mask() != level_mask) {
     return td::Status::Error("level mask mismatch");

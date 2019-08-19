@@ -191,26 +191,42 @@ std::string fetch_string(JNIEnv *env, jobject o, jfieldID id) {
   return res;
 }
 
-std::string from_jstring(JNIEnv *env, jstring s) {
+SecureString fetch_string_secure(JNIEnv *env, jobject o, jfieldID id) {
+  jstring s = (jstring)env->GetObjectField(o, id);
+  if (s == nullptr) {
+    // treat null as an empty string
+    return {};
+  }
+  auto res = from_jstring_secure(env, s);
+  env->DeleteLocalRef(s);
+  return res;
+}
+
+template <class T>
+T do_from_jstring(JNIEnv *env, jstring s) {
   if (!s) {
-    return "";
+    return T{};
   }
   jsize s_len = env->GetStringLength(s);
   const jchar *p = env->GetStringChars(s, nullptr);
   if (p == nullptr) {
     parse_error = true;
-    return std::string();
+    return T{};
   }
   size_t len = get_utf8_from_utf16_length(p, s_len);
-  std::string res(len, '\0');
+  T res(len, '\0');
   if (len) {
-    utf16_to_utf8(p, s_len, &res[0]);
+    utf16_to_utf8(p, s_len, as_mutable_slice(res).begin());
   }
   env->ReleaseStringChars(s, p);
   return res;
 }
 
-jstring to_jstring(JNIEnv *env, const std::string &s) {
+std::string from_jstring(JNIEnv *env, jstring s) {
+  return do_from_jstring<std::string>(env, s);
+}
+
+jstring do_to_jstring(JNIEnv *env, CSlice s) {
   jsize surrogates = 0;
   jsize unicode_len = get_utf16_from_utf8_length(s.c_str(), s.size(), &surrogates);
   if (surrogates == 0) {
@@ -229,20 +245,28 @@ jstring to_jstring(JNIEnv *env, const std::string &s) {
   return env->NewString(result.get(), result_len);
 }
 
-std::string from_bytes(JNIEnv *env, jbyteArray arr) {
-  std::string b;
+jstring to_jstring(JNIEnv *env, const std::string &s) {
+  return do_to_jstring(env, s);
+}
+
+template <class T>
+T do_from_bytes(JNIEnv *env, jbyteArray arr) {
+  T b;
   if (arr != nullptr) {
     jsize length = env->GetArrayLength(arr);
     if (length != 0) {
-      b.resize(narrow_cast<size_t>(length));
-      env->GetByteArrayRegion(arr, 0, length, reinterpret_cast<jbyte *>(&b[0]));
+      b = T(narrow_cast<size_t>(length), '\0');
+      env->GetByteArrayRegion(arr, 0, length, reinterpret_cast<jbyte *>(as_mutable_slice(b).begin()));
     }
     env->DeleteLocalRef(arr);
   }
   return b;
 }
+std::string from_bytes(JNIEnv *env, jbyteArray arr) {
+  return do_from_bytes<std::string>(env, arr);
+}
 
-jbyteArray to_bytes(JNIEnv *env, const std::string &b) {
+jbyteArray to_bytes(JNIEnv *env, Slice b) {
   static_assert(sizeof(char) == sizeof(jbyte), "Mismatched jbyte size");
   jsize length = narrow_cast<jsize>(b.size());
   jbyteArray arr = env->NewByteArray(length);
@@ -250,6 +274,25 @@ jbyteArray to_bytes(JNIEnv *env, const std::string &b) {
     env->SetByteArrayRegion(arr, 0, length, reinterpret_cast<const jbyte *>(b.data()));
   }
   return arr;
+}
+
+SecureString from_jstring_secure(JNIEnv *env, jstring s) {
+  return do_from_jstring<SecureString>(env, s);
+}
+
+jstring to_jstring_secure(JNIEnv *env, Slice s) {
+  SecureString cstr(s.size() + 1);
+  cstr.as_mutable_slice().copy_from(s);
+  cstr.as_mutable_slice().back() = 0;
+  return do_to_jstring(env, CSlice(cstr.data(), cstr.data() + s.size()));
+}
+
+SecureString from_bytes_secure(JNIEnv *env, jbyteArray arr) {
+  return do_from_bytes<SecureString>(env, arr);
+}
+
+jbyteArray to_bytes_secure(JNIEnv *env, Slice b) {
+  return to_bytes(env, b);
 }
 
 jintArray store_vector(JNIEnv *env, const std::vector<std::int32_t> &v) {
@@ -288,6 +331,21 @@ jobjectArray store_vector(JNIEnv *env, const std::vector<std::string> &v) {
   if (arr != nullptr) {
     for (jsize i = 0; i < length; i++) {
       jstring str = to_jstring(env, v[i]);
+      if (str) {
+        env->SetObjectArrayElement(arr, i, str);
+        env->DeleteLocalRef(str);
+      }
+    }
+  }
+  return arr;
+}
+
+jobjectArray store_vector(JNIEnv *env, const std::vector<SecureString> &v) {
+  jsize length = narrow_cast<jsize>(v.size());
+  jobjectArray arr = env->NewObjectArray(length, StringClass, 0);
+  if (arr != nullptr) {
+    for (jsize i = 0; i < length; i++) {
+      jstring str = to_jstring_secure(env, v[i]);
       if (str) {
         env->SetObjectArrayElement(arr, i, str);
         env->DeleteLocalRef(str);

@@ -41,11 +41,7 @@ Ref<DataCell> CellBuilder::finalize_copy(bool special) const {
   return res.move_as_ok();
 }
 
-Ref<DataCell> CellBuilder::finalize(bool special) {
-  auto* vm_state_interface = VmStateInterface::get();
-  if (vm_state_interface) {
-    vm_state_interface->register_cell_create();
-  }
+Ref<DataCell> CellBuilder::finalize_novm(bool special) {
   auto res = DataCell::create(data, size(), td::mutable_span(refs.data(), size_refs()), special);
   bits = refs_cnt = 0;
   if (res.is_error()) {
@@ -54,6 +50,14 @@ Ref<DataCell> CellBuilder::finalize(bool special) {
   }
   CHECK(res.ok().not_null());
   return res.move_as_ok();
+}
+
+Ref<DataCell> CellBuilder::finalize(bool special) {
+  auto* vm_state_interface = VmStateInterface::get();
+  if (vm_state_interface) {
+    vm_state_interface->register_cell_create();
+  }
+  return finalize_novm(special);
 }
 
 Ref<Cell> CellBuilder::create_pruned_branch(Ref<Cell> cell, td::uint32 new_level, td::uint32 virt_level) {
@@ -518,11 +522,11 @@ CellBuilder* CellBuilder::make_copy() const {
   return c;
 }
 
-CellSlice CellBuilder::as_cellslice() const& {
+CellSlice CellBuilder::as_cellslice() const & {
   return CellSlice{finalize_copy()};
 }
 
-Ref<CellSlice> CellBuilder::as_cellslice_ref() const& {
+Ref<CellSlice> CellBuilder::as_cellslice_ref() const & {
   return Ref<CellSlice>{true, finalize_copy()};
 }
 

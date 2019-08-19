@@ -1,5 +1,6 @@
 #include "check-proof.h"
 #include "block/block.h"
+#include "block/block-parse.h"
 #include "block/block-auto.h"
 #include "block/mc-config.h"
 

@@ -29,6 +29,7 @@
 #include "td/utils/port/signals.h"
 
 #include "block.h"
+#include "block-parse.h"
 #include "block-auto.h"
 #include "mc-config.h"
 

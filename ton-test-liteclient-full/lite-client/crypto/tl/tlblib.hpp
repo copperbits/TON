@@ -21,6 +21,12 @@ class TLB {
   virtual bool validate(const vm::CellSlice& cs) const {
     return cs.have_ext(get_size(cs));
   }
+  virtual bool validate_exact(const vm::CellSlice& cs) const {
+    return (int)cs.size_ext() == get_size(cs);
+  }
+  bool validate_csr(Ref<vm::CellSlice> cs_ref) const {
+    return cs_ref.not_null() && validate_skip_exact(cs_ref.write());
+  }
   Ref<vm::CellSlice> fetch(vm::CellSlice& cs) const {
     return cs.fetch_subslice_ext(get_size(cs));
   }
@@ -62,9 +68,16 @@ class TLB {
   virtual bool validate_skip(vm::CellSlice& cs) const {
     return validate(cs) && skip(cs);
   }
+  bool validate_skip_exact(vm::CellSlice& cs) const {
+    return validate_skip(cs) && cs.empty_ext();
+  }
   bool validate_by_skip(const vm::CellSlice& cs) const {
     vm::CellSlice copy{cs};
     return validate_skip(copy);
+  }
+  bool validate_by_skip_exact(const vm::CellSlice& cs) const {
+    vm::CellSlice copy{cs};
+    return validate_skip_exact(copy);
   }
   bool extract_by_skip(vm::CellSlice& cs) const {
     vm::CellSlice copy{cs};
@@ -114,6 +127,12 @@ class TLB {
   }
   bool as_integer_skip_to(vm::CellSlice& cs, td::RefInt256& res) const {
     return (res = as_integer_skip(cs)).not_null();
+  }
+  bool as_integer_to(const vm::CellSlice& cs, td::RefInt256& res) const {
+    return (res = as_integer(cs)).not_null();
+  }
+  bool as_integer_to(Ref<vm::CellSlice> cs_ref, td::RefInt256& res) const {
+    return (res = as_integer(std::move(cs_ref))).not_null();
   }
   bool validate_ref(Ref<vm::Cell> cell_ref) const {
     return cell_ref.not_null() && validate_ref_internal(std::move(cell_ref));
@@ -191,6 +210,9 @@ struct TLB_Complex : TLB {
   bool validate(const vm::CellSlice& cs) const override {
     return validate_by_skip(cs);
   }
+  bool validate_exact(const vm::CellSlice& cs) const override {
+    return validate_by_skip_exact(cs);
+  }
   bool extract(vm::CellSlice& cs) const override {
     return extract_by_skip(cs);
   }
@@ -205,10 +227,12 @@ struct TLB_Complex : TLB {
   }
   td::RefInt256 as_integer(const vm::CellSlice& cs) const override {
     vm::CellSlice copy{cs};
-    return as_integer_skip(copy);
+    auto res = as_integer_skip(copy);
+    return res.not_null() && copy.empty_ext() ? std::move(res) : td::RefInt256{};
   }
   td::RefInt256 as_integer(Ref<vm::CellSlice> cs) const override {
-    return as_integer_skip(cs.write());
+    auto res = as_integer_skip(cs.write());
+    return res.not_null() && cs->empty_ext() ? std::move(res) : td::RefInt256{};
   }
 };
 

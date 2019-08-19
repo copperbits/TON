@@ -29,7 +29,10 @@ accountAddress account_address:string = AccountAddress;
 internal.transactionId lt:int64 hash:bytes = internal.TransactionId;
 
 raw.initialAccountState code:bytes data:bytes = raw.InitialAccountState;
-raw.accountState balance:int64 code:bytes data:bytes last_transaction:internal.transactionId = raw.AccountState;
+raw.accountState balance:int64 code:bytes data:bytes last_transaction_id:internal.transactionId = raw.AccountState;
+raw.message source:string destination:string value:int64 = raw.Message;
+raw.transaction data:bytes previous_transaction_id:internal.transactionId fee:int64 in_msg:raw.message out_msgs:vector<raw.message> = raw.Transaction;
+raw.transactions transactions:vector<raw.Transaction> = raw.Transactions;
 
 testWallet.initialAccountState public_key:bytes = testWallet.InitialAccountState;
 testWallet.accountState balance:int64 seqno:int32 last_transaction_id:internal.transactionId = testWallet.AccountState;
@@ -67,6 +70,7 @@ changeLocalPassword input_key:inputKey new_local_password:secureBytes = Key;
 raw.getAccountAddress initital_account_state:raw.initialAccountState = AccountAddress;
 raw.getAccountState account_address:accountAddress = raw.AccountState;
 raw.sendMessage destination:accountAddress initial_account_state:bytes data:bytes = Ok;
+raw.getTransactions account_address:accountAddress from_transaction_id:internal.transactionId = raw.Transactions;
 
 testWallet.init private_key:inputKey = Ok;
 testWallet.getAccountAddress initital_account_state:testWallet.initialAccountState = AccountAddress;

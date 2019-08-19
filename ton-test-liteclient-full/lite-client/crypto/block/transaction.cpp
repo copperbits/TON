@@ -1,5 +1,6 @@
 #include "block/transaction.h"
 #include "block/block.h"
+#include "block/block-parse.h"
 #include "block/block-auto.h"
 #include "td/utils/bits.h"
 #include "td/utils/uint128.h"
@@ -273,8 +274,8 @@ bool Account::unpack(Ref<vm::CellSlice> shard_account, Ref<vm::CellSlice> extra,
     block::gen::t_ShardAccount.print(std::cerr, *shard_account);
   }
   block::gen::ShardAccount::Record acc_info;
-  if (!(block::gen::t_ShardAccount.validate(*shard_account) && block::tlb::t_ShardAccount.validate(*shard_account) &&
-        tlb::unpack_exact(shard_account.write(), acc_info))) {
+  if (!(block::gen::t_ShardAccount.validate_csr(shard_account) &&
+        block::tlb::t_ShardAccount.validate_csr(shard_account) && tlb::unpack_exact(shard_account.write(), acc_info))) {
     LOG(ERROR) << "account " << addr.to_hex() << " state is invalid";
     return false;
   }
@@ -1223,7 +1224,7 @@ bool Transaction::check_rewrite_dest_addr(Ref<vm::CellSlice>& dest_addr, const A
     // repack as an addr_var
     CHECK(tlb::csr_pack(dest_addr, std::move(rec)));
   }
-  CHECK(block::gen::t_MsgAddressInt.validate(*dest_addr));
+  CHECK(block::gen::t_MsgAddressInt.validate_csr(dest_addr));
   return true;
 }
 
@@ -1254,7 +1255,7 @@ int Transaction::try_action_send_msg(vm::CellSlice& cs, ActionPhase& ap, const A
     fwd_fee = ihr_fee = td::RefInt256{true, 0};
   } else {
     // int_msg_info$0 constructor
-    if (!tlb::unpack(cs2, info) || !block::tlb::t_CurrencyCollection.validate(*info.value)) {
+    if (!tlb::unpack(cs2, info) || !block::tlb::t_CurrencyCollection.validate_csr(info.value)) {
       return -1;
     }
     fwd_fee = block::tlb::t_Grams.as_integer(info.fwd_fee);
@@ -1319,7 +1320,7 @@ int Transaction::try_action_send_msg(vm::CellSlice& cs, ActionPhase& ap, const A
     // Process outbound internal message
     // check value, check/compute ihr_fees, fwd_fees
     // ...
-    if (!block::tlb::t_CurrencyCollection.validate(*info.value)) {
+    if (!block::tlb::t_CurrencyCollection.validate_csr(info.value)) {
       LOG(DEBUG) << "invalid value:CurrencyCollection in proposed outbound message";
     }
     if (info.ihr_disabled) {
@@ -1327,8 +1328,10 @@ int Transaction::try_action_send_msg(vm::CellSlice& cs, ActionPhase& ap, const A
       ihr_fee = td::RefInt256{true, 0};
     }
     // extract value to be carried by the message
-    td::RefInt256 req_grams = block::tlb::t_Grams.as_integer(info.value);
-    Ref<vm::Cell> req_extra = info.value->prefetch_ref();
+    block::CurrencyCollection value_cc;
+    CHECK(value_cc.unpack(info.value));
+    auto req_grams = std::move(value_cc.grams);
+    auto req_extra = std::move(value_cc.extra);
     CHECK(req_grams.not_null());
 
     // compute req_grams + fees
@@ -1447,7 +1450,7 @@ int Transaction::try_action_send_msg(vm::CellSlice& cs, ActionPhase& ap, const A
     LOG(ERROR) << "generated outbound message is not a valid (Message Any) according to hand-written check";
     return -1;
   }
-  if (!block::gen::t_Message.validate_ref(new_msg)) {
+  if (!block::gen::t_Message_Any.validate_ref(new_msg)) {
     LOG(ERROR) << "generated outbound message is not a valid (Message Any) according to automated check";
     return -1;
   }

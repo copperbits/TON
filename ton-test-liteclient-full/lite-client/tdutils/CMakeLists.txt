@@ -99,6 +99,8 @@ set(TDUTILS_SOURCE
   td/utils/MpmcQueue.cpp
   td/utils/OptionsParser.cpp
   td/utils/Random.cpp
+  td/utils/Slice.cpp
+  td/utils/SharedSlice.cpp
   td/utils/StackAllocator.cpp
   td/utils/Status.cpp
   td/utils/StringBuilder.cpp
@@ -303,7 +305,7 @@ if (CRC32C_FOUND)
 endif()
 if (ABSL_FOUND)
   #target_link_libraries(tdutils PRIVATE absl::base absl::time)
-  target_link_libraries_system(tdutils absl::base absl::container absl::hash )
+  target_link_libraries_system(tdutils absl::flat_hash_map absl::flat_hash_set absl::hash)
 endif()
 
 if (WIN32 AND WINGETOPT_FOUND)

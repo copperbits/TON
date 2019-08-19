@@ -13,4 +13,4 @@ set (ADNL_LITE_SOURCE
 add_library(adnllite STATIC ${ADNL_LITE_SOURCE})
 
 target_include_directories(adnllite PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
-target_link_libraries(adnllite PUBLIC tdactor ton_crypto tl_api tdnet keys )
+target_link_libraries(adnllite PUBLIC tdactor ton_crypto tl_lite_api tdnet keys )

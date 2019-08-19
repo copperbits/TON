@@ -28,7 +28,7 @@ class Hasher {
   template <class A, class B>
   static Hasher combine(Hasher hasher, const std::pair<A, B> &value) {
     hasher = AbslHashValue(std::move(hasher), value.first);
-    hasher = AbslHashValue(std::move(hasher), value.first);
+    hasher = AbslHashValue(std::move(hasher), value.second);
     return hasher;
   }
 

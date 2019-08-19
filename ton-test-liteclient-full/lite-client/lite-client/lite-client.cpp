@@ -17,6 +17,7 @@
 #include "ton/lite-tl.hpp"
 #include "block/block-db.h"
 #include "block/block.h"
+#include "block/block-parse.h"
 #include "block/block-auto.h"
 #include "block/mc-config.h"
 #include "block/check-proof.h"
@@ -71,14 +72,14 @@ void TestNode::run() {
 
   auto G = td::read_file(global_config_).move_as_ok();
   auto gc_j = td::json_decode(G.as_slice()).move_as_ok();
-  ton::ton_api::config_global gc;
+  ton::ton_api::liteclient_config_global gc;
   ton::ton_api::from_json(gc, gc_j.get_object()).ensure();
 
-  CHECK(gc.liteclients_.size() > 0);
+  CHECK(gc.liteservers_.size() > 0);
   auto idx =
-      liteserver_idx_ >= 0 ? liteserver_idx_ : td::Random::fast(0, static_cast<td::uint32>(gc.liteclients_.size() - 1));
-  CHECK(idx >= 0 && static_cast<td::uint32>(idx) <= gc.liteclients_.size());
-  auto& cli = gc.liteclients_[idx];
+      liteserver_idx_ >= 0 ? liteserver_idx_ : td::Random::fast(0, static_cast<td::uint32>(gc.liteservers_.size() - 1));
+  CHECK(idx >= 0 && static_cast<td::uint32>(idx) <= gc.liteservers_.size());
+  auto& cli = gc.liteservers_[idx];
   td::IPAddress addr;
   addr.init_host_port(td::IPAddress::ipv4_to_str(cli->ip_), cli->port_).ensure();
   td::TerminalIO::out() << "using liteserver " << idx << " with addr " << addr << "\n";
@@ -161,7 +162,7 @@ bool TestNode::complete_blkid(ton::BlockId partial_blkid, ton::BlockIdExt& compl
 
 bool TestNode::get_server_time() {
   auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getTime>(), true);
-  return envelope_send_query(std::move(b), [&, Self = actor_id(this) ](td::Result<td::BufferSlice> res)->void {
+  return envelope_send_query(std::move(b), [&, Self = actor_id(this)](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot get server time";
       return;
@@ -180,7 +181,7 @@ bool TestNode::get_server_time() {
 
 bool TestNode::get_server_mc_block_id() {
   auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getMasterchainInfo>(), true);
-  return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> res)->void {
+  return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot get masterchain info from server";
       return;
@@ -223,7 +224,7 @@ void TestNode::got_server_mc_block_id(ton::BlockIdExt blkid, ton::ZeroStateIdExt
 bool TestNode::request_block(ton::BlockIdExt blkid) {
   auto b = ton::serialize_tl_object(
       ton::create_tl_object<ton::lite_api::liteServer_getBlock>(ton::create_tl_lite_block_id(blkid)), true);
-  return envelope_send_query(std::move(b), [ Self = actor_id(this), blkid ](td::Result<td::BufferSlice> res)->void {
+  return envelope_send_query(std::move(b), [Self = actor_id(this), blkid](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot obtain block " << blkid.to_str() << " from server";
       return;
@@ -248,7 +249,7 @@ bool TestNode::request_block(ton::BlockIdExt blkid) {
 bool TestNode::request_state(ton::BlockIdExt blkid) {
   auto b = ton::serialize_tl_object(
       ton::create_tl_object<ton::lite_api::liteServer_getState>(ton::create_tl_lite_block_id(blkid)), true);
-  return envelope_send_query(std::move(b), [ Self = actor_id(this), blkid ](td::Result<td::BufferSlice> res)->void {
+  return envelope_send_query(std::move(b), [Self = actor_id(this), blkid](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot obtain state " << blkid.to_str() << " from server";
       return;
@@ -779,7 +780,7 @@ bool TestNode::get_account_state(ton::WorkchainId workchain, ton::StdSmcAddress 
   LOG(INFO) << "requesting account state for " << workchain << ":" << addr.to_hex() << " with respect to "
             << ref_blkid.to_str();
   return envelope_send_query(
-      std::move(b), [ Self = actor_id(this), workchain, addr, ref_blkid ](td::Result<td::BufferSlice> R)->void {
+      std::move(b), [Self = actor_id(this), workchain, addr, ref_blkid](td::Result<td::BufferSlice> R) -> void {
         if (R.is_error()) {
           return;
         }
@@ -813,7 +814,7 @@ bool TestNode::get_one_transaction(ton::BlockIdExt blkid, ton::WorkchainId workc
   LOG(INFO) << "requesting transaction " << lt << " of " << workchain << ":" << addr.to_hex() << " from block "
             << blkid.to_str();
   return envelope_send_query(
-      std::move(b), [ Self = actor_id(this), workchain, addr, lt, blkid, dump ](td::Result<td::BufferSlice> R)->void {
+      std::move(b), [Self = actor_id(this), workchain, addr, lt, blkid, dump](td::Result<td::BufferSlice> R) -> void {
         if (R.is_error()) {
           return;
         }
@@ -839,7 +840,7 @@ bool TestNode::get_last_transactions(ton::WorkchainId workchain, ton::StdSmcAddr
   LOG(INFO) << "requesting " << count << " last transactions from " << lt << ":" << hash.to_hex() << " of " << workchain
             << ":" << addr.to_hex();
   return envelope_send_query(
-      std::move(b), [ Self = actor_id(this), workchain, addr, lt, hash, count, dump ](td::Result<td::BufferSlice> R) {
+      std::move(b), [Self = actor_id(this), workchain, addr, lt, hash, count, dump](td::Result<td::BufferSlice> R) {
         if (R.is_error()) {
           return;
         }
@@ -1147,7 +1148,7 @@ bool TestNode::get_block_transactions(ton::BlockIdExt blkid, int mode, unsigned 
                                     true);
   LOG(INFO) << "requesting " << count << " transactions from block " << blkid.to_str() << " starting from account "
             << acc_addr.to_hex() << " lt " << lt;
-  return envelope_send_query(std::move(b), [ Self = actor_id(this), mode ](td::Result<td::BufferSlice> R) {
+  return envelope_send_query(std::move(b), [Self = actor_id(this), mode](td::Result<td::BufferSlice> R) {
     if (R.is_error()) {
       return;
     }
@@ -1195,7 +1196,7 @@ bool TestNode::get_all_shards(bool use_last, ton::BlockIdExt blkid) {
   auto b = ton::serialize_tl_object(
       ton::create_tl_object<ton::lite_api::liteServer_getAllShardsInfo>(ton::create_tl_lite_block_id(blkid)), true);
   LOG(INFO) << "requesting recent shard configuration";
-  return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> R)->void {
+  return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> R) -> void {
     if (R.is_error()) {
       return;
     }
@@ -1253,7 +1254,7 @@ bool TestNode::get_block(ton::BlockIdExt blkid, bool dump) {
   auto b = ton::serialize_tl_object(
       ton::create_tl_object<ton::lite_api::liteServer_getBlock>(ton::create_tl_lite_block_id(blkid)), true);
   return envelope_send_query(
-      std::move(b), [ Self = actor_id(this), blkid, dump ](td::Result<td::BufferSlice> res)->void {
+      std::move(b), [Self = actor_id(this), blkid, dump](td::Result<td::BufferSlice> res) -> void {
         if (res.is_error()) {
           LOG(ERROR) << "cannot obtain block " << blkid.to_str()
                      << " from server : " << res.move_as_error().to_string();
@@ -1282,7 +1283,7 @@ bool TestNode::get_state(ton::BlockIdExt blkid, bool dump) {
   auto b = ton::serialize_tl_object(
       ton::create_tl_object<ton::lite_api::liteServer_getState>(ton::create_tl_lite_block_id(blkid)), true);
   return envelope_send_query(
-      std::move(b), [ Self = actor_id(this), blkid, dump ](td::Result<td::BufferSlice> res)->void {
+      std::move(b), [Self = actor_id(this), blkid, dump](td::Result<td::BufferSlice> res) -> void {
         if (res.is_error()) {
           LOG(ERROR) << "cannot obtain state " << blkid.to_str()
                      << " from server : " << res.move_as_error().to_string();
@@ -1422,7 +1423,7 @@ bool TestNode::get_block_header(ton::BlockIdExt blkid, int mode) {
   LOG(INFO) << "got block header request for " << blkid.to_str() << " with mode " << mode;
   auto b = ton::serialize_tl_object(
       ton::create_tl_object<ton::lite_api::liteServer_getBlockHeader>(ton::create_tl_lite_block_id(blkid), mode), true);
-  return envelope_send_query(std::move(b), [ Self = actor_id(this), blkid ](td::Result<td::BufferSlice> res)->void {
+  return envelope_send_query(std::move(b), [Self = actor_id(this), blkid](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot obtain block header for " << blkid.to_str()
                  << " from server : " << res.move_as_error().to_string();
@@ -1453,7 +1454,7 @@ bool TestNode::lookup_block(ton::ShardIdFull shard, int mode, td::uint64 arg) {
                                         mode, ton::create_tl_lite_block_id_simple(id), arg, (td::uint32)arg),
                                     true);
   return envelope_send_query(
-      std::move(b), [ Self = actor_id(this), id, mode, arg ](td::Result<td::BufferSlice> res)->void {
+      std::move(b), [Self = actor_id(this), id, mode, arg](td::Result<td::BufferSlice> res) -> void {
         if (res.is_error()) {
           LOG(ERROR) << "cannot look up block header for " << id.to_str() << " with mode " << mode << " and argument "
                      << arg << " from server : " << res.move_as_error().to_string();
@@ -1596,14 +1597,12 @@ int main(int argc, char* argv[]) {
     return td::Status::OK();
   });
   p.add_option('d', "daemonize", "set SIGHUP", [&]() {
-    td::set_signal_handler(td::SignalType::HangUp,
-                           [](int sig) {
+    td::set_signal_handler(td::SignalType::HangUp, [](int sig) {
 #if TD_DARWIN || TD_LINUX
-                             close(0);
-                             setsid();
+      close(0);
+      setsid();
 #endif
-                           })
-        .ensure();
+    }).ensure();
     return td::Status::OK();
   });
 #if TD_DARWIN || TD_LINUX

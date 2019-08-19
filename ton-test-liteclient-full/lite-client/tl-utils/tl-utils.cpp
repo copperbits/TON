@@ -8,6 +8,10 @@
 namespace ton {
 
 td::BufferSlice serialize_tl_object(const ton_api::Object *T, bool boxed, td::BufferSlice &&suffix) {
+  return serialize_tl_object(T, boxed, suffix.as_slice());
+}
+
+td::BufferSlice serialize_tl_object(const ton_api::Object *T, bool boxed, td::Slice suffix) {
   td::TlStorerCalcLength X;
   T->store(X);
   auto l = X.get_length() + (boxed ? 4 : 0);
@@ -22,8 +26,7 @@ td::BufferSlice serialize_tl_object(const ton_api::Object *T, bool boxed, td::Bu
 
   auto S = B.as_slice();
   S.remove_prefix(l);
-  S.copy_from(suffix.as_slice());
-  suffix.clear();
+  S.copy_from(suffix);
 
   return B;
 }
@@ -60,6 +63,10 @@ td::BufferSlice serialize_tl_object(const ton_api::Function *T, bool boxed) {
 }
 
 td::BufferSlice serialize_tl_object(const ton_api::Function *T, bool boxed, td::BufferSlice &&suffix) {
+  return serialize_tl_object(T, boxed, suffix.as_slice());
+}
+
+td::BufferSlice serialize_tl_object(const ton_api::Function *T, bool boxed, td::Slice suffix) {
   CHECK(boxed);
   td::TlStorerCalcLength X;
   T->store(X);
@@ -73,8 +80,7 @@ td::BufferSlice serialize_tl_object(const ton_api::Function *T, bool boxed, td::
 
   auto S = B.as_slice();
   S.remove_prefix(l);
-  S.copy_from(suffix.as_slice());
-  suffix.clear();
+  S.copy_from(suffix);
 
   return B;
 }

@@ -392,7 +392,7 @@ void CppTypeCode::assign_class_name() {
       i = types.at(i).parent_type_idx;
     }
     if (name) {
-      type_name = src::symbols.get_name(name) + "_aux";
+      type_name = sym::symbols.get_name(name) + "_aux";
     }
   }
   cpp_type_class_name = global_cpp_ids.new_ident(type_name);
@@ -408,7 +408,7 @@ void CppTypeCode::assign_cons_names() {
   for (int i = 0; i < cons_num; i++) {
     sym_idx_t cons = type.constructors.at(i)->constr_name;
     if (cons) {
-      cons_enum_name[i] = local_cpp_ids.new_ident(src::symbols.get_name(cons));
+      cons_enum_name[i] = local_cpp_ids.new_ident(sym::symbols.get_name(cons));
     } else if (type.const_param_idx >= 0) {
       int pv = type.constructors[i]->get_const_param(type.const_param_idx);
       cons_enum_name[i] = local_cpp_ids.new_ident(pv ? "cons" : "cons0", pv);
@@ -3330,7 +3330,7 @@ void generate_cpp_output_to(std::ostream& os, int options = 0, std::vector<std::
     os << "\nnamespace " << cpp_nsp << " {" << std::endl;
   };
   if (cpp_namespace != "tlb") {
-    os << "using namespace tlb;\n";
+    os << "using namespace ::tlb;\n";
   }
   os << "using td::Ref;\n"
      << "using vm::CellSlice;\n"

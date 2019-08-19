@@ -35,6 +35,7 @@ class AdnlExtConnection : public td::actor::Actor, public td::ObserverBase {
   td::Status receive(td::ChainBufferReader &input, bool &exit_loop);
   virtual td::Status process_packet(td::BufferSlice data) = 0;
   td::Status receive_packet(td::BufferSlice data);
+  virtual td::Status process_custom_packet(td::BufferSlice &data, bool &processed) = 0;
   virtual td::Status process_init_packet(td::BufferSlice data) = 0;
   td::Status init_crypto(td::Slice data);
   void stop_read() {

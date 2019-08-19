@@ -17,57 +17,38 @@ class AdnlExtClientImpl;
 class AdnlOutboundConnection : public AdnlExtConnection {
  private:
   AdnlNodeIdFull dst_;
+  PrivateKey local_id_;
   td::actor::ActorId<AdnlExtClientImpl> ext_client_;
+  td::SecureString nonce_;
 
  public:
   AdnlOutboundConnection(td::SocketFd fd, std::unique_ptr<AdnlExtConnection::Callback> callback, AdnlNodeIdFull dst,
                          td::actor::ActorId<AdnlExtClientImpl> ext_client)
       : AdnlExtConnection(std::move(fd), std::move(callback), true), dst_(std::move(dst)), ext_client_(ext_client) {
   }
+  AdnlOutboundConnection(td::SocketFd fd, std::unique_ptr<AdnlExtConnection::Callback> callback, AdnlNodeIdFull dst,
+                         PrivateKey local_id, td::actor::ActorId<AdnlExtClientImpl> ext_client)
+      : AdnlExtConnection(std::move(fd), std::move(callback), true)
+      , dst_(std::move(dst))
+      , local_id_(local_id)
+      , ext_client_(ext_client) {
+  }
   td::Status process_packet(td::BufferSlice data) override;
   td::Status process_init_packet(td::BufferSlice data) override {
     UNREACHABLE();
   }
-  void start_up() override {
-    AdnlExtConnection::start_up();
-    auto X = dst_.pubkey().create_encryptor();
-    if (X.is_error()) {
-      LOG(ERROR) << "failed to init encryptor: " << X.move_as_error();
-      stop();
-      return;
-    }
-    auto enc = X.move_as_ok();
-
-    td::BufferSlice d{256};
-    auto id = dst_.compute_short_id();
-    auto S = d.as_slice();
-    S.copy_from(id.as_slice());
-    S.remove_prefix(32);
-    S.truncate(256 - 64 - 32);
-    td::Random::secure_bytes(S);
-    init_crypto(S);
-
-    auto R = enc->encrypt(S);
-    if (R.is_error()) {
-      LOG(ERROR) << "failed to  encrypt: " << R.move_as_error();
-      stop();
-      return;
-    }
-    auto data = R.move_as_ok();
-    LOG_CHECK(data.size() == 256 - 32) << "size=" << data.size();
-    S = d.as_slice();
-    S.remove_prefix(32);
-    CHECK(S.size() == data.size());
-    S.copy_from(data.as_slice());
-
-    send_uninit(std::move(d));
-  }
+  td::Status process_custom_packet(td::BufferSlice &data, bool &processed) override;
+  void start_up() override;
 };
 
 class AdnlExtClientImpl : public AdnlExtClient {
  public:
   AdnlExtClientImpl(AdnlNodeIdFull dst_id, td::IPAddress dst_addr, std::unique_ptr<Callback> callback)
       : dst_(std::move(dst_id)), dst_addr_(dst_addr), callback_(std::move(callback)) {
+  }
+  AdnlExtClientImpl(AdnlNodeIdFull dst_id, PrivateKey local_id, td::IPAddress dst_addr,
+                    std::unique_ptr<Callback> callback)
+      : dst_(std::move(dst_id)), local_id_(local_id), dst_addr_(dst_addr), callback_(std::move(callback)) {
   }
 
   void start_up() override {
@@ -120,6 +101,7 @@ class AdnlExtClientImpl : public AdnlExtClient {
 
  private:
   AdnlNodeIdFull dst_;
+  PrivateKey local_id_;
   td::IPAddress dst_addr_;
 
   std::unique_ptr<Callback> callback_;

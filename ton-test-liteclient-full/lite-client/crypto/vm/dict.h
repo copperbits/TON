@@ -57,8 +57,19 @@ struct AugmentationData {
   virtual bool check_leaf(vm::CellSlice& cs, vm::CellSlice& val_cs) const;
   virtual bool check_fork(vm::CellSlice& cs, vm::CellSlice& left_cs, vm::CellSlice& right_cs) const;
   virtual bool check_empty(vm::CellSlice& cs) const;
+  virtual bool check_leaf_key_extra(vm::CellSlice& val_cs, vm::CellSlice& extra_cs, td::ConstBitPtr key,
+                                    int key_len) const {
+    return check_leaf(extra_cs, val_cs);
+  }
   Ref<vm::CellSlice> extract_extra(vm::CellSlice& cs) const;
   Ref<vm::CellSlice> extract_extra(Ref<vm::CellSlice> cs_ref) const;
+  bool extract_extra_to(vm::CellSlice& cs, Ref<vm::CellSlice>& extra_csr) const {
+    return (extra_csr = extract_extra(cs)).not_null();
+  }
+  bool extract_extra_to(Ref<vm::CellSlice> cs_ref, Ref<vm::CellSlice>& extra_csr) const {
+    return (extra_csr = extract_extra(std::move(cs_ref))).not_null();
+  }
+  bool extract_extra_to(vm::CellSlice& cs, vm::CellSlice& extra) const;
 };
 
 static inline bool store_cell_dict(vm::CellBuilder& cb, Ref<vm::Cell> dict_root) {
@@ -190,6 +201,8 @@ class DictionaryFixed : public DictionaryBase {
   bool combine_with(DictionaryFixed& dict2, const simple_combine_func_t& simple_combine_func, int mode = 0);
   bool combine_with(DictionaryFixed& dict2);
   bool scan_diff(DictionaryFixed& dict2, const scan_diff_func_t& diff_func, int check_augm = 0);
+  bool validate_check(const foreach_func_t& foreach_func, bool invert_first = false);
+  bool validate_all();
   template <typename T>
   bool key_exists(const T& key) {
     return key_exists(key.bits(), key.size());
@@ -198,6 +211,10 @@ class DictionaryFixed : public DictionaryBase {
   Ref<CellSlice> lookup(const T& key) {
     return lookup(key.bits(), key.size());
   }
+  template <typename T>
+  Ref<CellSlice> get_minmax_key(T& key_buffer, bool fetch_max = false, bool invert_first = false) {
+    return get_minmax_key(key_buffer.bits(), key_buffer.size(), fetch_max, invert_first);
+  }
 
  protected:
   virtual int label_mode() const {
@@ -205,6 +222,16 @@ class DictionaryFixed : public DictionaryBase {
   }
   virtual Ref<Cell> finish_create_leaf(CellBuilder& cb, const CellSlice& value) const;
   virtual Ref<Cell> finish_create_fork(CellBuilder& cb, Ref<Cell> c1, Ref<Cell> c2, int n) const;
+  virtual bool check_fork(CellSlice& cs, Ref<Cell> c1, Ref<Cell> c2, int n) const {
+    return true;
+  }
+  virtual bool check_leaf(CellSlice& cs, td::ConstBitPtr key, int key_len) const {
+    return true;
+  }
+  bool check_leaf(Ref<CellSlice> cs_ref, td::ConstBitPtr key, int key_len) const {
+    return check_leaf(cs_ref.write(), key, key_len);
+  }
+  bool check_fork_raw(Ref<CellSlice> cs_ref, int n) const;
 
  private:
   std::pair<Ref<CellSlice>, Ref<Cell>> dict_lookup_delete(Ref<Cell> dict, td::ConstBitPtr key, int n) const;
@@ -219,6 +246,8 @@ class DictionaryFixed : public DictionaryBase {
                               const combine_func_t& combine_func, int mode = 0, int skip1 = 0, int skip2 = 0) const;
   bool dict_scan_diff(Ref<Cell> dict1, Ref<Cell> dict2, td::BitPtr key_buffer, int n, int total_key_len,
                       const scan_diff_func_t& diff_func, int mode = 0, int skip1 = 0, int skip2 = 0) const;
+  bool dict_validate_check(Ref<Cell> dict, td::BitPtr key_buffer, int n, int total_key_len,
+                           const foreach_func_t& foreach_func, bool invert_first = false) const;
 };
 
 class Dictionary final : public DictionaryFixed {
@@ -282,6 +311,9 @@ class Dictionary final : public DictionaryFixed {
   }
 
  private:
+  bool check_fork(CellSlice& cs, Ref<Cell> c1, Ref<Cell> c2, int n) const override {
+    return cs.empty_ext();
+  }
   static Ref<Cell> extract_value_ref(Ref<CellSlice> cs);
   std::pair<Ref<Cell>, int> dict_filter(Ref<Cell> dict, td::BitPtr key, int n, const filter_func_t& check_leaf) const;
 };
@@ -341,6 +373,7 @@ class AugmentedDictionary final : public DictionaryFixed {
   bool check_for_each_extra(const foreach_extra_func_t& foreach_extra_func, bool invert_first = false);
   std::pair<Ref<CellSlice>, Ref<CellSlice>> traverse_extra(td::BitPtr key_buffer, int key_len,
                                                            const traverse_func_t& traverse_node);
+  bool validate_check_extra(const foreach_extra_func_t& foreach_extra_func, bool invert_first = false);
   bool validate() override;
   template <typename T>
   Ref<CellSlice> lookup(const T& key) {
@@ -379,10 +412,12 @@ class AugmentedDictionary final : public DictionaryFixed {
  private:
   bool compute_root() const;
   Ref<CellSlice> get_node_extra(Ref<Cell> cell_ref, int n) const;
-  std::pair<Ref<Cell>, bool> dict_set(Ref<Cell> dict, td::ConstBitPtr key, int n, const CellSlice& value,
-                                      SetMode mode = SetMode::Set) const;
+  bool check_leaf(CellSlice& cs, td::ConstBitPtr key, int key_len) const override;
+  bool check_fork(CellSlice& cs, Ref<Cell> c1, Ref<Cell> c2, int n) const override;
   Ref<Cell> finish_create_leaf(CellBuilder& cb, const CellSlice& value) const override;
   Ref<Cell> finish_create_fork(CellBuilder& cb, Ref<Cell> c1, Ref<Cell> c2, int n) const override;
+  std::pair<Ref<Cell>, bool> dict_set(Ref<Cell> dict, td::ConstBitPtr key, int n, const CellSlice& value,
+                                      SetMode mode = SetMode::Set) const;
   int label_mode() const override {
     return dict::LabelParser::chk_size;
   }

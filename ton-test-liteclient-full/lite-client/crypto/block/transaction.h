@@ -47,10 +47,10 @@ struct NewOutMsg {
   NewOutMsg(ton::LogicalTime _lt, Ref<vm::Cell> _msg, Ref<vm::Cell> _trans)
       : lt(_lt), msg(std::move(_msg)), trans(std::move(_trans)) {
   }
-  bool operator<(const NewOutMsg& other) const & {
+  bool operator<(const NewOutMsg& other) const& {
     return lt < other.lt || (lt == other.lt && msg->get_hash() < other.msg->get_hash());
   }
-  bool operator>(const NewOutMsg& other) const & {
+  bool operator>(const NewOutMsg& other) const& {
     return lt > other.lt || (lt == other.lt && other.msg->get_hash() < msg->get_hash());
   }
 };
@@ -238,6 +238,9 @@ struct Account {
   Account(ton::WorkchainId wc, td::ConstBitPtr _addr, int depth)
       : split_depth_set_(true), split_depth_((unsigned char)depth), workchain(wc), addr(_addr) {
   }
+  block::CurrencyCollection get_balance() const {
+    return block::CurrencyCollection{balance, extra_balance};
+  }
   bool set_address(ton::WorkchainId wc, td::ConstBitPtr new_addr);
   bool unpack(Ref<vm::CellSlice> account, Ref<vm::CellSlice> extra, ton::UnixTime now, bool special = false);
   bool init_new(ton::UnixTime now);
@@ -256,7 +259,7 @@ struct Account {
   bool create_account_block(vm::CellBuilder& cb);  // stores an AccountBlock with all transactions
 
  protected:
-  friend class Transaction;
+  friend struct Transaction;
   bool set_split_depth(int split_depth);
   bool check_split_depth(int split_depth) const;
   bool init_rewrite_addr(int split_depth, td::ConstBitPtr orig_addr_rewrite);
