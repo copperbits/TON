@@ -1701,7 +1701,7 @@ void TestNode::got_all_shards_web(ton::BlockIdExt blk, td::BufferSlice proof, td
           current_shard<<"\"end_lt\":"<<ref->end_lt();
           current_shard<<"}";
         } else {
-          current_shard<<"\"block_id\":\""<<ref->top_block_id().to_str()<<"\"}";
+          current_shard<<"\"block_id\":\""<<id.to_str()<<"\", \"error\":\"cannot unpack\"}";
         }
         was_shard = true;
         outp_shards_simple<<current_shard.str();
