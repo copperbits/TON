@@ -1,7 +1,8 @@
-#include "web_server/lite-client-test-node.cpp"
+#include "lite-client.h"
 #include "adnl/adnl-ext-client.h"
-#include "tl-utils/tl-utils.hpp"
+#include "tl-utils/lite-utils.hpp"
 #include "auto/tl/ton_api_json.h"
+#include "auto/tl/lite_api.h"
 #include "td/utils/OptionsParser.h"
 #include "td/utils/Time.h"
 #include "td/utils/filesystem.h"
@@ -13,11 +14,13 @@
 #include "td/utils/port/StdStreams.h"
 #include "td/utils/port/FileFd.h"
 #include "terminal/terminal.h"
-#include "ton/ton-tl.hpp"
+#include "ton/lite-tl.hpp"
 #include "block/block-db.h"
 #include "block/block.h"
+#include "block/block-parse.h"
 #include "block/block-auto.h"
 #include "block/mc-config.h"
+#include "block/check-proof.h"
 #include "vm/boc.h"
 #include "vm/cellops.h"
 #include "vm/cells/MerkleProof.h"
@@ -30,19 +33,13 @@
 #include <iostream>
 #include <sstream>
 
-#include "web_server/lite-client-test-node-helpers.cpp"
-#include "web_server/lite-client-web-server.cpp"
-#include "web_server/include/method-time.cpp"
-#include "web_server/include/method-getaccount.cpp"
-#include "web_server/include/method-getblock.cpp"
-#include "web_server/include/method-last.cpp"
-
+using HttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
 using td::Ref;
 
 int verbosity;
 
-std::unique_ptr<ton::AdnlExtClient::Callback> TestNode::make_callback() {
-  class Callback : public ton::AdnlExtClient::Callback {
+std::unique_ptr<ton::adnl::AdnlExtClient::Callback> TestNode::make_callback() {
+  class Callback : public ton::adnl::AdnlExtClient::Callback {
    public:
     void on_ready() override {
       td::actor::send_closure(id_, &TestNode::conn_ready);
@@ -76,19 +73,20 @@ void TestNode::run() {
 
   auto G = td::read_file(global_config_).move_as_ok();
   auto gc_j = td::json_decode(G.as_slice()).move_as_ok();
-  ton::ton_api::config_global gc;
+  ton::ton_api::liteclient_config_global gc;
   ton::ton_api::from_json(gc, gc_j.get_object()).ensure();
 
-  CHECK(gc.liteclients_.size() > 0);
+  CHECK(gc.liteservers_.size() > 0);
   auto idx =
-      liteserver_idx_ >= 0 ? liteserver_idx_ : td::Random::fast(0, static_cast<td::uint32>(gc.liteclients_.size() - 1));
-  CHECK(idx >= 0 && static_cast<td::uint32>(idx) <= gc.liteclients_.size());
-  auto& cli = gc.liteclients_[idx];
+      liteserver_idx_ >= 0 ? liteserver_idx_ : td::Random::fast(0, static_cast<td::uint32>(gc.liteservers_.size() - 1));
+  CHECK(idx >= 0 && static_cast<td::uint32>(idx) <= gc.liteservers_.size());
+  auto& cli = gc.liteservers_[idx];
   td::IPAddress addr;
   addr.init_host_port(td::IPAddress::ipv4_to_str(cli->ip_), cli->port_).ensure();
   td::TerminalIO::out() << "using liteserver " << idx << " with addr " << addr << "\n";
 
-  client_ = ton::AdnlExtClient::create(ton::AdnlNodeIdFull::create(cli->id_).move_as_ok(), addr, make_callback());
+  client_ =
+      ton::adnl::AdnlExtClient::create(ton::adnl::AdnlNodeIdFull::create(cli->id_).move_as_ok(), addr, make_callback());
 }
 
 bool TestNode::envelope_send_query(td::BufferSlice query, td::Promise<td::BufferSlice> promise) {
@@ -104,7 +102,7 @@ bool TestNode::envelope_send_query(td::BufferSlice query, td::Promise<td::Buffer
       return;
     }
     auto data = R.move_as_ok();
-    auto F = ton::fetch_tl_object<ton::ton_api::liteServer_error>(data.clone(), true);
+    auto F = ton::fetch_tl_object<ton::lite_api::liteServer_error>(data.clone(), true);
     if (F.is_ok()) {
       auto f = F.move_as_ok();
       auto err = td::Status::Error(f->code_, f->message_);
@@ -115,9 +113,44 @@ bool TestNode::envelope_send_query(td::BufferSlice query, td::Promise<td::Buffer
     promise.set_result(std::move(data));
   });
   td::BufferSlice b =
-      ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_query>(std::move(query)), true);
-  td::actor::send_closure(client_, &ton::AdnlExtClient::send_query, "query", std::move(b), td::Timestamp::in(10.0),
-                          std::move(P));
+      ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_query>(std::move(query)), true);
+  td::actor::send_closure(client_, &ton::adnl::AdnlExtClient::send_query, "query", std::move(b),
+                          td::Timestamp::in(10.0), std::move(P));
+  return true;
+}
+
+bool TestNode::envelope_send_web(td::BufferSlice query,
+                                 td::Promise<td::BufferSlice> promise,
+                                 std::shared_ptr<HttpServer::Response> response) {
+  if (!ready_ || client_.empty()) {
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                      "{\"error\":\"failed to send query to server: not ready\"}");
+    return false;
+  }
+  auto P = td::PromiseCreator::lambda([promise = std::move(promise), response](td::Result<td::BufferSlice> R) mutable {
+    if (R.is_error()) {
+      auto err = R.move_as_error();
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                        "{\"error\":\"failed query\"}");
+      promise.set_error(std::move(err));
+      return;
+    }
+    auto data = R.move_as_ok();
+    auto F = ton::fetch_tl_object<ton::lite_api::liteServer_error>(data.clone(), true);
+    if (F.is_ok()) {
+      auto f = F.move_as_ok();
+      auto err = td::Status::Error(f->code_, f->message_);
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                        "{\"error\":\"received error\"}");
+      promise.set_error(std::move(err));
+      return;
+    }
+    promise.set_result(std::move(data));
+  });
+  td::BufferSlice b =
+      ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_query>(std::move(query)), true);
+  td::actor::send_closure(client_, &ton::adnl::AdnlExtClient::send_query, "query", std::move(b),
+                          td::Timestamp::in(10.0), std::move(P));
   return true;
 }
 
@@ -164,13 +197,13 @@ bool TestNode::complete_blkid(ton::BlockId partial_blkid, ton::BlockIdExt& compl
 }
 
 bool TestNode::get_server_time() {
-  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_getTime>(), true);
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getTime>(), true);
   return envelope_send_query(std::move(b), [&, Self = actor_id(this)](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot get server time";
       return;
     } else {
-      auto F = ton::fetch_tl_object<ton::ton_api::liteServer_currentTime>(res.move_as_ok(), true);
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_currentTime>(res.move_as_ok(), true);
       if (F.is_error()) {
         LOG(ERROR) << "cannot parse answer to liteServer.getTime";
       } else {
@@ -182,34 +215,84 @@ bool TestNode::get_server_time() {
   });
 }
 
-bool TestNode::get_server_mc_block_id() {
-  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_getMasterchainInfo>(), true);
-  return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> res) -> void {
+void TestNode::get_server_time_web(std::shared_ptr<HttpServer::Response> response) {
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getTime>(), true);
+
+  envelope_send_web(std::move(b), [&, Self = actor_id(this), response](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
-      LOG(ERROR) << "cannot get masterchain info from server";
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                        "{\"error\":\"cannot get server time\"}");
       return;
     } else {
-      auto F = ton::fetch_tl_object<ton::ton_api::liteServer_masterchainInfo>(res.move_as_ok(), true);
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_currentTime>(res.move_as_ok(), true);
       if (F.is_error()) {
-        LOG(ERROR) << "cannot parse answer to liteServer.getMasterchainInfo";
+        response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                          "{\"error\":\"cannot parse answer to liteServer.getTime\"}");
+      } else {
+        server_time_ = F.move_as_ok()->now_;
+        server_time_got_at_ = static_cast<td::uint32>(td::Clocks::system());
+        response -> write("{\"result\":\""+std::to_string(server_time_)+"\"}");
+      }
+    }
+  }, response);
+}
+
+bool TestNode::get_server_mc_block_id(bool silent) {
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getMasterchainInfo>(), true);
+  return envelope_send_query(std::move(b), [Self = actor_id(this), silent](td::Result<td::BufferSlice> res) -> void {
+    if (res.is_error()) {
+      if(!silent)
+        LOG(ERROR) << "cannot get masterchain info from server";
+      return;
+    } else {
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_masterchainInfo>(res.move_as_ok(), true);
+      if (F.is_error()) {
+        if(!silent)
+          LOG(ERROR) << "cannot parse answer to liteServer.getMasterchainInfo";
       } else {
         auto f = F.move_as_ok();
         auto blk_id = create_block_id(f->last_);
         auto zstate_id = create_zero_state_id(f->init_);
-        LOG(INFO) << "last masterchain block is " << blk_id.to_str();
-        td::actor::send_closure_later(Self, &TestNode::got_server_mc_block_id, blk_id, zstate_id);
+        if(!silent)
+          LOG(INFO) << "last masterchain block is " << blk_id.to_str();
+        td::actor::send_closure_later(Self, &TestNode::got_server_mc_block_id, blk_id, zstate_id, silent);
       }
     }
   });
 }
 
-void TestNode::got_server_mc_block_id(ton::BlockIdExt blkid, ton::ZeroStateIdExt zstateid) {
+void TestNode::get_server_mc_block_id_web(std::shared_ptr<HttpServer::Response> response) {
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getMasterchainInfo>(), true);
+  envelope_send_query(std::move(b), [Self = actor_id(this), response](td::Result<td::BufferSlice> res)->void {
+    if (res.is_error()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                          "{\"error\":\"cannot get masterchain info from server\"}");
+      return;
+    } else {
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_masterchainInfo>(res.move_as_ok(), true);
+      if (F.is_error()) {
+         response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                          "{\"error\":\"cannot parse answer to liteServer.getMasterchainInfo\"}");
+      } else {
+        auto f = F.move_as_ok();
+        auto blk_id = create_block_id(f->last_);
+        auto zstate_id = create_zero_state_id(f->init_);
+        response -> write("{\"result\":\"" + blk_id.to_str() + "\"}");
+        td::actor::send_closure_later(Self, &TestNode::got_server_mc_block_id, blk_id, zstate_id, true);
+      }
+    }
+  });
+}
+
+void TestNode::got_server_mc_block_id(ton::BlockIdExt blkid, ton::ZeroStateIdExt zstateid, bool silent) {
   if (!zstate_id_.is_valid()) {
     zstate_id_ = zstateid;
-    LOG(INFO) << "zerostate id set to " << zstate_id_.to_str();
+    if(!silent)
+      LOG(INFO) << "zerostate id set to " << zstate_id_.to_str();
   } else if (zstate_id_ != zstateid) {
-    LOG(ERROR) << "fatal: masterchain zero state id suddenly changed: expected " << zstate_id_.to_str() << ", found "
-               << zstateid.to_str();
+    if(!silent)
+      LOG(ERROR) << "fatal: masterchain zero state id suddenly changed: expected " << zstate_id_.to_str() << ", found "
+                 << zstateid.to_str();
     stop();
     return;
   }
@@ -226,13 +309,13 @@ void TestNode::got_server_mc_block_id(ton::BlockIdExt blkid, ton::ZeroStateIdExt
 
 bool TestNode::request_block(ton::BlockIdExt blkid) {
   auto b = ton::serialize_tl_object(
-      ton::create_tl_object<ton::ton_api::liteServer_getBlock>(ton::create_tl_block_id(blkid)), true);
+      ton::create_tl_object<ton::lite_api::liteServer_getBlock>(ton::create_tl_lite_block_id(blkid)), true);
   return envelope_send_query(std::move(b), [Self = actor_id(this), blkid](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot obtain block " << blkid.to_str() << " from server";
       return;
     } else {
-      auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockData>(res.move_as_ok(), true);
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockData>(res.move_as_ok(), true);
       if (F.is_error()) {
         LOG(ERROR) << "cannot parse answer to liteServer.getBlock";
       } else {
@@ -251,13 +334,13 @@ bool TestNode::request_block(ton::BlockIdExt blkid) {
 
 bool TestNode::request_state(ton::BlockIdExt blkid) {
   auto b = ton::serialize_tl_object(
-      ton::create_tl_object<ton::ton_api::liteServer_getState>(ton::create_tl_block_id(blkid)), true);
+      ton::create_tl_object<ton::lite_api::liteServer_getState>(ton::create_tl_lite_block_id(blkid)), true);
   return envelope_send_query(std::move(b), [Self = actor_id(this), blkid](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot obtain state " << blkid.to_str() << " from server";
       return;
     } else {
-      auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockState>(res.move_as_ok(), true);
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockState>(res.move_as_ok(), true);
       if (F.is_error()) {
         LOG(ERROR) << "cannot parse answer to liteServer.getState";
       } else {
@@ -408,38 +491,38 @@ bool TestNode::convert_uint64(std::string word, td::uint64& val) {
 }
 
 bool TestNode::convert_int64(std::string word, td::int64& val) {
-    val = (~0ULL << 63);
+  val = (~0ULL << 63);
   if (word.empty()) {
-      return false;
+    return false;
   }
   const char* ptr = word.c_str();
   char* end = nullptr;
   val = strtoll(ptr, &end, 10);
   if (end == ptr + word.size()) {
-      return true;
+    return true;
   } else {
-      val = (~0ULL << 63);
+    val = (~0ULL << 63);
     return false;
   }
 }
 
 bool TestNode::convert_uint32(std::string word, td::uint32& val) {
-    td::uint64 tmp;
+  td::uint64 tmp;
   if (convert_uint64(word, tmp) && (td::uint32)tmp == tmp) {
-      val = (td::uint32)tmp;
+    val = (td::uint32)tmp;
     return true;
   } else {
-      return false;
+    return false;
   }
 }
 
 bool TestNode::convert_int32(std::string word, td::int32& val) {
-    td::int64 tmp;
+  td::int64 tmp;
   if (convert_int64(word, tmp) && (td::int32)tmp == tmp) {
-      val = (td::int32)tmp;
+    val = (td::int32)tmp;
     return true;
   } else {
-      return false;
+    return false;
   }
 }
 
@@ -621,6 +704,8 @@ bool TestNode::show_help(std::string command) {
          "lasttrans[dump] <account-id> <trans-lt> <trans-hash> [<count>]\tShows or dumps specified transaction and "
          "several preceding "
          "ones\n"
+         "listblocktrans[rev] <block-id-ext> <count> [<start-account-id> <start-trans-lt>]\tLists block transactions, "
+         "starting immediately after or before the specified one\n"
          "byseqno <workchain> <shard-prefix> <seqno>\tLooks up a block by workchain, shard and seqno, and shows its "
          "header\n"
          "bylt <workchain> <shard-prefix> <lt>\tLooks up a block by workchain, shard and logical time, and shows its "
@@ -643,6 +728,7 @@ bool TestNode::do_parse_line() {
   ton::ShardIdFull shard;
   ton::BlockSeqno seqno;
   ton::UnixTime utime;
+  unsigned count;
   std::string word = get_word();
   skipspc();
   if (word == "time") {
@@ -675,6 +761,12 @@ bool TestNode::do_parse_line() {
   } else if (word == "lasttrans" || word == "lasttransdump") {
     return parse_account_addr(workchain, addr) && parse_lt(lt) && parse_hash(hash) && seekeoln() &&
            get_last_transactions(workchain, addr, lt, hash, 10, word == "lasttransdump");
+  } else if (word == "listblocktrans" || word == "listblocktransrev") {
+    lt = 0;
+    int mode = (word == "listblocktrans" ? 7 : 0x47);
+    return parse_block_id_ext(blkid) && parse_uint32(count) &&
+           (seekeoln() || (parse_hash(hash) && parse_lt(lt) && (mode |= 128) && seekeoln())) &&
+           get_block_transactions(blkid, mode, count, hash, lt);
   } else if (word == "byseqno") {
     return parse_shard_id(shard) && parse_uint32(seqno) && seekeoln() && lookup_block(shard, 1, seqno);
   } else if (word == "byutime") {
@@ -696,6 +788,19 @@ bool TestNode::do_parse_line() {
   }
 }
 
+td::Result<std::pair<Ref<vm::Cell>, std::shared_ptr<vm::StaticBagOfCellsDb>>> lazy_boc_deserialize(
+    td::BufferSlice data) {
+  vm::StaticBagOfCellsDbLazy::Options options;
+  options.check_crc32c = true;
+  TRY_RESULT(boc, vm::StaticBagOfCellsDbLazy::create(vm::BufferSliceBlobView::create(std::move(data)), options));
+  TRY_RESULT(rc, boc->get_root_count());
+  if (rc != 1) {
+    return td::Status::Error(-668, "bag-of-cells is not standard (exactly one root cell expected)");
+  }
+  TRY_RESULT(root, boc->get_root_cell(0));
+  return std::make_pair(std::move(root), std::move(boc));
+}
+
 td::Status TestNode::send_ext_msg_from_filename(std::string filename) {
   auto F = td::read_file(filename);
   if (F.is_error()) {
@@ -709,7 +814,7 @@ td::Status TestNode::send_ext_msg_from_filename(std::string filename) {
       if (R.is_error()) {
         return;
       }
-      auto F = ton::fetch_tl_object<ton::ton_api::liteServer_sendMsgStatus>(R.move_as_ok(), true);
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_sendMsgStatus>(R.move_as_ok(), true);
       if (F.is_error()) {
         LOG(ERROR) << "cannot parse answer to liteServer.sendMessage";
       } else {
@@ -718,7 +823,7 @@ td::Status TestNode::send_ext_msg_from_filename(std::string filename) {
       }
     });
     auto b =
-        ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_sendMessage>(F.move_as_ok()), true);
+        ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_sendMessage>(F.move_as_ok()), true);
     return envelope_send_query(std::move(b), std::move(P)) ? td::Status::OK()
                                                            : td::Status::Error("cannot send query to server");
   } else {
@@ -737,8 +842,8 @@ td::Status TestNode::send_set_verbosity(std::string verbosity_str) {
       }
       LOG(INFO) << "success set verbosity";
     });
-    auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_debug_setVerbosity>(
-                                          ton::create_tl_object<ton::ton_api::liteServer_debug_verbosity>(value)),
+    auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_debug_setVerbosity>(
+                                          ton::create_tl_object<ton::lite_api::liteServer_debug_verbosity>(value)),
                                       true);
     return envelope_send_query(std::move(b), std::move(P)) ? td::Status::OK()
                                                            : td::Status::Error("cannot send query to server");
@@ -754,10 +859,10 @@ bool TestNode::get_account_state(ton::WorkchainId workchain, ton::StdSmcAddress 
   if (!(ready_ && !client_.empty())) {
     return set_error("server connection not ready");
   }
-  auto a = ton::create_tl_object<ton::ton_api::liteServer_accountId>(workchain, addr);
-  auto b = ton::serialize_tl_object(
-      ton::create_tl_object<ton::ton_api::liteServer_getAccountState>(ton::create_tl_block_id(ref_blkid), std::move(a)),
-      true);
+  auto a = ton::create_tl_object<ton::lite_api::liteServer_accountId>(workchain, addr);
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getAccountState>(
+                                        ton::create_tl_lite_block_id(ref_blkid), std::move(a)),
+                                    true);
   LOG(INFO) << "requesting account state for " << workchain << ":" << addr.to_hex() << " with respect to "
             << ref_blkid.to_str();
   return envelope_send_query(
@@ -765,7 +870,7 @@ bool TestNode::get_account_state(ton::WorkchainId workchain, ton::StdSmcAddress 
         if (R.is_error()) {
           return;
         }
-        auto F = ton::fetch_tl_object<ton::ton_api::liteServer_accountState>(R.move_as_ok(), true);
+        auto F = ton::fetch_tl_object<ton::lite_api::liteServer_accountState>(R.move_as_ok(), true);
         if (F.is_error()) {
           LOG(ERROR) << "cannot parse answer to liteServer.getAccountState";
         } else {
@@ -775,6 +880,65 @@ bool TestNode::get_account_state(ton::WorkchainId workchain, ton::StdSmcAddress 
                                         std::move(f->proof_), std::move(f->state_), workchain, addr);
         }
       });
+}
+
+void TestNode::get_account_state_web(std::string address, std::string ref_blkid_str, std::shared_ptr<HttpServer::Response> response) {
+  ton::WorkchainId workchain = ton::masterchainId;  // change to basechain later
+  ton::StdSmcAddress addr;
+  ton::BlockIdExt ref_blkid;
+  if (!block::parse_std_account_addr(address, workchain, addr)){
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                      "{\"error\":\"parse_account_addr fail\"}");
+    return;
+  }
+  if ( !ref_blkid_str.length()){
+    ref_blkid = mc_last_id_;
+  }
+  else if (!TestNode::parse_block_id_ext(ref_blkid_str, ref_blkid)){
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                      "{\"error\":\"parse_block_id_ext fail\"}");
+    LOG(ERROR) << "parse_block_id_ext fail";
+    return;
+  }
+
+  if (!ref_blkid.is_valid()) {
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                      "{\"error\":\"must obtain last block information before making other queries\"}");
+    LOG(ERROR) << "must obtain last block information before making other queries";
+    return;
+  }
+  if (!(ready_ && !client_.empty())) {
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                      "{\"error\":\"server connection not ready\"}");
+    return;
+  }
+
+  auto a = ton::create_tl_object<ton::lite_api::liteServer_accountId>(workchain, addr);
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getAccountState>(
+                                        ton::create_tl_lite_block_id(ref_blkid), std::move(a)),
+                                    true);
+
+  envelope_send_web(
+    std::move(b), [Self = actor_id(this), workchain, addr, ref_blkid, response](td::Result<td::BufferSlice> R) -> void {
+      if (R.is_error()) {
+        response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                          "{\"error\":\"Unknown Error\"}");
+        LOG(ERROR) << "Unknown Error";
+        return;
+      }
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_accountState>(R.move_as_ok(), true);
+      if (F.is_error()) {
+        response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                          "{\"error\":\"cannot parse answer to liteServer.getAccountState\"}");
+        LOG(ERROR) << "cannot parse answer to liteServer.getAccountState";
+        return;
+      } else {
+        auto f = F.move_as_ok();
+        td::actor::send_closure_later(Self, &TestNode::got_account_state_web, ref_blkid, ton::create_block_id(f->id_),
+                                      ton::create_block_id(f->shardblk_), std::move(f->shard_proof_),
+                                      std::move(f->proof_), std::move(f->state_), workchain, addr, response);
+      }
+    }, response);
 }
 
 bool TestNode::get_one_transaction(ton::BlockIdExt blkid, ton::WorkchainId workchain, ton::StdSmcAddress addr,
@@ -788,9 +952,9 @@ bool TestNode::get_one_transaction(ton::BlockIdExt blkid, ton::WorkchainId workc
   if (!(ready_ && !client_.empty())) {
     return set_error("server connection not ready");
   }
-  auto a = ton::create_tl_object<ton::ton_api::liteServer_accountId>(workchain, addr);
-  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_getOneTransaction>(
-                                        ton::create_tl_block_id(blkid), std::move(a), lt),
+  auto a = ton::create_tl_object<ton::lite_api::liteServer_accountId>(workchain, addr);
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getOneTransaction>(
+                                        ton::create_tl_lite_block_id(blkid), std::move(a), lt),
                                     true);
   LOG(INFO) << "requesting transaction " << lt << " of " << workchain << ":" << addr.to_hex() << " from block "
             << blkid.to_str();
@@ -799,7 +963,7 @@ bool TestNode::get_one_transaction(ton::BlockIdExt blkid, ton::WorkchainId workc
         if (R.is_error()) {
           return;
         }
-        auto F = ton::fetch_tl_object<ton::ton_api::liteServer_transactionInfo>(R.move_as_ok(), true);
+        auto F = ton::fetch_tl_object<ton::lite_api::liteServer_transactionInfo>(R.move_as_ok(), true);
         if (F.is_error()) {
           LOG(ERROR) << "cannot parse answer to liteServer.getOneTransaction";
         } else {
@@ -810,14 +974,53 @@ bool TestNode::get_one_transaction(ton::BlockIdExt blkid, ton::WorkchainId workc
       });
 }
 
+void TestNode::get_one_transaction_web(ton::BlockIdExt blkid, ton::WorkchainId workchain, ton::StdSmcAddress addr,
+                                   ton::LogicalTime lt, std::shared_ptr<HttpServer::Response> response, bool dump) {
+  if (!blkid.is_valid_full()) {
+        response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                        "{\"error\":\"invalid block id\"}");
+        return;
+  }
+  if (!ton::shard_contains(blkid.shard_full(), ton::extract_addr_prefix(workchain, addr))) {
+        response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                        "{\"error\":\"the shard of this block cannot contain this account\"}");
+        return;
+  }
+  if (!(ready_ && !client_.empty())) {
+        response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                        "{\"error\":\"server connection not ready\"}");
+        return;
+  }
+  auto a = ton::create_tl_object<ton::lite_api::liteServer_accountId>(workchain, addr);
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_getOneTransaction>(
+                                        ton::create_tl_lite_block_id(blkid), std::move(a), lt),
+                                    true);
+
+  envelope_send_web(
+      std::move(b), [Self = actor_id(this), workchain, addr, lt, blkid, dump, response](td::Result<td::BufferSlice> R) -> void {
+        if (R.is_error()) {
+          return;
+        }
+        auto F = ton::fetch_tl_object<ton::lite_api::liteServer_transactionInfo>(R.move_as_ok(), true);
+        if (F.is_error()) {
+          LOG(ERROR) << "cannot parse answer to liteServer.getOneTransaction";
+        } else {
+          auto f = F.move_as_ok();
+          td::actor::send_closure_later(Self, &TestNode::got_one_transaction_web, blkid, ton::create_block_id(f->id_),
+                                        std::move(f->proof_), std::move(f->transaction_), workchain, addr, lt, dump, response);
+        }
+      }, response);
+}
+
+
 bool TestNode::get_last_transactions(ton::WorkchainId workchain, ton::StdSmcAddress addr, ton::LogicalTime lt,
                                      ton::Bits256 hash, unsigned count, bool dump) {
   if (!(ready_ && !client_.empty())) {
     return set_error("server connection not ready");
   }
-  auto a = ton::create_tl_object<ton::ton_api::liteServer_accountId>(workchain, addr);
+  auto a = ton::create_tl_object<ton::lite_api::liteServer_accountId>(workchain, addr);
   auto b = ton::serialize_tl_object(
-      ton::create_tl_object<ton::ton_api::liteServer_getTransactions>(count, std::move(a), lt, hash), true);
+      ton::create_tl_object<ton::lite_api::liteServer_getTransactions>(count, std::move(a), lt, hash), true);
   LOG(INFO) << "requesting " << count << " last transactions from " << lt << ":" << hash.to_hex() << " of " << workchain
             << ":" << addr.to_hex();
   return envelope_send_query(
@@ -825,7 +1028,7 @@ bool TestNode::get_last_transactions(ton::WorkchainId workchain, ton::StdSmcAddr
         if (R.is_error()) {
           return;
         }
-        auto F = ton::fetch_tl_object<ton::ton_api::liteServer_transactionList>(R.move_as_ok(), true);
+        auto F = ton::fetch_tl_object<ton::lite_api::liteServer_transactionList>(R.move_as_ok(), true);
         if (F.is_error()) {
           LOG(ERROR) << "cannot parse answer to liteServer.getTransactions";
         } else {
@@ -840,209 +1043,64 @@ bool TestNode::get_last_transactions(ton::WorkchainId workchain, ton::StdSmcAddr
       });
 }
 
-td::Status check_block_header_proof(Ref<vm::Cell> root, ton::BlockIdExt blkid,
-                                    ton::Bits256* store_shard_hash_to = nullptr, bool check_state_hash = false) {
-  ton::RootHash vhash{root->get_hash().bits()};
-  if (vhash != blkid.root_hash) {
-    return td::Status::Error(PSTRING() << " block header for block " << blkid.to_str() << " has incorrect root hash "
-                                       << vhash.to_hex() << " instead of " << blkid.root_hash.to_hex());
-  }
-  std::vector<ton::BlockIdExt> prev;
-  ton::BlockIdExt mc_blkid;
-  bool after_split;
-  auto res = block::unpack_block_prev_blk_ext(root, blkid, prev, mc_blkid, after_split);
-  if (res.is_error()) {
-    return res;
-  }
-  block::gen::Block::Record blk;
-  block::gen::BlockInfo::Record info;
-  if (!(tlb::unpack_cell(root, blk) && tlb::unpack_cell(blk.info, info))) {
-    return td::Status::Error(std::string{"cannot unpack header for block "} + blkid.to_str());
-  }
-  if (store_shard_hash_to) {
-    vm::CellSlice upd_cs{vm::NoVmSpec(), blk.state_update};
-    if (!(upd_cs.is_special() && upd_cs.prefetch_long(8) == 4  // merkle update
-          && upd_cs.size_ext() == 0x20228)) {
-      return td::Status::Error("invalid Merkle update in block header");
-    }
-    auto upd_hash = upd_cs.prefetch_ref(1)->get_hash(0);
-    if (!check_state_hash) {
-      *store_shard_hash_to = upd_hash.bits();
-    } else if (store_shard_hash_to->compare(upd_hash.bits())) {
-      return td::Status::Error(PSTRING() << "state hash mismatch in block header of " << blkid.to_str()
-                                         << " : header declares " << upd_hash.bits().to_hex(256) << " expected "
-                                         << store_shard_hash_to->to_hex());
-    }
-  }
-  return td::Status::OK();
-}
-
 void TestNode::got_account_state(ton::BlockIdExt ref_blk, ton::BlockIdExt blk, ton::BlockIdExt shard_blk,
                                  td::BufferSlice shard_proof, td::BufferSlice proof, td::BufferSlice state,
                                  ton::WorkchainId workchain, ton::StdSmcAddress addr) {
   LOG(INFO) << "got account state for " << workchain << ":" << addr.to_hex() << " with respect to blocks "
             << blk.to_str() << (shard_blk == blk ? "" : std::string{" and "} + shard_blk.to_str());
-  Ref<vm::Cell> root;
-  if (!state.empty()) {
-    auto R = vm::std_boc_deserialize(state.clone());
-    if (R.is_error()) {
-      LOG(ERROR) << "cannot deserialize account state";
-      return;
-    }
-    root = R.move_as_ok();
-    CHECK(root.not_null());
-  }
-  if (blk != ref_blk && ref_blk.id.seqno != ~0U) {
-    LOG(ERROR) << "obtained getAccountState() for a different reference block " << blk.to_str()
-               << " instead of requested " << ref_blk.to_str();
-    return;
-  }
-  if (!shard_blk.is_valid_full()) {
-    LOG(ERROR) << "shard block id " << shard_blk.to_str() << " in answer is invalid";
-    return;
-  }
-  if (!ton::shard_contains(shard_blk.shard_full(), ton::extract_addr_prefix(workchain, addr))) {
-    LOG(ERROR) << "received data from shard block " << shard_blk.to_str() << " that cannot contain requested account "
-               << workchain << ":" << addr.to_hex();
-    return;
-  }
-  if (blk != shard_blk) {
-    if (!blk.is_masterchain() || !blk.is_valid_full()) {
-      LOG(ERROR) << "reference block " << blk.to_str() << " for a getAccountState query must belong to the masterchain";
-      return;
-    }
-    auto P = vm::std_boc_deserialize_multi(std::move(shard_proof));
-    if (P.is_error()) {
-      LOG(ERROR) << "cannot deserialize shard configuration proof";
-      return;
-    }
-    auto P_roots = P.move_as_ok();
-    if (P_roots.size() != 2) {
-      LOG(ERROR) << "shard configuration proof must have exactly two roots";
-      return;
-    }
-    try {
-      auto mc_state_root = vm::MerkleProof::virtualize(std::move(P_roots[1]), 1);
-      if (mc_state_root.is_null()) {
-        LOG(ERROR) << "shard configuration proof is invalid";
-        return;
-      }
-      ton::Bits256 mc_state_hash = mc_state_root->get_hash().bits();
-      auto res1 =
-          check_block_header_proof(vm::MerkleProof::virtualize(std::move(P_roots[0]), 1), blk, &mc_state_hash, true);
-      if (res1.is_error()) {
-        LOG(ERROR) << "error in shard configuration block header proof : " << res1.move_as_error().to_string();
-        return;
-      }
-      block::gen::ShardStateUnsplit::Record sstate;
-      if (!(tlb::unpack_cell(mc_state_root, sstate))) {
-        LOG(ERROR) << "cannot unpack masterchain state header";
-        return;
-      }
-      auto shards_dict = block::Config::extract_shard_hashes_dict(std::move(mc_state_root));
-      if (!shards_dict) {
-        LOG(ERROR) << "cannot extract shard configuration dictionary from proof";
-        return;
-      }
-      vm::CellSlice cs;
-      ton::ShardIdFull true_shard;
-      if (!block::ShardConfig::get_shard_hash_raw_from(*shards_dict, cs, shard_blk.shard_full(), true_shard)) {
-        LOG(ERROR) << "masterchain state contains no information for shard " << shard_blk.shard_full().to_str();
-        return;
-      }
-      auto shard_info = block::McShardHash::unpack(cs, true_shard);
-      if (shard_info.is_null()) {
-        LOG(ERROR) << "cannot unpack information for shard " << shard_blk.shard_full().to_str()
-                   << " from masterchain state";
-        return;
-      }
-      if (shard_info->top_block_id() != shard_blk) {
-        LOG(ERROR) << "shard configuration mismatch: expected to find block " << shard_blk.to_str() << " , found "
-                   << shard_info->top_block_id().to_str();
-        return;
-      }
-    } catch (vm::VmError err) {
-      LOG(ERROR) << "error while traversing shard configuration proof : " << err.get_msg();
-      return;
-    } catch (vm::VmVirtError err) {
-      LOG(ERROR) << "virtualization error while traversing shard configuration proof : " << err.get_msg();
-      return;
-    }
-  }
-  auto Q = vm::std_boc_deserialize_multi(std::move(proof));
-  if (Q.is_error()) {
-    LOG(ERROR) << "cannot deserialize account proof";
-    return;
-  }
-  auto Q_roots = Q.move_as_ok();
-  if (Q_roots.size() != 2) {
-    LOG(ERROR) << "account state proof must have exactly two roots";
-    return;
-  }
-  ton::LogicalTime last_trans_lt = 0;
-  ton::Bits256 last_trans_hash;
-  last_trans_hash.set_zero();
-  try {
-    auto state_root = vm::MerkleProof::virtualize(std::move(Q_roots[1]), 1);
-    if (state_root.is_null()) {
-      LOG(ERROR) << "account state proof is invalid";
-      return;
-    }
-    ton::Bits256 state_hash = state_root->get_hash().bits();
-    auto res1 =
-        check_block_header_proof(vm::MerkleProof::virtualize(std::move(Q_roots[0]), 1), shard_blk, &state_hash, true);
-    if (res1.is_error()) {
-      LOG(ERROR) << "error in account shard block header proof : " << res1.move_as_error().to_string();
-      return;
-    }
-    block::gen::ShardStateUnsplit::Record sstate;
-    if (!(tlb::unpack_cell(std::move(state_root), sstate))) {
-      LOG(ERROR) << "cannot unpack state header";
-      return;
-    }
-    vm::AugmentedDictionary accounts_dict{sstate.accounts->prefetch_ref(), 256, block::tlb::aug_ShardAccounts};
-    auto acc_csr = accounts_dict.lookup(addr);
-    if (acc_csr.not_null()) {
-      if (root.is_null()) {
-        LOG(ERROR) << "account state proof shows that account state for " << workchain << ":" << addr.to_hex()
-                   << " must be non-empty, but it actually is empty";
-        return;
-      }
-      block::gen::ShardAccount::Record acc_info;
-      if (!tlb::csr_unpack(std::move(acc_csr), acc_info)) {
-        LOG(ERROR) << "cannot unpack ShardAccount from proof";
-        return;
-      }
-      if (acc_info.account->get_hash().bits().compare(root->get_hash().bits(), 256)) {
-        LOG(ERROR) << "account state hash mismatch: Merkle proof expects "
-                   << acc_info.account->get_hash().bits().to_hex(256) << " but received data has "
-                   << root->get_hash().bits().to_hex(256);
-        return;
-      }
-      last_trans_hash = acc_info.last_trans_hash;
-      last_trans_lt = acc_info.last_trans_lt;
-    } else if (root.not_null()) {
-      LOG(ERROR) << "account state proof shows that account state for " << workchain << ":" << addr.to_hex()
-                 << " must be empty, but it is not";
-      return;
-    }
-  } catch (vm::VmError err) {
-    LOG(ERROR) << "error while traversing account proof : " << err.get_msg();
-    return;
-  } catch (vm::VmVirtError err) {
-    LOG(ERROR) << "virtualization error while traversing account proof : " << err.get_msg();
+  block::AccountState account_state;
+  account_state.blk = blk;
+  account_state.shard_blk = shard_blk;
+  account_state.shard_proof = std::move(shard_proof);
+  account_state.proof = std::move(proof);
+  account_state.state = std::move(state);
+  auto r_info = account_state.validate(ref_blk, block::StdAddress(workchain, addr));
+  if (r_info.is_error()) {
+    LOG(ERROR) << r_info.error().message();
     return;
   }
   auto out = td::TerminalIO::out();
-  if (root.not_null()) {
+  auto info = r_info.move_as_ok();
+  if (info.root.not_null()) {
     out << "account state is ";
     std::ostringstream outp;
-    block::gen::t_Account.print_ref(outp, root);
-    vm::load_cell_slice(root).print_rec(outp);
+    block::gen::t_Account.print_ref(outp, info.root);
+    vm::load_cell_slice(info.root).print_rec(outp);
     out << outp.str();
-    out << "last transaction lt = " << last_trans_lt << " hash = " << last_trans_hash.to_hex() << std::endl;
+    out << "last transaction lt = " << info.last_trans_lt << " hash = " << info.last_trans_hash.to_hex() << std::endl;
   } else {
     out << "account state is empty" << std::endl;
+  }
+}
+
+void TestNode::got_account_state_web(ton::BlockIdExt ref_blk, ton::BlockIdExt blk, ton::BlockIdExt shard_blk, td::BufferSlice shard_proof,
+                                     td::BufferSlice proof, td::BufferSlice state, ton::WorkchainId workchain,
+                                     ton::StdSmcAddress addr, std::shared_ptr<HttpServer::Response> response) {
+  block::AccountState account_state;
+  account_state.blk = blk;
+  account_state.shard_blk = shard_blk;
+  account_state.shard_proof = std::move(shard_proof);
+  account_state.proof = std::move(proof);
+  account_state.state = std::move(state);
+  auto r_info = account_state.validate(ref_blk, block::StdAddress(workchain, addr));
+  if (r_info.is_error()) {
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                        "{\"error\":\"" + r_info.error().message().str() + "\"}");
+        return;
+  }
+  auto out = td::TerminalIO::out();
+  auto info = r_info.move_as_ok();
+  if (info.root.not_null()) {
+    std::ostringstream account_outp, vm_outp, ltlt;
+    block::gen::t_Account.print_ref(account_outp, info.root);
+    vm::load_cell_slice(info.root).print_rec(vm_outp);
+    ltlt<<info.last_trans_lt;
+    response -> write("{\"result\":{\"account\":\""+account_outp.str()+\
+                              "\", \"vm\":\""+vm_outp.str()+\
+                              "\", \"last_transaction_logical_time\":"+ltlt.str()+\
+                               ", \"last_transaction_hash\":\""+info.last_trans_hash.to_hex()+"\"}}");
+  } else {
+    response -> write("{\"error\":\"account state is empty\"}");
   }
 }
 
@@ -1083,7 +1141,7 @@ void TestNode::got_one_transaction(ton::BlockIdExt req_blkid, ton::BlockIdExt bl
       LOG(ERROR) << "transaction block proof is invalid";
       return;
     }
-    auto res1 = check_block_header_proof(block_root, blkid);
+    auto res1 = block::check_block_header_proof(block_root, blkid);
     if (res1.is_error()) {
       LOG(ERROR) << "error in transaction block header proof : " << res1.move_as_error().to_string();
       return;
@@ -1128,6 +1186,93 @@ void TestNode::got_one_transaction(ton::BlockIdExt req_blkid, ton::BlockIdExt bl
     block::gen::t_Transaction.print_ref(outp, root);
     vm::load_cell_slice(root).print_rec(outp);
     out << outp.str();
+  }
+}
+
+
+void TestNode::got_one_transaction_web(ton::BlockIdExt req_blkid, ton::BlockIdExt blkid, td::BufferSlice proof,
+                                       td::BufferSlice transaction, ton::WorkchainId workchain, ton::StdSmcAddress addr,
+                                       ton::LogicalTime trans_lt, bool dump,
+                                       std::shared_ptr<HttpServer::Response> response) {
+  std::ostringstream outp, res_body, err_oss;
+  res_body<<"\"transaction_lt\":"<<trans_lt<<",";
+  res_body<<"\"address\":\""<<workchain<<":"<<addr.to_hex()<<"\",";
+  res_body<<"\"block\":\""<<blkid.to_str()<<"\",";
+
+  if (blkid != req_blkid) {
+    response -> write("{\"error\":\"obtained TransactionInfo for a different block\"}");
+    return;
+  }
+  if (!ton::shard_contains(blkid.shard_full(), ton::extract_addr_prefix(workchain, addr))) {
+    response -> write("{\"error\":\"received data from block that cannot contain requested account\"}");
+    return;
+  }
+  Ref<vm::Cell> root;
+  if (!transaction.empty()) {
+    auto R = vm::std_boc_deserialize(std::move(transaction));
+    if (R.is_error()) {
+      response -> write("{\"error\":\"cannot deserialize transaction\"}");
+      return;
+    }
+    root = R.move_as_ok();
+    CHECK(root.not_null());
+  }
+  auto P = vm::std_boc_deserialize(std::move(proof));
+  if (P.is_error()) {
+    response -> write("{\"error\":\"cannot deserialize block transaction proof\"}");
+    return;
+  }
+  auto proof_root = P.move_as_ok();
+  try {
+    auto block_root = vm::MerkleProof::virtualize(std::move(proof_root), 1);
+    if (block_root.is_null()) {
+      response -> write("{\"error\":\"transaction block proof is invalid\"}");
+      return;
+    }
+    auto res1 = block::check_block_header_proof(block_root, blkid);
+    if (res1.is_error()) {
+      response -> write("{\"error\":\"error in transaction block header proof : "+res1.move_as_error().to_string()+"\"}");
+      return;
+    }
+    auto trans_root_res = block::get_block_transaction_try(std::move(block_root), workchain, addr, trans_lt);
+    if (trans_root_res.is_error()) {
+      response -> write("{\"error\":\""+trans_root_res.move_as_error().message().str()+"\"}");
+      return;
+    }
+    auto trans_root = trans_root_res.move_as_ok();
+    if (trans_root.is_null() && root.not_null()) {
+
+      response -> write("{\"error\":\"error checking transaction proof: proof claims there is no such transaction, but we have got transaction data with hash "+root->get_hash().bits().to_hex(256)+"\"}");
+      return;
+    }
+    if (trans_root.not_null() && root.is_null()) {
+      response -> write("{\"error\":\"error checking transaction proof: proof claims there is such a transaction with hash "+trans_root->get_hash().bits().to_hex(256)+"but we have got no transaction data\"}");
+      return;
+    }
+    if (trans_root.not_null() && trans_root->get_hash().bits().compare(root->get_hash().bits(), 256)) {
+      response -> write("{\"error\":\"transaction hash mismatch: Merkle proof expects "+trans_root->get_hash().bits().to_hex(256)+"but received data has"+ root->get_hash().bits().to_hex(256) +"\"}");
+      return;
+    }
+  } catch (vm::VmError err) {
+    err_oss<<"{\"error\":\"error while traversing block transaction proof : "<< err.get_msg()<<"\"}";
+    response -> write(err_oss.str());
+    return;
+  } catch (vm::VmVirtError err) {
+    err_oss<<"{\"error\":\"virtualization error while traversing block transaction proof : "<< err.get_msg() << "\"}";
+    response -> write(err_oss.str());
+    return;
+  }
+  auto out = td::TerminalIO::out();
+  if (root.is_null()) {
+    response -> write("{\"error\":\"transaction not found\"}");
+  } else {
+    std::ostringstream tx, vmslice;
+    block::gen::t_Transaction.print_ref(tx, root);
+    vm::load_cell_slice(root).print_rec(vmslice);
+    res_body<<"\"transaction\":\""<<tx.str()<<"\",";
+    res_body<<"\"vm\":\""<<vmslice.str()<<"\"";
+    outp<<"{\"result\":{"<<res_body.str()<<"}}";
+     response -> write(outp.str());
   }
 }
 
@@ -1234,53 +1379,34 @@ void TestNode::got_last_transactions(std::vector<ton::BlockIdExt> blkids, td::Bu
                                      ton::Bits256 hash, unsigned count, bool dump) {
   LOG(INFO) << "got up to " << count << " transactions for " << workchain << ":" << addr.to_hex()
             << " from last transaction " << lt << ":" << hash.to_hex();
-  auto R = vm::std_boc_deserialize_multi(std::move(transactions_boc));
-  if (R.is_error()) {
-    LOG(ERROR) << "cannot deserialize transactions BoC";
+  block::TransactionList transaction_list;
+  transaction_list.blkids = blkids;
+  transaction_list.lt = lt;
+  transaction_list.hash = hash;
+  transaction_list.transactions_boc = std::move(transactions_boc);
+  auto r_info = transaction_list.validate();
+  if (r_info.is_error()) {
+    LOG(ERROR) << "got_last_transactions: " << r_info.error();
     return;
   }
-  auto list = R.move_as_ok();
-  auto n = list.size();
-  if (n > count) {
-    LOG(ERROR) << "obtained " << n << " transaction, but only " << count << " have been requested";
-    return;
-  }
-  if (n != blkids.size()) {
-    LOG(ERROR) << "transaction list size " << n << " must be equal to the size of block id list " << blkids.size();
-    return;
-  }
-  auto out = td::TerminalIO::out();
+  auto info = r_info.move_as_ok();
   unsigned c = 0;
-  for (auto& root : list) {
-    const auto& blkid = blkids[c++];
-    if (root.is_null()) {
-      out << "transaction #" << c << " from block " << blkid.to_str() << " not found" << std::endl;
-      LOG(ERROR) << "transactions are expected to be non-empty";
-      return;
-    }
-    if (hash != root->get_hash().bits()) {
-      LOG(ERROR) << "transaction hash mismatch: expected " << hash.to_hex() << ", found "
-                 << root->get_hash().bits().to_hex(256);
-      return;
-    }
+  auto out = td::TerminalIO::out();
+  CHECK(!info.transactions.empty());
+  for (auto& info : info.transactions) {
+    const auto& blkid = info.blkid;
     out << "transaction #" << c << " from block " << blkid.to_str() << (dump ? " is " : "\n");
     if (dump) {
       std::ostringstream outp;
-      block::gen::t_Transaction.print_ref(outp, root);
-      vm::load_cell_slice(root).print_rec(outp);
+      block::gen::t_Transaction.print_ref(outp, info.transaction);
+      vm::load_cell_slice(info.transaction).print_rec(outp);
       out << outp.str();
     }
     block::gen::Transaction::Record trans;
-    if (!tlb::unpack_cell(root, trans)) {
+    if (!tlb::unpack_cell(info.transaction, trans)) {
       LOG(ERROR) << "cannot unpack transaction #" << c;
       return;
     }
-    if (trans.lt != lt) {
-      LOG(ERROR) << "transaction lt mismatch: expected " << lt << ", found " << trans.lt;
-      return;
-    }
-    lt = trans.prev_trans_lt;
-    hash = trans.prev_trans_hash;
     out << "  time=" << trans.now << " outmsg_cnt=" << trans.outmsg_cnt << std::endl;
     auto in_msg = trans.in_msg->prefetch_ref();
     if (in_msg.is_null()) {
@@ -1301,14 +1427,118 @@ void TestNode::got_last_transactions(std::vector<ton::BlockIdExt> blkids, td::Bu
     }
     register_blkid(blkid);  // unsafe?
   }
-  if (lt > 0) {
-    out << "previous transaction has lt " << lt << " hash " << hash.to_hex() << std::endl;
-    if (c < count) {
+  auto& last = info.transactions.back();
+  if (last.prev_trans_lt > 0) {
+    out << "previous transaction has lt " << last.prev_trans_lt << " hash " << last.prev_trans_hash.to_hex()
+        << std::endl;
+    if (info.transactions.size() < count) {
       LOG(WARNING) << "obtained less transactions than required";
     }
   } else {
     out << "no preceding transactions (list complete)" << std::endl;
   }
+}
+
+bool TestNode::get_block_transactions(ton::BlockIdExt blkid, int mode, unsigned count, ton::Bits256 acc_addr,
+                                      ton::LogicalTime lt) {
+  if (!(ready_ && !client_.empty())) {
+    return set_error("server connection not ready");
+  }
+  auto a = ton::create_tl_object<ton::lite_api::liteServer_transactionId3>(acc_addr, lt);
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_listBlockTransactions>(
+                                        ton::create_tl_lite_block_id(blkid), mode, count, std::move(a), false, false),
+                                    true);
+  LOG(INFO) << "requesting " << count << " transactions from block " << blkid.to_str() << " starting from account "
+            << acc_addr.to_hex() << " lt " << lt;
+  return envelope_send_query(std::move(b), [Self = actor_id(this), mode](td::Result<td::BufferSlice> R) {
+    if (R.is_error()) {
+      return;
+    }
+    auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockTransactions>(R.move_as_ok(), true);
+    if (F.is_error()) {
+      LOG(ERROR) << "cannot parse answer to liteServer.listBlockTransactions";
+    } else {
+      auto f = F.move_as_ok();
+      std::vector<TransId> transactions;
+      for (auto& id : f->ids_) {
+        transactions.emplace_back(id->account_, id->lt_, id->hash_);
+      }
+      td::actor::send_closure_later(Self, &TestNode::got_block_transactions, ton::create_block_id(f->id_), mode,
+                                    f->req_count_, f->incomplete_, std::move(transactions), std::move(f->proof_));
+    }
+  });
+}
+
+void TestNode::get_block_transactions_web(std::string blkid_str, int mode, unsigned count, std::shared_ptr<HttpServer::Response> response) {
+  ton::LogicalTime lt = 0;
+  ton::Bits256 acc_addr;
+  ton::BlockIdExt blkid;
+  if (!(ready_ && !client_.empty())) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"server connection not ready\"}");   
+           return;   
+  }
+  if ( !blkid_str.length()){
+    blkid = mc_last_id_;
+  }
+  else if (!TestNode::parse_block_id_ext(blkid_str, blkid)){
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                      "{\"error\":\"parse_block_id_ext fail\"}");
+    return;
+  }
+  auto a = ton::create_tl_object<ton::lite_api::liteServer_transactionId3>(acc_addr, lt);
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_listBlockTransactions>(
+                                        ton::create_tl_lite_block_id(blkid), mode, count, std::move(a), false, false),
+                                    true);
+  envelope_send_web(std::move(b), [Self = actor_id(this), mode, response](td::Result<td::BufferSlice> R) {
+    if (R.is_error()) {
+      return;
+    }
+    auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockTransactions>(R.move_as_ok(), true);
+    if (F.is_error()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error,
+                      "{\"error\":\"cannot parse answer to liteServer.listBlockTransactions\"}");
+    return;
+    } else {
+      auto f = F.move_as_ok();
+      std::vector<TransId> transactions;
+      for (auto& id : f->ids_) {
+        transactions.emplace_back(id->account_, id->lt_, id->hash_);
+      }
+      td::actor::send_closure_later(Self, &TestNode::got_block_transactions_web, ton::create_block_id(f->id_), mode,
+                                    f->req_count_, f->incomplete_, std::move(transactions), std::move(f->proof_), response);
+    }
+  }, response);
+}
+void TestNode::got_block_transactions(ton::BlockIdExt blkid, int mode, unsigned req_count, bool incomplete,
+                                      std::vector<TestNode::TransId> trans, td::BufferSlice proof) {
+  LOG(INFO) << "got up to " << req_count << " transactions from block " << blkid.to_str();
+  auto out = td::TerminalIO::out();
+  int count = 0;
+  for (auto& t : trans) {
+    out << "transaction #" << ++count << ": account " << t.acc_addr.to_hex() << " lt " << t.trans_lt << " hash "
+        << t.trans_hash.to_hex() << std::endl;
+  }
+  out << (incomplete ? "(block transaction list incomplete)" : "(end of block transaction list)") << std::endl;
+}
+
+void TestNode::got_block_transactions_web(ton::BlockIdExt blkid, int mode, unsigned req_count, bool incomplete,
+                                      std::vector<TestNode::TransId> trans, td::BufferSlice proof,
+                                      std::shared_ptr<HttpServer::Response> response) {
+  int count = 0;
+  std::ostringstream outp;
+  outp << "{'result':{";
+  outp << "\"block_id\":\""<<blkid.to_str()<<"\", ";
+  outp << "\"transactions\": [";
+
+  for (auto& t : trans) {
+    if(count) {outp<<", ";}
+    count++;
+    outp << "{\"account\": \"" << t.acc_addr.to_hex() << "\", \"lt\":\"" << t.trans_lt << "\", \"transaction_hash\":\" "
+        << t.trans_hash.to_hex() << "\"}";
+  }
+  outp << "], \"complete_transactions_list\":"<<(incomplete ? "false" : "true") << "}}";
+  response -> write(outp.str());
 }
 
 bool TestNode::get_all_shards(bool use_last, ton::BlockIdExt blkid) {
@@ -1326,13 +1556,13 @@ bool TestNode::get_all_shards(bool use_last, ton::BlockIdExt blkid) {
     return set_error("server connection not ready");
   }
   auto b = ton::serialize_tl_object(
-      ton::create_tl_object<ton::ton_api::liteServer_getAllShardsInfo>(ton::create_tl_block_id(blkid)), true);
+      ton::create_tl_object<ton::lite_api::liteServer_getAllShardsInfo>(ton::create_tl_lite_block_id(blkid)), true);
   LOG(INFO) << "requesting recent shard configuration";
   return envelope_send_query(std::move(b), [Self = actor_id(this)](td::Result<td::BufferSlice> R) -> void {
     if (R.is_error()) {
       return;
     }
-    auto F = ton::fetch_tl_object<ton::ton_api::liteServer_allShardsInfo>(R.move_as_ok(), true);
+    auto F = ton::fetch_tl_object<ton::lite_api::liteServer_allShardsInfo>(R.move_as_ok(), true);
     if (F.is_error()) {
       LOG(ERROR) << "cannot parse answer to liteServer.getAllShardsInfo";
     } else {
@@ -1342,6 +1572,55 @@ bool TestNode::get_all_shards(bool use_last, ton::BlockIdExt blkid) {
     }
   });
 }
+
+void TestNode::get_all_shards_web(std::shared_ptr<HttpServer::Response> response, bool use_last, std::string blkid_str) {
+  ton::BlockIdExt blkid;
+  if (use_last) {
+    blkid = mc_last_id_;
+  } 
+  else {
+    
+    if(!TestNode::parse_block_id_ext(blkid_str, blkid, true))
+        {  response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"cannot parse block_id\"}");   
+           return;   
+        }
+  }
+  if (!blkid.is_valid_full()) {
+    if (use_last) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"must obtain last block information before making other queries\"}"); 
+    } else {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"invalid masterchain block id\"}"); 
+    }
+  }
+  if (!blkid.is_masterchain()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"only masterchain blocks contain shard configuration\"}"); 
+  }
+  if (!(ready_ && !client_.empty())) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"server connection not ready\"}");
+  }
+  auto b = ton::serialize_tl_object(
+      ton::create_tl_object<ton::lite_api::liteServer_getAllShardsInfo>(ton::create_tl_lite_block_id(blkid)), true);
+  envelope_send_web(std::move(b), [Self = actor_id(this), response](td::Result<td::BufferSlice> R)->void {
+    if (R.is_error()) {
+      return;
+    }
+    auto F = ton::fetch_tl_object<ton::lite_api::liteServer_allShardsInfo>(R.move_as_ok(), true);
+    if (F.is_error()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"cannot parse answer to liteServer.getAllShardsInfo\"}");
+    } else {
+      auto f = F.move_as_ok();
+      td::actor::send_closure_later(Self, &TestNode::got_all_shards_web, ton::create_block_id(f->id_), std::move(f->proof_),
+                                    std::move(f->data_), response);
+    }
+  }, response);
+}
+
 
 void TestNode::got_all_shards(ton::BlockIdExt blk, td::BufferSlice proof, td::BufferSlice data) {
   LOG(INFO) << "got shard configuration with respect to block " << blk.to_str();
@@ -1381,10 +1660,66 @@ void TestNode::got_all_shards(ton::BlockIdExt blk, td::BufferSlice proof, td::Bu
   show_new_blkids();
 }
 
+void TestNode::got_all_shards_web(ton::BlockIdExt blk, td::BufferSlice proof, td::BufferSlice data, std::shared_ptr<HttpServer::Response> response) {
+  std::ostringstream out;
+  out << "{'result':{";
+  out << "\"block_id\":\""<<blk.to_str()<<"\", ";
+  out << "\"shard_configuration\": ";
+  if (data.empty()) {
+    out << "\"empty\"}";
+  } else {
+    auto R = vm::std_boc_deserialize(data.clone());
+    if (R.is_error()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"cannot deserialize shard configuration\"}");
+      return;
+    }
+    auto root = R.move_as_ok();
+    std::ostringstream outp_shards, outp_vm, outp_shards_simple;
+    block::gen::t_ShardHashes.print_ref(outp_shards, root);
+    vm::load_cell_slice(root).print_rec(outp_vm);
+    block::ShardConfig sh_conf;
+    if (!sh_conf.unpack(vm::load_cell_slice_ref(root))) {
+      outp_shards_simple << "\"cannot extract shard block list from shard configuration\"";
+    } else {
+      auto ids = sh_conf.get_shard_hash_ids(true);
+      int cnt = 0;
+      outp_shards_simple << "[";
+      bool was_shard = false;
+      for (auto id : ids) {
+        if(was_shard)
+          {outp_shards_simple<<", ";}
+        std::ostringstream current_shard;
+        current_shard<<"{";
+
+        auto ref = sh_conf.get_shard_hash(ton::ShardIdFull(id));
+        if (ref.not_null()) {
+          register_blkid(ref->top_block_id());
+          current_shard<<"\"block_id\":\""<<ref->top_block_id().to_str()<<"\",";
+          current_shard<<"\"gen_time\":"<<ref->created_at()<<",";
+          current_shard<<"\"start_lt\":"<<ref->start_lt()<<",";
+          current_shard<<"\"end_lt\":"<<ref->end_lt();
+          current_shard<<"}";
+        } else {
+          current_shard<<"\"block_id\":\""<<ref->top_block_id().to_str()<<"\"}";
+        }
+        was_shard = true;
+        outp_shards_simple<<current_shard.str();
+      }
+      outp_shards_simple << "]";
+      out<< "{ \"shards_info\":\""<<outp_shards.str()<< \
+          "\", \"vm\":\""<< outp_vm.str()<< \
+           "\",\"shards_list\":"<<outp_shards_simple.str()<<"}";
+    }
+  }
+  out << "}}";
+  response -> write(out.str());
+}
+
 bool TestNode::get_block(ton::BlockIdExt blkid, bool dump) {
   LOG(INFO) << "got block download request for " << blkid.to_str();
   auto b = ton::serialize_tl_object(
-      ton::create_tl_object<ton::ton_api::liteServer_getBlock>(ton::create_tl_block_id(blkid)), true);
+      ton::create_tl_object<ton::lite_api::liteServer_getBlock>(ton::create_tl_lite_block_id(blkid)), true);
   return envelope_send_query(
       std::move(b), [Self = actor_id(this), blkid, dump](td::Result<td::BufferSlice> res) -> void {
         if (res.is_error()) {
@@ -1392,7 +1727,7 @@ bool TestNode::get_block(ton::BlockIdExt blkid, bool dump) {
                      << " from server : " << res.move_as_error().to_string();
           return;
         } else {
-          auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockData>(res.move_as_ok(), true);
+          auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockData>(res.move_as_ok(), true);
           if (F.is_error()) {
             LOG(ERROR) << "cannot parse answer to liteServer.getBlock : " << res.move_as_error().to_string();
           } else {
@@ -1410,10 +1745,46 @@ bool TestNode::get_block(ton::BlockIdExt blkid, bool dump) {
       });
 }
 
+void TestNode::get_block_web(std::string blkid_str, std::shared_ptr<HttpServer::Response> response, bool dump) {
+    ton::BlockIdExt blkid;
+    if(!TestNode::parse_block_id_ext(blkid_str, blkid, true))
+        {  response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"cannot parse block_id\"}");      
+        }
+
+  auto b = ton::serialize_tl_object(
+      ton::create_tl_object<ton::lite_api::liteServer_getBlock>(ton::create_tl_lite_block_id(blkid)), true);
+  envelope_send_web(
+      std::move(b), [Self = actor_id(this), blkid, dump, response](td::Result<td::BufferSlice> res)-> void {
+        if (res.is_error()) {
+          response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, 
+                           "{\"error\":\"cannot obtain block " + blkid.to_str() + \
+                             " from server : " + res.move_as_error().to_string()+"\"}");
+          return;
+        } else {
+          auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockData>(res.move_as_ok(), true);
+          if (F.is_error()) {
+            response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                              "{\"error\":\"cannot parse answer to liteServer.getBlock : " +\
+                               res.move_as_error().to_string()+"\"}");
+          } else {
+            auto f = F.move_as_ok();
+            auto blk_id = ton::create_block_id(f->id_);
+            if (blk_id != blkid) {
+              response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                                "{\"error\":\"block id mismatch: expected data for block " + blkid.to_str() +\
+                                 ", obtained for " + blk_id.to_str()+"\"}");
+            }
+            td::actor::send_closure_later(Self, &TestNode::got_block_web, blk_id, std::move(f->data_), dump, response);
+          }
+        }
+      }, response);
+}
+
 bool TestNode::get_state(ton::BlockIdExt blkid, bool dump) {
   LOG(INFO) << "got state download request for " << blkid.to_str();
   auto b = ton::serialize_tl_object(
-      ton::create_tl_object<ton::ton_api::liteServer_getState>(ton::create_tl_block_id(blkid)), true);
+      ton::create_tl_object<ton::lite_api::liteServer_getState>(ton::create_tl_lite_block_id(blkid)), true);
   return envelope_send_query(
       std::move(b), [Self = actor_id(this), blkid, dump](td::Result<td::BufferSlice> res) -> void {
         if (res.is_error()) {
@@ -1421,7 +1792,7 @@ bool TestNode::get_state(ton::BlockIdExt blkid, bool dump) {
                      << " from server : " << res.move_as_error().to_string();
           return;
         } else {
-          auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockState>(res.move_as_ok(), true);
+          auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockState>(res.move_as_ok(), true);
           if (F.is_error()) {
             LOG(ERROR) << "cannot parse answer to liteServer.getState";
           } else {
@@ -1495,6 +1866,122 @@ void TestNode::got_block(ton::BlockIdExt blkid, td::BufferSlice data, bool dump)
   show_new_blkids();
 }
 
+void TestNode::got_block_web(ton::BlockIdExt blkid, td::BufferSlice data, bool dump, std::shared_ptr<HttpServer::Response> response) {
+  LOG(INFO) << "obtained " << data.size() << " data bytes for block " << blkid.to_str();
+  ton::FileHash fhash;
+  td::sha256(data.as_slice(), fhash.as_slice());
+  if (fhash != blkid.file_hash) {
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                      "{\"error\":\"file hash mismatch for block " + blkid.to_str() +\
+                      ": expected " + blkid.file_hash.to_hex() + ", computed " + fhash.to_hex()+"\"}");
+    return;
+  }
+  if (!db_root_.empty()) {
+    auto res = save_db_file(fhash, data.clone());
+    if (res.is_error()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                        "{\"error\":\"error saving block file: " + res.to_string() + "\"}");
+    }
+  }
+  if (dump) {
+    auto res = vm::std_boc_deserialize(data.clone());
+    if (res.is_error()) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                        "{\"error\":\"cannot deserialize block data " + res.move_as_error().to_string() + "\"}");
+      return;
+    }
+    auto root = res.move_as_ok();
+    ton::RootHash rhash{root->get_hash().bits()};
+    if (rhash != blkid.root_hash) {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                        "{\"error\":\"block root hash mismatch: data has " + rhash.to_hex() +\
+                        " , expected " + blkid.root_hash.to_hex() + "\"}");      
+
+      return;
+    }
+    //auto out = td::TerminalIO::out();
+    //out << "block contents is ";
+    std::ostringstream block_data, vm_data, header_data;
+    block::gen::t_Block.print_ref(block_data, root);
+    vm::load_cell_slice(root).print_rec(vm_data);
+    give_block_header_description(header_data, blkid, std::move(root), 0xffff);
+    response -> write("{\"result\": {\"block\":\""+block_data.str()+
+                               "\", \"vm\":\""+vm_data.str()+
+                               "\", \"header\":"+header_data.str()+"}}");    
+  } else {
+    auto res = lazy_boc_deserialize(data.clone());
+    if (res.is_error()) {
+      LOG(ERROR) << "cannot lazily deserialize block data : " << res.move_as_error().to_string();
+      return;
+    }
+    auto pair = res.move_as_ok();
+    auto root = std::move(pair.first);
+    ton::RootHash rhash{root->get_hash().bits()};
+    if (rhash != blkid.root_hash) {
+      LOG(ERROR) << "block root hash mismatch: data has " << rhash.to_hex() << " , expected "
+                 << blkid.root_hash.to_hex();
+      return;
+    }
+    show_block_header(blkid, std::move(root), 0xffff);
+  }
+}
+
+bool TestNode::give_block_header_description(std::ostringstream& out, ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode) {
+  ton::RootHash vhash{root->get_hash().bits()};
+  if (vhash != blkid.root_hash) {
+    LOG(ERROR) << " block header for block " << blkid.to_str() << " has incorrect root hash " << vhash.to_hex()
+               << " instead of " << blkid.root_hash.to_hex();
+    return false;
+  }
+  std::vector<ton::BlockIdExt> prev;
+  ton::BlockIdExt mc_blkid, blkid_u = blkid;
+  bool after_split;
+  auto res = block::unpack_block_prev_blk_ext(root, blkid_u, prev, mc_blkid, after_split);
+  if (res.is_error()) {
+    LOG(ERROR) << "cannot unpack header for block " << blkid.to_str() << " : " << res.to_string();
+    return false;
+  }
+  if (blkid_u.id != blkid.id || blkid_u.root_hash != blkid.root_hash) {
+    LOG(ERROR) << "block header claims it is for block " << blkid_u.to_str() << " not " << blkid.to_str();
+    return false;
+  }
+  block::gen::Block::Record blk;
+  block::gen::BlockInfo::Record info;
+  if (!(tlb::unpack_cell(root, blk) && tlb::unpack_cell(blk.info, info))) {
+    LOG(ERROR) << "cannot unpack header for block " << blkid.to_str();
+    return false;
+  }
+  out << "{";
+  out << "  'block_id':'"<<blkid.to_str()<<"', ";
+  out << "  'gen_time':"<<info.gen_utime<<", ";
+  out << "  'start_lt':"<<info.start_lt<<", ";
+  out << "  'end_lt':"<<info.end_lt<<", ";
+
+  out << "  'global_id':"<<blk.global_id<<", ";
+  out << "  'version':"<<info.version<<", ";
+  out << "  'not_master':"<<info.not_master<<", ";
+  out << "  'after_merge':"<<info.after_merge<<", ";
+  out << "  'after_split':"<<info.after_split<<", ";
+  out << "  'before_split':"<<info.before_split<<", ";
+  out << "  'want_merge':"<<info.want_merge<<", ";
+  out << "  'want_split':"<<info.want_split<<", ";
+  out << "  'gen_validator_list_hash_short':"<<info.gen_validator_list_hash_short<<", ";
+  out << "  'catchain_seqno':"<<info.gen_catchain_seqno<<", ";
+  out << "  'min_ref_mc_seqno':"<<info.min_ref_mc_seqno<<", ";
+
+  out << "  'prev_blocks': [";
+  int was_block = false;
+  for (auto id : prev) {
+    if(was_block){out << ", ";}
+    out << "'"<< id.to_str() << "'";
+    was_block = true;
+  }
+  out << "  ], ";
+  out << "'reference_masterchain_block' : '" << mc_blkid.to_str() << "'";
+  out << "}";
+  return true;
+}
+
 void TestNode::got_state(ton::BlockIdExt blkid, ton::RootHash root_hash, ton::FileHash file_hash, td::BufferSlice data,
                          bool dump) {
   LOG(INFO) << "obtained " << data.size() << " state bytes for block " << blkid.to_str();
@@ -1554,14 +2041,14 @@ void TestNode::got_state(ton::BlockIdExt blkid, ton::RootHash root_hash, ton::Fi
 bool TestNode::get_block_header(ton::BlockIdExt blkid, int mode) {
   LOG(INFO) << "got block header request for " << blkid.to_str() << " with mode " << mode;
   auto b = ton::serialize_tl_object(
-      ton::create_tl_object<ton::ton_api::liteServer_getBlockHeader>(ton::create_tl_block_id(blkid), mode), true);
+      ton::create_tl_object<ton::lite_api::liteServer_getBlockHeader>(ton::create_tl_lite_block_id(blkid), mode), true);
   return envelope_send_query(std::move(b), [Self = actor_id(this), blkid](td::Result<td::BufferSlice> res) -> void {
     if (res.is_error()) {
       LOG(ERROR) << "cannot obtain block header for " << blkid.to_str()
                  << " from server : " << res.move_as_error().to_string();
       return;
     } else {
-      auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockHeader>(res.move_as_ok(), true);
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockHeader>(res.move_as_ok(), true);
       if (F.is_error()) {
         LOG(ERROR) << "cannot parse answer to liteServer.getBlockHeader : " << res.move_as_error().to_string();
       } else {
@@ -1582,8 +2069,8 @@ bool TestNode::get_block_header(ton::BlockIdExt blkid, int mode) {
 bool TestNode::lookup_block(ton::ShardIdFull shard, int mode, td::uint64 arg) {
   ton::BlockId id{shard, mode & 1 ? (td::uint32)arg : 0};
   LOG(INFO) << "got block lookup request for " << id.to_str() << " with mode " << mode << " and argument " << arg;
-  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::ton_api::liteServer_lookupBlock>(
-                                        mode, ton::create_tl_block_id_simple(id), arg, (td::uint32)arg),
+  auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_lookupBlock>(
+                                        mode, ton::create_tl_lite_block_id_simple(id), arg, (td::uint32)arg),
                                     true);
   return envelope_send_query(
       std::move(b), [Self = actor_id(this), id, mode, arg](td::Result<td::BufferSlice> res) -> void {
@@ -1592,7 +2079,7 @@ bool TestNode::lookup_block(ton::ShardIdFull shard, int mode, td::uint64 arg) {
                      << arg << " from server : " << res.move_as_error().to_string();
           return;
         } else {
-          auto F = ton::fetch_tl_object<ton::ton_api::liteServer_blockHeader>(res.move_as_ok(), true);
+          auto F = ton::fetch_tl_object<ton::lite_api::liteServer_blockHeader>(res.move_as_ok(), true);
           if (F.is_error()) {
             LOG(ERROR) << "cannot parse answer to liteServer.lookupBlock : " << res.move_as_error().to_string();
           } else {
@@ -1606,7 +2093,6 @@ bool TestNode::lookup_block(ton::ShardIdFull shard, int mode, td::uint64 arg) {
       });
   return false;
 }
-
 
 bool TestNode::show_block_header(ton::BlockIdExt blkid, Ref<vm::Cell> root, int mode) {
   ton::RootHash vhash{root->get_hash().bits()};
@@ -1636,7 +2122,11 @@ bool TestNode::show_block_header(ton::BlockIdExt blkid, Ref<vm::Cell> root, int 
       << " after_merge=" << info.after_merge << " after_split=" << info.after_split
       << " before_split=" << info.before_split << " want_merge=" << info.want_merge << " want_split=" << info.want_split
       << " validator_list_hash_short=" << info.gen_validator_list_hash_short
-      << " catchain_seqno=" << info.gen_catchain_seqno << " min_ref_mc_seqno=" << info.min_ref_mc_seqno << std::endl;
+      << " catchain_seqno=" << info.gen_catchain_seqno << " min_ref_mc_seqno=" << info.min_ref_mc_seqno;
+  if (!info.not_master) {
+    out << " is_key_block=" << info.key_block << " prev_key_block_seqno=" << info.prev_key_block_seqno;
+  }
+  out << std::endl;
   register_blkid(blkid);
   int cnt = 0;
   for (auto id : prev) {
@@ -1679,12 +2169,174 @@ void TestNode::got_block_header(ton::BlockIdExt blkid, td::BufferSlice data, int
   show_new_blkids();
 }
 
+void TestNode::send_ext_msg_from_filename_web(std::string filename, std::shared_ptr<HttpServer::Response> response) {
+  auto F = td::read_file(load_files_dir_+filename);
+  if (F.is_error()) {
+    auto err = F.move_as_error();
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                                "{\"error\":\"failed to read file " + filename +\
+                                 ":" + err.to_string()+"\"}");
+    return;
+  }
+  if (ready_ && !client_.empty()) {
+    auto P = td::PromiseCreator::lambda([response](td::Result<td::BufferSlice> R) {
+      if (R.is_error()) {
+        response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                                "{\"error\":\"Unknown error\"}");
+        return;
+      }
+      auto F = ton::fetch_tl_object<ton::lite_api::liteServer_sendMsgStatus>(R.move_as_ok(), true);
+      if (F.is_error()) {
+        response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                                "{\"error\":\"cannot parse answer to liteServer.sendMessage\"}");
+      } else {
+        int status = F.move_as_ok()->status_;
+        LOG(INFO) << "external message status is " << status;
+      }
+    });
+    auto b =
+        ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_sendMessage>(F.move_as_ok()), true);
+    td::Status result = envelope_send_query(std::move(b), std::move(P)) ? td::Status::OK()
+                                                           : td::Status::Error("cannot send query to server");
+    
+    if (result.is_ok()) {
+     response -> write("{\"result\":\"Ok\"}");
+     return;
+    } else {
+      response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                                "{\"error\":\""+result.to_string()+"\"}");
+      return;
+    }
+  } else {
+    response -> write(SimpleWeb::StatusCode::server_error_internal_server_error, \
+                                "{\"error\":\"server connection not ready\"}");
+  }
+
+}
+
+void run_web_server(td::actor::Scheduler* scheduler, td::actor::ActorOwn<TestNode>* x, int port){
+  HttpServer server;
+  server.config.port = port;
+
+  // get a time
+  server.resource["^/time$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                     std::shared_ptr<HttpServer::Request> request) {
+
+    std::thread work_thread([response, scheduler, x] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_server_time_web, response);
+      });
+    });
+    work_thread.detach();
+  };
+  //
+
+  // get a account
+  server.resource["^/getaccount/(.+)$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::string address = request -> path_match[1].str();
+
+    std::thread work_thread([response, scheduler, x, address] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_account_state_web, address, "", response);
+      });
+    });
+    work_thread.detach();
+  };
+  // get a account at block
+  server.resource["^/getaccount_at_block/([\\w\\-:]+)/([\\w\\-:\\(\\),]+)$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::string address = request -> path_match[1].str();
+    std::string block = request -> path_match[2].str();
+    std::thread work_thread([response, scheduler, x, address, block] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_account_state_web, address, block, response);
+      });
+    });
+    work_thread.detach();
+  };
+  //
+  // get a block
+  server.resource["^/getblock/(.+)$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::string blkid_str = request -> path_match[1].str();
+    std::thread work_thread([response, scheduler, x, blkid_str] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_block_web, blkid_str, response, true);
+      });
+    });
+    work_thread.detach();
+  };
+  //
+  // get a transactions at block
+  server.resource["^/gettransactions_at_block/([\\w\\-:\\(\\),]+)$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::string block = request -> path_match[1].str();
+    std::thread work_thread([response, scheduler, x, block] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_block_transactions_web, block, 7, 1000, response);
+      });
+    });
+    work_thread.detach();
+  };
+  //
+  // get last
+  server.resource["^/last$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::thread work_thread([response, scheduler, x] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_server_mc_block_id_web, response);
+      });
+    });
+    work_thread.detach();
+  };
+  //
+
+  // get shards
+  server.resource["^/shards$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::thread work_thread([response, scheduler, x] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_all_shards_web, response, true, "");
+      });
+    });
+    work_thread.detach();
+  };
+  //
+  // get shards
+  server.resource["^/shards_at_block/(.+)$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::string blkid_str = request -> path_match[1].str();
+    std::thread work_thread([response, scheduler, x, blkid_str] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::get_all_shards_web, response, false, blkid_str);
+      });
+    });
+    work_thread.detach();
+  };
+  //
+  // send_file
+  server.resource["^/send_file/([\\w\\-]+)\\.boc$"]["GET"] = [scheduler, x](std::shared_ptr<HttpServer::Response> response,
+                                                                          std::shared_ptr<HttpServer::Request> request) {
+    std::string file_name = request -> path_match[1].str()+".boc";
+    std::thread work_thread([response, scheduler, x, file_name] {
+      scheduler -> run_in_context([&] {
+        td::actor::send_closure(x -> get(), &TestNode::send_ext_msg_from_filename_web, file_name, response);
+      });
+    });
+    work_thread.detach();
+  };
+  //
+  server.start();
+}
+
+
 void run_updater(td::actor::Scheduler* scheduler, td::actor::ActorOwn<TestNode>* x){
   unsigned int microseconds = 2000000;
   while(true){
     usleep(microseconds);
     scheduler -> run_in_context([&] {
-      td::actor::send_closure(x -> get(), &TestNode::web_last);
+      td::actor::send_closure(x -> get(), &TestNode::silent_update);
     });
   }
 }
@@ -1694,6 +2346,8 @@ int main(int argc, char* argv[]) {
   td::set_default_failure_signal_handler();
 
   td::actor::ActorOwn<TestNode> x;
+  int port=8000;
+
 
   td::OptionsParser p;
   p.set_description("Test Lite Client for TON Blockchain");
@@ -1735,6 +2389,10 @@ int main(int argc, char* argv[]) {
     td::actor::send_closure(x, &TestNode::set_liteserver_idx, idx);
     return td::Status::OK();
   });
+  p.add_option('p', "port", "webserver port", [&](td::Slice arg) {
+    port = td::to_integer<int>(arg);
+    return td::Status::OK();
+  });
   p.add_option('d', "daemonize", "set SIGHUP", [&]() {
     td::set_signal_handler(td::SignalType::HangUp, [](int sig) {
 #if TD_DARWIN || TD_LINUX
@@ -1754,6 +2412,10 @@ int main(int argc, char* argv[]) {
     dup2(FileLog.get_native_fd().fd(), 2);
     return td::Status::OK();
   });
+  p.add_option('b', "load-files-dir", "base directory from which files for sending to network will be loaded", [&](td::Slice fname) {
+    td::actor::send_closure(x, &TestNode::set_load_files_dir, fname.str());
+    return td::Status::OK();
+  });
 #endif
 
   td::actor::Scheduler scheduler({2});
@@ -1763,14 +2425,10 @@ int main(int argc, char* argv[]) {
   scheduler.run_in_context([&] { p.run(argc, argv).ensure(); });
   scheduler.run_in_context([&] {
     td::actor::send_closure(x, &TestNode::run);
-    // TMP disable release due to having an ability to call obj in another threads
-    // TODO: do requests directly w/o using actors
-    // x.release();
+    x.release();
   });
-
   // web server thread
-  std::thread webserver = std::thread(TestNode::run_web_server, &scheduler, &x);
-
+  std::thread webserver = std::thread(run_web_server, &scheduler, &x, port);
   // updater thread called 'last' command
   std::thread updater = std::thread(run_updater, &scheduler, &x);
 

@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.0.2)
 
 project(LITE_CLIENT)
 
-add_subdirectory(lite-client/third-party/abseil-cpp EXCLUDE_FROM_ALL)
-
 set(CRC32C_BUILD_TESTS OFF CACHE BOOL "Build CRC32C's unit tests")
 set(CRC32C_BUILD_BENCHMARKS OFF CACHE BOOL "Build CRC32C's benchmarks")
 set(CRC32C_USE_GLOG OFF CACHE BOOL "Build CRC32C's tests with Google Logging")
@@ -162,6 +160,10 @@ add_subdirectory(lite-client/adnl)
 
 add_subdirectory(lite-client/crypto)
 
-add_executable (test-lite-client-with-webserver src/lite-client.cpp)
-target_link_libraries(test-lite-client-with-webserver tdutils tdactor adnllite tl_api 
-  ton_crypto ton_block terminal)
+#add_executable (test-lite-client-with-webserver src/lite-client.cpp)
+#target_link_libraries(test-lite-client-with-webserver tdutils tdactor adnllite tl_api 
+#  ton_crypto ton_block terminal)
+
+add_executable (test-lite-client-with-webserver src/lite-client.cpp src/lite-client.h)
+target_link_libraries(test-lite-client-with-webserver tdutils tdactor adnllite tl_api tl_lite_api tl-lite-utils ton_crypto ton_block terminal)
+
