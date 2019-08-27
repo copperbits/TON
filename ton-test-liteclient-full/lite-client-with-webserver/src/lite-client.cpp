@@ -2425,7 +2425,7 @@ int main(int argc, char* argv[]) {
   scheduler.run_in_context([&] { p.run(argc, argv).ensure(); });
   scheduler.run_in_context([&] {
     td::actor::send_closure(x, &TestNode::run);
-    x.release();
+    //x.release();
   });
   // web server thread
   std::thread webserver = std::thread(run_web_server, &scheduler, &x, port);
