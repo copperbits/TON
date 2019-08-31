@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "ton-types.h"
@@ -174,7 +192,7 @@ inline ShardIdFull shard_child(ShardIdFull shard, bool left) {
 }
 
 inline bool shard_is_sibling(ShardId x, ShardId y) {
-  return (x ^ y) && (x ^ y) == ((x & -x) << 1);
+  return (x ^ y) && ((x ^ y) == ((x & td::bits_negate64(x)) << 1));
 }
 
 inline bool shard_is_sibling(ShardIdFull x, ShardIdFull y) {
@@ -182,7 +200,7 @@ inline bool shard_is_sibling(ShardIdFull x, ShardIdFull y) {
 }
 
 inline ShardId shard_sibling(ShardId x) {
-  return x ^ ((x & -x) << 1);
+  return x ^ ((x & td::bits_negate64(x)) << 1);
 }
 
 inline ShardIdFull shard_sibling(ShardIdFull shard) {

@@ -1,3 +1,21 @@
+/* 
+    This file is part of TON Blockchain source code.
+
+    TON Blockchain is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation; either version 2
+    of the License, or (at your option) any later version.
+
+    TON Blockchain is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with TON Blockchain.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <vector>
 #include <string>
 #include <map>
@@ -133,19 +151,23 @@ int lexem_is_special(std::string str) {
 
 namespace sym {
 
-enum class IdSc : char { undef = 0, lc = 1, uc = 2 };
+enum class IdSc : char { undef = 0, lc = 1, uc = 2, blc = 3 };
 // subclass:
 // 1 = first letter or first letter after last . is lowercase
 // 2 = ... uppercase
+// 3 = 1 + first character (after last ., if present) is a !
 // 0 = else
 int compute_symbol_subclass(std::string str) {
   IdSc res = IdSc::undef;
-  int t = 0;
+  int t = 0, s = 0;
   for (char c : str) {
     if (c == '.') {
       res = IdSc::undef;
-      t = 0;
+      s = t = 0;
     } else if (res == IdSc::undef) {
+      if (!s) {
+        s = (c == '!' ? 1 : -1);
+      }
       if ((c | 0x20) >= 'a' && (c | 0x20) <= 'z') {
         res = (c & 0x20 ? IdSc::lc : IdSc::uc);
       }
@@ -158,11 +180,20 @@ int compute_symbol_subclass(std::string str) {
       t = (((unsigned)c & 0xe0) == 0xc0 ? (c & 0x1f) : 0);
     }
   }
+  if (s == 1 && res == IdSc::lc) {
+    res = IdSc::blc;
+  }
   return (int)res;
 }
 
 inline bool is_lc_ident(sym_idx_t idx) {
-  return symbols.get_subclass(idx) == (int)IdSc::lc;
+  auto sc = symbols.get_subclass(idx);
+  return sc == (int)IdSc::lc || sc == (int)IdSc::blc;
+}
+
+inline bool is_spec_lc_ident(sym_idx_t idx) {
+  auto sc = symbols.get_subclass(idx);
+  return sc == (int)IdSc::blc;
 }
 
 inline bool is_uc_ident(sym_idx_t idx) {
@@ -408,7 +439,7 @@ int AdmissibilityInfo::conflicts_at(const AdmissibilityInfo& other) const {
 
 bool AdmissibilityInfo::extract1(char A[4], char tag, int p1) const {
   char B[4];
-  memset(B, 0, sizeof(B));
+  std::memset(B, 0, sizeof(B));
   p1 <<= 1;
   std::size_t n = info.size() - 1;
   for (std::size_t x = 0; x <= n; x++) {
@@ -431,7 +462,7 @@ bool AdmissibilityInfo::extract1(char A[4], char tag, int p1) const {
 
 bool AdmissibilityInfo::extract2(char A[4][4], char tag, int p1, int p2) const {
   char B[4][4];
-  memset(B, 0, sizeof(B));
+  std::memset(B, 0, sizeof(B));
   p1 <<= 1;
   p2 <<= 1;
   std::size_t n = info.size() - 1;
@@ -458,7 +489,7 @@ bool AdmissibilityInfo::extract2(char A[4][4], char tag, int p1, int p2) const {
 
 bool AdmissibilityInfo::extract3(char A[4][4][4], char tag, int p1, int p2, int p3) const {
   char B[4][4][4];
-  memset(B, 0, sizeof(B));
+  std::memset(B, 0, sizeof(B));
   p1 <<= 1;
   p2 <<= 1;
   p3 <<= 1;
@@ -639,12 +670,12 @@ unsigned long long BinTrie::build_submap(int depth, unsigned long long A[]) cons
   if (left) {
     r1 = left->build_submap(depth - 1, A);
   } else {
-    memset(A, 0, n * 8);
+    std::memset(A, 0, n * 8);
   }
   if (right) {
     r2 = right->build_submap(depth - 1, A + n);
   } else {
-    memset(A + n, 0, n * 8);
+    std::memset(A + n, 0, n * 8);
   }
   if (A[n] != A[n - 1] || (long)A[n] < 0) {
     r2 |= 1;
@@ -657,7 +688,7 @@ unsigned long long BinTrie::build_submap(int depth, unsigned long long A[]) cons
 unsigned long long BinTrie::build_submap_at(int depth, unsigned long long A[], unsigned long long pfx) const {
   const BinTrie* node = lookup_node_const(pfx);
   if (!node) {
-    memset(A, 0, 8 << depth);
+    std::memset(A, 0, 8 << depth);
     return 0;
   }
   return node->build_submap(depth, A);
@@ -867,7 +898,7 @@ TypeExpr* TypeExpr::mk_intconst(const src::SrcLocation& loc, std::string int_con
   char* end_ptr = 0;
   long long value = -1;
   if (!int_const.empty()) {
-    value = strtoll(int_const.c_str(), &end_ptr, 0);
+    value = std::strtoll(int_const.c_str(), &end_ptr, 0);
   }
   if (value < 0 || value >= (1LL << 31) || end_ptr != int_const.c_str() + int_const.size()) {
     throw src::ParseError{loc, "integer constant does not fit in an unsigned 31-bit integer"};
@@ -1837,24 +1868,26 @@ void Type::bind_constructor(const src::SrcLocation& loc, Constructor* cs) {
   cs->compute_is_fwd();
   is_enum &= cs->is_enum;
   is_simple_enum &= cs->is_simple_enum;
+  if (constr_num && (is_special != cs->is_special)) {
+    throw src::ParseError{cs->where, std::string{"type `"} + sym::symbols.get_name(type_name) +
+                                         "` has mixed special and non-special constructors"};
+  }
+  is_special = cs->is_special;
   ++(constr_num);
   constructors.push_back(cs);
 }
 
-bool Type::unique_constructor_equals(const Constructor& cs) const {
-  if (constr_num != 1) {
-    return false;
-  }
-  return constructors.at(0)->isomorphic_to(cs);
+bool Type::unique_constructor_equals(const Constructor& cs, bool allow_other_names) const {
+  return constr_num == 1 && constructors.at(0)->isomorphic_to(cs, allow_other_names);
 }
 
-bool Constructor::isomorphic_to(const Constructor& cs) const {
+bool Constructor::isomorphic_to(const Constructor& cs, bool allow_other_names) const {
   if (constr_name != cs.constr_name || tag != cs.tag || fields_num != cs.fields_num || type_arity != cs.type_arity ||
       params.size() != cs.params.size()) {
     return false;
   }
   for (int i = 0; i < fields_num; i++) {
-    if (!fields.at(i).isomorphic_to(cs.fields.at(i))) {
+    if (!fields.at(i).isomorphic_to(cs.fields.at(i), allow_other_names)) {
       return false;
     }
   }
@@ -2206,6 +2239,7 @@ void parse_constructor_def(Lexer& lex) {
   if (lex.tp() != '_' && (lex.tp() != src::_Ident || !sym::is_lc_ident(lex.cur().val))) {
     throw src::ParseError{lex.cur().loc, "constructor name lowercase identifier expected"};
   }
+  bool is_special = sym::is_spec_lc_ident(lex.cur().val);
   sym::open_scope(lex);
   Lexem constr_lex = lex.cur();
   int orig_types_num = types_num;
@@ -2222,6 +2256,7 @@ void parse_constructor_def(Lexer& lex) {
   //          << std::dec << std::endl;
   auto cs_ref = new Constructor(where, constr_name, 0, tag);
   Constructor& cs = *cs_ref;
+  cs.is_special = is_special;
   parse_field_list(lex, cs);
   lex.expect('=');
   if (lex.tp() != src::_Ident || !sym::is_uc_ident(lex.cur().val)) {

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "vm/boc.h"
 #include "vm/cellslice.h"
 #include "vm/cells.h"
@@ -143,7 +161,7 @@ class BenchSha256Low : public td::Benchmark {
 class BenchSha256Tdlib : public td::Benchmark {
  public:
   std::string get_description() const override {
-    return "SHA256 tdlib";
+    return "SHA256 TDLib";
   }
 
   void run(int n) override {
@@ -151,10 +169,10 @@ class BenchSha256Tdlib : public td::Benchmark {
     static TD_THREAD_LOCAL td::Sha256State *ctx;
     for (int i = 0; i < n; i++) {
       td::init_thread_local<td::Sha256State>(ctx);
-      td::sha256_init(ctx);
-      td::sha256_update("abcd", ctx);
+      ctx->init();
+      ctx->feed("abcd");
       unsigned char buf[32];
-      td::sha256_final(ctx, td::MutableSlice(buf, 32), false);
+      ctx->extract(td::MutableSlice(buf, 32), false);
       res += buf[0];
     }
     td::do_not_optimize_away(res);
@@ -443,7 +461,7 @@ class RandomBagOfCells {
 template <class T>
 void random_shuffle(td::MutableSpan<T> v, td::Random::Xorshift128plus &rnd) {
   for (std::size_t i = 1; i < v.size(); i++) {
-    auto pos = rnd() % (i + 1);
+    auto pos = static_cast<std::size_t>(rnd() % (i + 1));
     std::swap(v[i], v[pos]);
   }
 }
@@ -1118,14 +1136,14 @@ TEST(Cell, BocHands) {
   std::string serialized_idx_crc =
       td::Slice(
           "\254\303\247(\001\001\002\001\000*\004*\201\001P\001\210H\001\004\024\271\313\264\253\277\265\350dN\250{,"
-          "\372\021\012:I\354\322|\255\245\330\204+&\345\214\026\3004\000\001\032\2313\274")
+          "\372\021\012:I\354\322|\255\245\330\204+&\345\214\026\300\064\000\001\032\231\063\274")
           .str();
   //auto serialized_idx_x = serialize_boc(a, BagOfCells::WithIndex);
   //LOG(ERROR) << td::format::escaped(serialized_idx_x);
   std::string serialized_idx =
       td::Slice(
           "h\377e\363\001\001\002\001\000*\004*\201\001P\001\210H\001\004\024\271\313\264\253\277\265\350dN\250{,"
-          "\372\021\012:I\354\322|\255\245\330\204+&\345\214\026\3004\000\001")
+          "\372\021\012:I\354\322|\255\245\330\204+&\345\214\026\300\064\000\001")
           .str();
 
   ASSERT_EQ(serialized, serialize_boc(deserialize_boc(serialized_idx)));
@@ -1357,7 +1375,7 @@ class BenchBocSerializerImport : public td::Benchmark {
 
  private:
   td::BufferSlice serialization_;
-  constexpr static td::uint32 array_size = 1024;
+  static constexpr td::uint32 array_size = 1024;
   vm::CompactArray arr{1};
 };
 
@@ -1385,7 +1403,7 @@ class BenchBocSerializerSerialize : public td::Benchmark {
 
  private:
   td::BufferSlice serialization_;
-  constexpr static td::uint32 array_size = 1024;
+  static constexpr td::uint32 array_size = 1024;
   vm::CompactArray arr{1};
   vm::BagOfCells boc;
 };
@@ -1537,7 +1555,7 @@ class BenchBocDeserializer : public td::Benchmark {
                 pos = rnd() % array_size;
                 break;
             }
-            ASSERT_EQ(fast_array_.get(pos), array.get(pos));
+            ASSERT_EQ(fast_array_.get(td::narrow_cast<std::size_t>(pos)), array.get(td::narrow_cast<std::size_t>(pos)));
           }
           stage.wait(config_.threads_n * (2 * round_i + 2));
         }
@@ -1552,7 +1570,7 @@ class BenchBocDeserializer : public td::Benchmark {
   std::string name_;
   td::BufferSlice serialization_;
   BenchBocDeserializerConfig config_;
-  constexpr static td::uint32 array_size = 1024 * 1024;
+  static constexpr td::uint32 array_size = 1024 * 1024;
   vm::FastCompactArray fast_array_{array_size};
   vm::Ref<vm::Cell> root_;
   vm::TonDb db_;
@@ -1657,7 +1675,7 @@ TEST(TonDb, CompactArray) {
 
   vm::CompactArray array(2);
   vm::FastCompactArray fast_array(2);
-  auto next_pos = [&] { return rnd() % array.size(); };
+  auto next_pos = [&] { return static_cast<size_t>(rnd() % array.size()); };
 
   auto db = vm::TonDbImpl::open(db_path).move_as_ok();
   auto txn = db->begin_transaction();
@@ -1702,7 +1720,7 @@ TEST(TonDb, CompactArray) {
   };
 
   auto set_value = [&] {
-    auto pos = rnd() % array.size();
+    auto pos = static_cast<size_t>(rnd() % array.size());
     auto value = rnd() % 3;
     array.set(pos, value);
     fast_array.set(pos, value);
@@ -1778,7 +1796,7 @@ TEST(TonDb, CompactArrayOld) {
       LOG(ERROR) << "i = " << i;
     }
     CompactArray arr(array_size, smart->get_root());
-    auto key = rnd() % array_size;
+    auto key = static_cast<size_t>(rnd() % array_size);
     auto value = rnd() % 2;
     arr.set(key, value);
     fast_array.set(key, value);

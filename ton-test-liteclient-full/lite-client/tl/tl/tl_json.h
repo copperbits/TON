@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/base64.h"
@@ -133,6 +151,14 @@ inline Status from_json(SecureString &to, JsonValue &from) {
   return Status::OK();
 }
 
+inline Status from_json(Slice &to, JsonValue &from) {
+  if (from.type() != JsonValue::Type::String) {
+    return Status::Error(PSLICE() << "Expected string, got " << from.type());
+  }
+  to = from.get_string();
+  return Status::OK();
+}
+
 inline Status from_json_bytes(string &to, JsonValue &from) {
   if (from.type() != JsonValue::Type::String) {
     return Status::Error(PSLICE() << "Expected string, got " << from.type());
@@ -146,9 +172,8 @@ inline Status from_json_bytes(SecureString &to, JsonValue &from) {
   if (from.type() != JsonValue::Type::String) {
     return Status::Error(PSLICE() << "Expected string, got " << from.type());
   }
-  //FIXME
-  TRY_RESULT(decoded, base64_decode(from.get_string()));
-  to = SecureString(decoded);
+  TRY_RESULT(decoded, base64_decode_secure(from.get_string()));
+  to = std::move(decoded);
   return Status::OK();
 }
 
@@ -158,6 +183,17 @@ inline Status from_json_bytes(BufferSlice &to, JsonValue &from) {
   }
   TRY_RESULT(decoded, base64_decode(from.get_string()));
   to = BufferSlice(decoded);
+  return Status::OK();
+}
+
+inline Status from_json_bytes(Slice &to, JsonValue &from) {
+  if (from.type() != JsonValue::Type::String) {
+    return Status::Error(PSLICE() << "Expected string, got " << from.type());
+  }
+  TRY_RESULT(decoded, base64_decode(from.get_string()));
+  from.get_string().copy_from(decoded);
+  from.get_string().truncate(decoded.size());
+  to = from.get_string();
   return Status::OK();
 }
 

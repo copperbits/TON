@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/int_types.h"
@@ -133,22 +151,26 @@ class AES {
 
 class Unenc {
  private:
-  td::BufferSlice data_;
+  td::SharedSlice data_;
 
  public:
   Unenc(const ton_api::pub_unenc &obj) {
-    data_ = obj.data_.clone();
+    data_ = td::SharedSlice{obj.data_.as_slice()};
   }
   Unenc(const Unenc &obj) {
     data_ = obj.data_.clone();
   }
-  explicit Unenc(td::BufferSlice data) : data_(std::move(data)) {
+  explicit Unenc(td::BufferSlice data) : data_(td::SharedSlice{data.as_slice()}) {
+  }
+  explicit Unenc(td::Slice data) : data_(td::SharedSlice{data}) {
+  }
+  explicit Unenc(td::SharedSlice data) : data_(std::move(data)) {
   }
   td::uint32 serialized_size() const {
     return static_cast<td::uint32>(data_.size()) + 8;
   }
   tl_object_ptr<ton_api::pub_unenc> tl() const {
-    return create_tl_object<ton_api::pub_unenc>(data_.clone());
+    return create_tl_object<ton_api::pub_unenc>(data_.clone_as_buffer_slice());
   }
   bool operator==(const Unenc &with) const {
     return data_.as_slice() == with.data_.as_slice();
@@ -156,26 +178,30 @@ class Unenc {
   bool operator!=(const Unenc &with) const {
     return data_.as_slice() != with.data_.as_slice();
   }
-};
+};  // namespace pubkeys
 
 class Overlay {
  private:
-  td::BufferSlice data_;
+  td::SharedSlice data_;
 
  public:
   Overlay(const ton_api::pub_overlay &obj) {
-    data_ = obj.name_.clone();
+    data_ = td::SharedSlice{obj.name_.as_slice()};
   }
   Overlay(const Overlay &obj) {
     data_ = obj.data_.clone();
   }
-  explicit Overlay(td::BufferSlice data) : data_(std::move(data)) {
+  explicit Overlay(td::BufferSlice data) : data_(td::SharedSlice{data.as_slice()}) {
+  }
+  explicit Overlay(td::Slice data) : data_(td::SharedSlice{data}) {
+  }
+  explicit Overlay(td::SharedSlice data) : data_(std::move(data)) {
   }
   td::uint32 serialized_size() const {
     return static_cast<td::uint32>(data_.size()) + 8;
   }
   tl_object_ptr<ton_api::pub_overlay> tl() const {
-    return create_tl_object<ton_api::pub_overlay>(data_.clone());
+    return create_tl_object<ton_api::pub_overlay>(data_.clone_as_buffer_slice());
   }
   bool operator==(const Overlay &with) const {
     return data_.as_slice() == with.data_.as_slice();
@@ -224,6 +250,13 @@ class PublicKey {
   PublicKeyHash compute_short_id() const;
   td::uint32 serialized_size() const;
   tl_object_ptr<ton_api::PublicKey> tl() const;
+  td::BufferSlice export_as_slice() const;
+  static td::Result<PublicKey> import(td::Slice s);
+
+  pubkeys::Ed25519 ed25519_value() const {
+    CHECK(pub_key_.get_offset() == pub_key_.offset<pubkeys::Ed25519>());
+    return pub_key_.get<pubkeys::Ed25519>();
+  }
 
   td::Result<std::unique_ptr<Encryptor>> create_encryptor() const;
   td::Result<td::actor::ActorOwn<EncryptorAsync>> create_encryptor_async() const;
@@ -330,14 +363,20 @@ class AES {
 
 class Unenc {
  private:
-  td::BufferSlice data_;
+  td::SharedSlice data_;
 
  public:
   Unenc(const ton_api::pk_unenc &obj) {
-    data_ = obj.data_.clone();
+    data_ = td::SharedSlice{obj.data_.as_slice()};
   }
   Unenc(const Unenc &obj) {
     data_ = obj.data_.clone();
+  }
+  explicit Unenc(td::BufferSlice data) : data_(td::SharedSlice{data.as_slice()}) {
+  }
+  explicit Unenc(td::Slice data) : data_(td::SharedSlice{data}) {
+  }
+  explicit Unenc(td::SharedSlice data) : data_(std::move(data)) {
   }
   td::SecureString export_as_slice() const {
     UNREACHABLE();
@@ -346,10 +385,10 @@ class Unenc {
     return false;
   }
   tl_object_ptr<ton_api::pk_unenc> tl() const {
-    return create_tl_object<ton_api::pk_unenc>(data_.clone());
+    return create_tl_object<ton_api::pk_unenc>(data_.clone_as_buffer_slice());
   }
   tl_object_ptr<ton_api::PublicKey> pub_tl() const {
-    return create_tl_object<ton_api::pub_unenc>(data_.clone());
+    return create_tl_object<ton_api::pub_unenc>(data_.clone_as_buffer_slice());
   }
   pubkeys::Unenc pub() const {
     return pubkeys::Unenc{data_.clone()};
@@ -358,14 +397,20 @@ class Unenc {
 
 class Overlay {
  private:
-  td::BufferSlice data_;
+  td::SharedSlice data_;
 
  public:
   Overlay(const ton_api::pk_overlay &obj) {
-    data_ = obj.name_.clone();
+    data_ = td::SharedSlice{obj.name_.as_slice()};
   }
   Overlay(const Overlay &obj) {
     data_ = obj.data_.clone();
+  }
+  explicit Overlay(td::BufferSlice data) : data_(td::SharedSlice{data.as_slice()}) {
+  }
+  explicit Overlay(td::Slice data) : data_(td::SharedSlice{data}) {
+  }
+  explicit Overlay(td::SharedSlice data) : data_(std::move(data)) {
   }
   td::SecureString export_as_slice() const {
     UNREACHABLE();
@@ -374,10 +419,10 @@ class Overlay {
     return false;
   }
   tl_object_ptr<ton_api::pk_overlay> tl() const {
-    return create_tl_object<ton_api::pk_overlay>(data_.clone());
+    return create_tl_object<ton_api::pk_overlay>(data_.clone_as_buffer_slice());
   }
   tl_object_ptr<ton_api::PublicKey> pub_tl() const {
-    return create_tl_object<ton_api::pub_overlay>(data_.clone());
+    return create_tl_object<ton_api::pub_overlay>(data_.clone_as_buffer_slice());
   }
   pubkeys::Overlay pub() const {
     return pubkeys::Overlay{data_.clone()};

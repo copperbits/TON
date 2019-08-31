@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/Gzip.h"
 
 char disable_linker_warning_about_empty_file_gzip_cpp TD_UNUSED;
@@ -7,6 +25,7 @@ char disable_linker_warning_about_empty_file_gzip_cpp TD_UNUSED;
 
 #include <cstring>
 #include <limits>
+#include <utility>
 
 #include <zlib.h>
 
@@ -128,17 +147,19 @@ Gzip::Gzip(Gzip &&other) : Gzip() {
 }
 
 Gzip &Gzip::operator=(Gzip &&other) {
+  CHECK(this != &other);
   clear();
   swap(other);
   return *this;
 }
 
 void Gzip::swap(Gzip &other) {
-  std::swap(impl_, other.impl_);
-  std::swap(input_size_, other.input_size_);
-  std::swap(output_size_, other.output_size_);
-  std::swap(close_input_flag_, other.close_input_flag_);
-  std::swap(mode_, other.mode_);
+  using std::swap;
+  swap(impl_, other.impl_);
+  swap(input_size_, other.input_size_);
+  swap(output_size_, other.output_size_);
+  swap(close_input_flag_, other.close_input_flag_);
+  swap(mode_, other.mode_);
 }
 
 Gzip::~Gzip() {

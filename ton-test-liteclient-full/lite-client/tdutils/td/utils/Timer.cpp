@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/Timer.h"
 
 #include "td/utils/format.h"
@@ -13,6 +31,7 @@ Timer::Timer() : start_time_(Time::now()) {
 double Timer::elapsed() const {
   return Time::now() - start_time_;
 }
+
 StringBuilder &operator<<(StringBuilder &string_builder, const Timer &timer) {
   return string_builder << "in " << Time::now() - timer.start_time_;
 }
@@ -29,6 +48,7 @@ PerfWarningTimer::PerfWarningTimer(PerfWarningTimer &&other)
 PerfWarningTimer::~PerfWarningTimer() {
   reset();
 }
+
 void PerfWarningTimer::reset() {
   if (start_at_ == 0) {
     return;

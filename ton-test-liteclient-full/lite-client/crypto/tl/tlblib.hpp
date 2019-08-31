@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include <iostream>
 #include "vm/cellslice.h"
@@ -18,14 +36,14 @@ class TLB {
   virtual bool skip(vm::CellSlice& cs) const {
     return cs.skip_ext(get_size(cs));
   }
-  virtual bool validate(const vm::CellSlice& cs) const {
+  virtual bool validate(const vm::CellSlice& cs, bool weak = false) const {
     return cs.have_ext(get_size(cs));
   }
-  virtual bool validate_exact(const vm::CellSlice& cs) const {
+  virtual bool validate_exact(const vm::CellSlice& cs, bool weak = false) const {
     return (int)cs.size_ext() == get_size(cs);
   }
-  bool validate_csr(Ref<vm::CellSlice> cs_ref) const {
-    return cs_ref.not_null() && validate_skip_exact(cs_ref.write());
+  bool validate_csr(Ref<vm::CellSlice> cs_ref, bool weak = false) const {
+    return cs_ref.not_null() && validate_skip_exact(cs_ref.write(), weak);
   }
   Ref<vm::CellSlice> fetch(vm::CellSlice& cs) const {
     return cs.fetch_subslice_ext(get_size(cs));
@@ -33,73 +51,76 @@ class TLB {
   Ref<vm::CellSlice> prefetch(const vm::CellSlice& cs) const {
     return cs.prefetch_subslice_ext(get_size(cs));
   }
-  virtual Ref<vm::CellSlice> validate_fetch(vm::CellSlice& cs) const {
-    return validate(cs) ? cs.fetch_subslice_ext(get_size(cs)) : Ref<vm::CellSlice>{};
+  virtual Ref<vm::CellSlice> validate_fetch(vm::CellSlice& cs, bool weak = false) const {
+    return validate(cs, weak) ? cs.fetch_subslice_ext(get_size(cs)) : Ref<vm::CellSlice>{};
   }
-  virtual Ref<vm::CellSlice> validate_prefetch(const vm::CellSlice& cs) const {
-    return validate(cs) ? cs.prefetch_subslice_ext(get_size(cs)) : Ref<vm::CellSlice>{};
+  virtual Ref<vm::CellSlice> validate_prefetch(const vm::CellSlice& cs, bool weak = false) const {
+    return validate(cs, weak) ? cs.prefetch_subslice_ext(get_size(cs)) : Ref<vm::CellSlice>{};
   }
   bool fetch_to(vm::CellSlice& cs, Ref<vm::CellSlice>& res) const {
     return (res = fetch(cs)).not_null();
   }
-  bool validate_fetch_to(vm::CellSlice& cs, Ref<vm::CellSlice>& res) const {
-    return (res = validate_fetch(cs)).not_null();
+  bool validate_fetch_to(vm::CellSlice& cs, Ref<vm::CellSlice>& res, bool weak = false) const {
+    return (res = validate_fetch(cs, weak)).not_null();
   }
   bool store_from(vm::CellBuilder& cb, Ref<vm::CellSlice> field) const {
     return field.not_null() && get_size(*field) == (int)field->size_ext() && cb.append_cellslice_bool(std::move(field));
   }
-  bool validate_store_from(vm::CellBuilder& cb, Ref<vm::CellSlice> field) const {
+  bool validate_store_from(vm::CellBuilder& cb, Ref<vm::CellSlice> field, bool weak = false) const {
     if (field.is_null()) {
       return false;
     }
     vm::CellSlice cs{*field};
-    return validate_skip(cs) && cs.empty_ext() && cb.append_cellslice_bool(std::move(field));
+    return validate_skip(cs, weak) && cs.empty_ext() && cb.append_cellslice_bool(std::move(field));
   }
   virtual bool extract(vm::CellSlice& cs) const {
     return cs.only_ext(get_size(cs));
   }
-  virtual bool validate_extract(vm::CellSlice& cs) const {
-    return validate(cs) && extract(cs);
+  virtual bool validate_extract(vm::CellSlice& cs, bool weak = false) const {
+    return validate(cs, weak) && extract(cs);
   }
   int get_size_by_skip(const vm::CellSlice& cs) const {
     vm::CellSlice copy{cs};
     return skip(copy) ? copy.subtract_base_ext(cs) : -1;
   }
-  virtual bool validate_skip(vm::CellSlice& cs) const {
-    return validate(cs) && skip(cs);
+  virtual bool validate_skip(vm::CellSlice& cs, bool weak = false) const {
+    return validate(cs, weak) && skip(cs);
   }
-  bool validate_skip_exact(vm::CellSlice& cs) const {
-    return validate_skip(cs) && cs.empty_ext();
+  bool validate_skip_exact(vm::CellSlice& cs, bool weak = false) const {
+    return validate_skip(cs, weak) && cs.empty_ext();
   }
-  bool validate_by_skip(const vm::CellSlice& cs) const {
+  bool validate_by_skip(const vm::CellSlice& cs, bool weak = false) const {
     vm::CellSlice copy{cs};
-    return validate_skip(copy);
+    return validate_skip(copy, weak);
   }
-  bool validate_by_skip_exact(const vm::CellSlice& cs) const {
+  bool validate_by_skip_exact(const vm::CellSlice& cs, bool weak = false) const {
     vm::CellSlice copy{cs};
-    return validate_skip_exact(copy);
+    return validate_skip_exact(copy, weak);
   }
   bool extract_by_skip(vm::CellSlice& cs) const {
     vm::CellSlice copy{cs};
     return skip(copy) && cs.cut_tail(copy);
   }
-  bool validate_extract_by_skip(vm::CellSlice& cs) const {
+  bool validate_extract_by_skip(vm::CellSlice& cs, bool weak = false) const {
     vm::CellSlice copy{cs};
-    return validate_skip(copy) && cs.cut_tail(copy);
+    return validate_skip(copy, weak) && cs.cut_tail(copy);
   }
-  Ref<vm::CellSlice> validate_fetch_by_skip(vm::CellSlice& cs) const {
+  Ref<vm::CellSlice> validate_fetch_by_skip(vm::CellSlice& cs, bool weak = false) const {
     Ref<vm::CellSlice> copy{true, cs};
-    return validate_skip(cs) && copy.unique_write().cut_tail(cs) ? copy : Ref<vm::CellSlice>{};
+    return validate_skip(cs, weak) && copy.unique_write().cut_tail(cs) ? copy : Ref<vm::CellSlice>{};
   }
-  Ref<vm::CellSlice> validate_prefetch_by_skip(const vm::CellSlice& cs) const {
+  Ref<vm::CellSlice> validate_prefetch_by_skip(const vm::CellSlice& cs, bool weak = false) const {
     vm::CellSlice copy{cs};
-    return validate_skip(copy) ? cs.prefetch_subslice_ext(copy.subtract_base_ext(cs)) : Ref<vm::CellSlice>{};
+    return validate_skip(copy, false) ? cs.prefetch_subslice_ext(copy.subtract_base_ext(cs)) : Ref<vm::CellSlice>{};
   }
   virtual bool skip_copy(vm::CellBuilder& cb, vm::CellSlice& cs) const {
     return cb.append_cellslice_bool(fetch(cs));
   }
   virtual bool copy(vm::CellBuilder& cb, const vm::CellSlice& cs) const {
     return cb.append_cellslice_bool(prefetch(cs));
+  }
+  virtual bool always_special() const {
+    return false;
   }
   virtual int get_tag(const vm::CellSlice& cs) const {
     return -1;
@@ -134,11 +155,14 @@ class TLB {
   bool as_integer_to(Ref<vm::CellSlice> cs_ref, td::RefInt256& res) const {
     return (res = as_integer(std::move(cs_ref))).not_null();
   }
-  bool validate_ref(Ref<vm::Cell> cell_ref) const {
-    return cell_ref.not_null() && validate_ref_internal(std::move(cell_ref));
+  bool validate_ref(Ref<vm::Cell> cell_ref, bool weak = false) const {
+    return cell_ref.not_null() && validate_ref_internal(std::move(cell_ref), weak);
   }
-  bool validate_skip_ref(vm::CellSlice& cs) const {
-    return validate_ref(cs.fetch_ref());
+  bool force_validate_ref(Ref<vm::Cell> cell_ref) const {
+    return cell_ref.not_null() && validate_ref_internal(std::move(cell_ref), false);
+  }
+  bool validate_skip_ref(vm::CellSlice& cs, bool weak = false) const {
+    return validate_ref(cs.fetch_ref(), weak);
   }
   virtual bool null_value(vm::CellBuilder& cb) const {
     return false;
@@ -192,7 +216,7 @@ class TLB {
   std::string as_string_ref(Ref<vm::Cell> cell_ref, int indent = 0) const;
 
  protected:
-  bool validate_ref_internal(Ref<vm::Cell> cell_ref) const;
+  bool validate_ref_internal(Ref<vm::Cell> cell_ref, bool weak = false) const;
 };
 
 static inline std::ostream& operator<<(std::ostream& os, const TLB& type) {
@@ -203,27 +227,27 @@ struct TLB_Complex : TLB {
   bool skip(vm::CellSlice& cs) const override {
     return validate_skip(cs);
   }
-  bool validate_skip(vm::CellSlice& cs) const override = 0;
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override = 0;
   int get_size(const vm::CellSlice& cs) const override {
     return get_size_by_skip(cs);
   }
-  bool validate(const vm::CellSlice& cs) const override {
-    return validate_by_skip(cs);
+  bool validate(const vm::CellSlice& cs, bool weak = false) const override {
+    return validate_by_skip(cs, weak);
   }
-  bool validate_exact(const vm::CellSlice& cs) const override {
-    return validate_by_skip_exact(cs);
+  bool validate_exact(const vm::CellSlice& cs, bool weak = false) const override {
+    return validate_by_skip_exact(cs, weak);
   }
   bool extract(vm::CellSlice& cs) const override {
     return extract_by_skip(cs);
   }
-  bool validate_extract(vm::CellSlice& cs) const override {
-    return validate_extract_by_skip(cs);
+  bool validate_extract(vm::CellSlice& cs, bool weak = false) const override {
+    return validate_extract_by_skip(cs, weak);
   }
-  Ref<vm::CellSlice> validate_fetch(vm::CellSlice& cs) const override {
-    return validate_fetch_by_skip(cs);
+  Ref<vm::CellSlice> validate_fetch(vm::CellSlice& cs, bool weak = false) const override {
+    return validate_fetch_by_skip(cs, weak);
   }
-  Ref<vm::CellSlice> validate_prefetch(const vm::CellSlice& cs) const override {
-    return validate_prefetch_by_skip(cs);
+  Ref<vm::CellSlice> validate_prefetch(const vm::CellSlice& cs, bool weak = false) const override {
+    return validate_prefetch_by_skip(cs, weak);
   }
   td::RefInt256 as_integer(const vm::CellSlice& cs) const override {
     vm::CellSlice copy{cs};
@@ -526,23 +550,23 @@ struct FwdT final : TLB {
   bool skip(vm::CellSlice& cs) const override {
     return X.skip(cs);
   }
-  bool validate(const vm::CellSlice& cs) const override {
-    return X.validate(cs);
+  bool validate(const vm::CellSlice& cs, bool weak = false) const override {
+    return X.validate(cs, weak);
   }
-  Ref<vm::CellSlice> validate_fetch(vm::CellSlice& cs) const override {
-    return X.validate_fetch(cs);
+  Ref<vm::CellSlice> validate_fetch(vm::CellSlice& cs, bool weak = false) const override {
+    return X.validate_fetch(cs, weak);
   }
-  Ref<vm::CellSlice> validate_prefetch(const vm::CellSlice& cs) const override {
-    return X.validate_prefetch(cs);
+  Ref<vm::CellSlice> validate_prefetch(const vm::CellSlice& cs, bool weak = false) const override {
+    return X.validate_prefetch(cs, weak);
   }
   bool extract(vm::CellSlice& cs) const override {
     return X.extract(cs);
   }
-  bool validate_extract(vm::CellSlice& cs) const override {
-    return X.validate(cs);
+  bool validate_extract(vm::CellSlice& cs, bool weak = false) const override {
+    return X.validate_extract(cs, weak);
   }
-  bool validate_skip(vm::CellSlice& cs) const override {
-    return X.validate(cs);
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override {
+    return X.validate_skip(cs, weak);
   }
   bool skip_copy(vm::CellBuilder& cb, vm::CellSlice& cs) const override {
     return X.skip_copy(cb, cs);
@@ -637,10 +661,10 @@ struct NatLess final : TLB {
   int get_size(const vm::CellSlice& cs) const override {
     return n >= 0 ? w : -1;
   }
-  bool validate(const vm::CellSlice& cs) const override {
+  bool validate(const vm::CellSlice& cs, bool weak = false) const override {
     return n >= 0 && (unsigned)cs.prefetch_ulong(w) <= (unsigned)n;
   }
-  bool validate_skip(vm::CellSlice& cs) const override {
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override {
     return n >= 0 && (unsigned)cs.fetch_ulong(w) <= (unsigned)n;
   }
   unsigned long long as_uint(const vm::CellSlice& cs) const override {
@@ -660,10 +684,10 @@ struct NatLeq final : TLB {
   int get_size(const vm::CellSlice& cs) const override {
     return n >= 0 ? w : -1;
   }
-  bool validate(const vm::CellSlice& cs) const override {
+  bool validate(const vm::CellSlice& cs, bool weak = false) const override {
     return n >= 0 && (unsigned)cs.prefetch_ulong(w) <= (unsigned)n;
   }
-  bool validate_skip(vm::CellSlice& cs) const override {
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override {
     return n >= 0 && (unsigned)cs.fetch_ulong(w) <= (unsigned)n;
   }
   unsigned long long as_uint(const vm::CellSlice& cs) const override {
@@ -682,7 +706,7 @@ struct TupleT final : TLB_Complex {
   TupleT(int _n, const TLB& _X) : n(_n), X(_X) {
   }
   bool skip(vm::CellSlice& cs) const override;
-  bool validate_skip(vm::CellSlice& cs) const override;
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override;
   int get_tag(const vm::CellSlice& cs) const override {
     return 0;
   }
@@ -697,8 +721,8 @@ struct CondT final : TLB_Complex {
   bool skip(vm::CellSlice& cs) const override {
     return !n || X.skip(cs);
   }
-  bool validate_skip(vm::CellSlice& cs) const override {
-    return !n || (n > 0 && X.validate_skip(cs));
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override {
+    return !n || (n > 0 && X.validate_skip(cs, weak));
   }
   int get_tag(const vm::CellSlice& cs) const override {
     return 0;
@@ -719,8 +743,8 @@ struct Cond final : TLB_Complex {
   bool skip(vm::CellSlice& cs) const override {
     return !n || field_type.skip(cs);
   }
-  bool validate_skip(vm::CellSlice& cs) const override {
-    return !n || (n > 0 && field_type.validate_skip(cs));
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override {
+    return !n || (n > 0 && field_type.validate_skip(cs, weak));
   }
   int get_tag(const vm::CellSlice& cs) const override {
     return 0;
@@ -816,7 +840,7 @@ struct Maybe : TLB_Complex {
   Maybe(Args... args) : field_type(args...) {
   }
   bool skip(vm::CellSlice& cs) const override;
-  bool validate_skip(vm::CellSlice& cs) const override;
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override;
   int get_tag(const vm::CellSlice& cs) const override {
     return cs.have(1) ? (int)cs.prefetch_ulong(1) : -1;
   }
@@ -839,10 +863,10 @@ bool Maybe<T>::skip(vm::CellSlice& cs) const {
 }
 
 template <class T>
-bool Maybe<T>::validate_skip(vm::CellSlice& cs) const {
+bool Maybe<T>::validate_skip(vm::CellSlice& cs, bool weak) const {
   int t = get_tag(cs);
   if (t > 0) {
-    return cs.advance(1) && field_type.validate_skip(cs);
+    return cs.advance(1) && field_type.validate_skip(cs, weak);
   } else if (!t) {
     return cs.advance(1);
   } else {
@@ -890,11 +914,11 @@ struct RefTo final : TLB {
   int get_size(const vm::CellSlice& cs) const override {
     return 0x10000;
   }
-  bool validate(const vm::CellSlice& cs) const override {
-    return cs.size_refs() ? ref_type.validate_ref(cs.prefetch_ref()) : false;
+  bool validate(const vm::CellSlice& cs, bool weak = false) const override {
+    return cs.size_refs() ? ref_type.validate_ref(cs.prefetch_ref(), weak) : false;
   }
-  bool validate_skip(vm::CellSlice& cs) const override {
-    return ref_type.validate_skip_ref(cs);
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override {
+    return ref_type.validate_skip_ref(cs, weak);
   }
   std::ostream& print_type(std::ostream& os) const override {
     return os << '^' << ref_type;
@@ -911,11 +935,11 @@ struct RefT final : TLB {
   int get_size(const vm::CellSlice& cs) const override {
     return 0x10000;
   }
-  bool validate(const vm::CellSlice& cs) const override {
-    return X.validate_ref(cs.prefetch_ref());
+  bool validate(const vm::CellSlice& cs, bool weak = false) const override {
+    return X.validate_ref(cs.prefetch_ref(), weak);
   }
-  bool validate_skip(vm::CellSlice& cs) const override {
-    return X.validate_skip_ref(cs);
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override {
+    return X.validate_skip_ref(cs, weak);
   }
   std::ostream& print_type(std::ostream& os) const override {
     return os << '^' << X;
@@ -932,8 +956,9 @@ struct Either final : TLB_Complex {
   bool skip(vm::CellSlice& cs) const override {
     return cs.have(1) ? (cs.fetch_ulong(1) ? right_type.skip(cs) : left_type.skip(cs)) : false;
   }
-  bool validate_skip(vm::CellSlice& cs) const override {
-    return cs.have(1) ? (cs.fetch_ulong(1) ? right_type.validate_skip(cs) : left_type.validate_skip(cs)) : false;
+  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override {
+    return cs.have(1) ? (cs.fetch_ulong(1) ? right_type.validate_skip(cs, weak) : left_type.validate_skip(cs, weak))
+                      : false;
   }
   int get_tag(const vm::CellSlice& cs) const override {
     return (int)cs.prefetch_ulong(1);

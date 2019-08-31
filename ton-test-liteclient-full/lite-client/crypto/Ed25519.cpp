@@ -1,10 +1,28 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "crypto/Ed25519.h"
 
 #if TD_HAVE_OPENSSL
 
 #include <openssl/opensslv.h>
 
-#if OPENSSL_VERSION_NUMBER >= 0x10101000L
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L && OPENSSL_VERSION_NUMBER != 0x20000000L
 
 #include "td/utils/base64.h"
 #include "td/utils/BigNum.h"
@@ -39,68 +57,31 @@ SecureString Ed25519::PrivateKey::as_octet_string() const {
   return octet_string_.copy();
 }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10101000L
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L && OPENSSL_VERSION_NUMBER != 0x20000000L
 
 namespace detail {
 
-static const Slice PRIVATE_KEY_PREFIX = "\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x70\x04\x22\x04\x20";
-static const Slice PUBLIC_KEY_PREFIX = "\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00";
+static Result<SecureString> X25519_key_from_PKEY(EVP_PKEY *pkey, bool is_private) {
+  auto func = is_private ? &EVP_PKEY_get_raw_private_key : &EVP_PKEY_get_raw_public_key;
+  size_t len = 0;
+  if (func(pkey, nullptr, &len) == 0) {
+    return Status::Error("Failed to get raw key length");
+  }
+  CHECK(len == 32);
 
-Result<SecureString> X25519_key_from_PKEY(EVP_PKEY *pkey, bool is_private) {
-  BIO *mem_bio = BIO_new(BIO_s_mem());
-  SCOPE_EXIT {
-    BIO_vfree(mem_bio);
-  };
-  if (is_private) {
-    PEM_write_bio_PrivateKey(mem_bio, pkey, nullptr, nullptr, 0, nullptr, nullptr);
-  } else {
-    PEM_write_bio_PUBKEY(mem_bio, pkey);
+  SecureString result(len);
+  if (func(pkey, result.as_mutable_slice().ubegin(), &len) == 0) {
+    return Status::Error("Failed to get raw key");
   }
-
-  constexpr int MAX_LINE_LENGTH = 100;
-  SecureString data(MAX_LINE_LENGTH + 1);
-  int len = BIO_gets(mem_bio, data.as_mutable_slice().data(), narrow_cast<int>(data.size()));
-  if (len == 0 || len >= MAX_LINE_LENGTH) {
-    return Status::Error("Can't read first PEM string");
-  }
-  auto begin = trim(data.as_slice().substr(0, len));
-  if (!begins_with(begin, "-----BEGIN") || !ends_with(begin, "-----")) {
-    return Status::Error("Wrong first PEM line");
-  }
-
-  len = BIO_gets(mem_bio, data.as_mutable_slice().data(), narrow_cast<int>(data.size()));
-  if (len == 0 || len >= MAX_LINE_LENGTH) {
-    return Status::Error("Can't read second PEM string");
-  }
-  TRY_RESULT(key, base64_decode_secure(trim(data.as_slice().substr(0, len))));
-  auto prefix = is_private ? PRIVATE_KEY_PREFIX : PUBLIC_KEY_PREFIX;
-  if (key.size() != prefix.size() + 32 || !begins_with(key, prefix)) {
-    return Status::Error("Wrong key format");
-  }
-
-  len = BIO_gets(mem_bio, data.as_mutable_slice().data(), narrow_cast<int>(data.size()));
-  if (len == 0 || len >= MAX_LINE_LENGTH) {
-    return Status::Error("Can't read third PEM string");
-  }
-
-  auto end = trim(data.as_slice().substr(0, len));
-  if (!begins_with(end, "-----END") || !ends_with(end, "-----")) {
-    return Status::Error("Wrong third PEM line");
-  }
-
-  len = BIO_gets(mem_bio, data.as_mutable_slice().data(), narrow_cast<int>(data.size()));
-  if (len != 0 || !BIO_eof(mem_bio)) {
-    return Status::Error("Extra data after lastline");
-  }
-  return SecureString(key.as_slice().substr(prefix.size()));
+  return std::move(result);
 }
 
-EVP_PKEY *X25519_key_to_PKEY(Slice key, bool is_private) {
+static EVP_PKEY *X25519_key_to_PKEY(Slice key, bool is_private) {
   auto func = is_private ? &EVP_PKEY_new_raw_private_key : &EVP_PKEY_new_raw_public_key;
   return func(EVP_PKEY_ED25519, nullptr, key.ubegin(), key.size());
 }
 
-Result<SecureString> X25519_pem_from_PKEY(EVP_PKEY *pkey, bool is_private, Slice password) {
+static Result<SecureString> X25519_pem_from_PKEY(EVP_PKEY *pkey, bool is_private, Slice password) {
   BIO *mem_bio = BIO_new(BIO_s_mem());
   SCOPE_EXIT {
     BIO_vfree(mem_bio);
@@ -128,12 +109,11 @@ static int password_cb(char *buf, int size, int rwflag, void *u) {
   return password_size;
 }
 
-EVP_PKEY *X25519_pem_to_PKEY(Slice pem, Slice password) {
+static EVP_PKEY *X25519_pem_to_PKEY(Slice pem, Slice password) {
   BIO *mem_bio = BIO_new_mem_buf(pem.ubegin(), narrow_cast<int>(pem.size()));
   SCOPE_EXIT {
     BIO_vfree(mem_bio);
   };
-  //EVP_PKEY *PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x, pem_password_cb *cb, void *u);
 
   return PEM_read_bio_PrivateKey(mem_bio, nullptr, password_cb, &password);
 }

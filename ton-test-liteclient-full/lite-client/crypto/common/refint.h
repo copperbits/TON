@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "common/refcnt.hpp"
@@ -86,8 +104,15 @@ extern RefInt256 make_refint(long long x);
 
 extern std::string dec_string(RefInt256 x);
 extern std::string dec_string2(RefInt256&& x);
-extern std::string hex_string(RefInt256 x);
+extern std::string hex_string(RefInt256 x, bool upcase = false);
 extern std::string binary_string(RefInt256 x);
+
+extern RefInt256 dec_string_to_int256(const std::string& s);
+extern RefInt256 dec_string_to_int256(td::Slice s);
+extern RefInt256 hex_string_to_int256(const std::string& s);
+extern RefInt256 hex_string_to_int256(td::Slice s);
+extern RefInt256 string_to_int256(const std::string& s);
+extern RefInt256 string_to_int256(td::Slice s);
 
 extern std::ostream& operator<<(std::ostream& os, const RefInt256& x);
 extern std::ostream& operator<<(std::ostream& os, RefInt256&& x);

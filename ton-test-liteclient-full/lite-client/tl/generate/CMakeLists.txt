@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
 
 file(MAKE_DIRECTORY auto/tl)
 
@@ -9,28 +9,28 @@ set(TL_TON_API
 
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/ton_api_json.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/ton_api_json.h
-  PARENT_SCOPE
 )
+set(TL_TON_API ${TL_TON_API} PARENT_SCOPE)
 
 set(TL_LITE_API
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/lite_api.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/lite_api.h
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/lite_api.hpp
-  PARENT_SCOPE
 )
+set(TL_LITE_API ${TL_LITE_API} PARENT_SCOPE)
 
 set(TL_TONLIB_API
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api.h
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api.hpp
-  PARENT_SCOPE
 )
+set(TL_TONLIB_API ${TL_TONLIB_API} PARENT_SCOPE)
 
 set(TL_TONLIB_API_JSON
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api_json.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/auto/tl/tonlib_api_json.h
-  PARENT_SCOPE
 )
+set(TL_TONLIB_API_JSON ${TL_TONLIB_API_JSON} PARENT_SCOPE)
 
 set(TL_GENERATE_COMMON_SOURCE
   generate_common.cpp
@@ -64,15 +64,17 @@ target_link_libraries(tonlib_generate_java_api PRIVATE tdtl)
 if (NOT CMAKE_CROSSCOMPILING)
   find_program(PHP_EXECUTABLE php)
 
-  set(GenerateCommonCmd generate_common)
+  set(GENERATE_COMMON_CMD generate_common)
   add_executable(generate_common ${TL_GENERATE_COMMON_SOURCE})
   target_link_libraries(generate_common PRIVATE tdtl tdutils)
-  add_custom_target(tl_generate_common
+  add_custom_command(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMAND ${GenerateCommonCmd}
+    COMMAND ${GENERATE_COMMON_CMD}
     COMMENT "Generate common tl source files"
     DEPENDS generate_common scheme/ton_api.tlo
+    OUTPUT ${TL_TON_API} ${TL_LITE_API} ${TL_TONLIB_API} ${TL_TONLIB_API_JSON}
   )
+  add_custom_target(tl_generate_common DEPENDS ${TL_TON_API} ${TL_LITE_API} ${TL_TONLIB_API} ${TL_TONLIB_API_JSON})
   if (TONLIB_ENABLE_JNI)
     target_compile_definitions(generate_common PRIVATE TONLIB_ENABLE_JNI=1)
   endif()

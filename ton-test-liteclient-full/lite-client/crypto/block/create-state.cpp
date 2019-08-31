@@ -1,3 +1,21 @@
+/* 
+    This file is part of TON Blockchain source code.
+
+    TON Blockchain is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation; either version 2
+    of the License, or (at your option) any later version.
+
+    TON Blockchain is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with TON Blockchain.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <cassert>
 #include <algorithm>
 #include <string>
@@ -32,8 +50,6 @@
 #include "block-parse.h"
 #include "block-auto.h"
 #include "mc-config.h"
-
-#include "validator/impl/validator-set.hpp"
 
 #define PDO(__op) \
   if (!(__op)) {  \
@@ -170,7 +186,7 @@ void interpret_set_config_smartcontract(vm::Stack& stack) {
 
 bool is_empty_cell(Ref<vm::Cell> cell) {
   bool is_special;
-  auto cs = load_cell_slice(std::move(cell), &is_special);
+  auto cs = load_cell_slice_special(std::move(cell), is_special);
   return !is_special && cs.empty_ext();
 }
 
@@ -188,8 +204,9 @@ bool add_public_library(hash_t lib_addr, hash_t smc_addr, Ref<vm::Cell> lib_root
   return true;
 }
 
-td::RefInt256 create_smartcontract(Ref<vm::Cell> code, Ref<vm::Cell> data, Ref<vm::Cell> library, td::RefInt256 balance,
-                                   int special, int split_depth, int mode) {
+td::RefInt256 create_smartcontract(td::RefInt256 smc_addr, Ref<vm::Cell> code, Ref<vm::Cell> data,
+                                   Ref<vm::Cell> library, td::RefInt256 balance, int special, int split_depth,
+                                   int mode) {
   if (is_empty_cell(code)) {
     code.clear();
   }
@@ -220,9 +237,17 @@ td::RefInt256 create_smartcontract(Ref<vm::Cell> code, Ref<vm::Cell> data, Ref<v
   PDO(cb.store_maybe_ref(std::move(code)) && cb.store_maybe_ref(std::move(data)) && cb.store_maybe_ref(library));
   THRERR("cannot store smart-contract code, data or library");
   Ref<vm::DataCell> state_init = cb.finalize();
-  hash_t addr = state_init->get_hash().as_array();
-  td::RefInt256 smc_addr = td::RefInt256{true};
-  PDO(smc_addr.write().import_bits(addr.data(), 0, 256, false));
+  hash_t addr;
+  if (smc_addr.is_null()) {
+    addr = state_init->get_hash().as_array();
+    smc_addr = td::RefInt256{true};
+    PDO(smc_addr.write().import_bits(addr.data(), 0, 256, false));
+  } else if (mode == 1) {
+    throw fift::IntError{"cannot create uninitialized smart contracts with specified addresses"};
+  } else {
+    PDO(smc_addr->export_bits(addr.data(), 0, 256, false));
+  }
+  THRERR("cannot initialize smart-contract address");
   if (verbosity > 2) {
     std::cerr << "smart-contract address is ";
     std::cerr << addr << " = " << smc_addr << std::endl;
@@ -383,8 +408,9 @@ bool store_validator_list_hash(vm::CellBuilder& cb) {
   ton::ShardIdFull shard{ton::masterchainId};
   auto nodes = block::Config::do_compute_validator_set(ccvc, shard, *vset, now, 0);
   LOG_CHECK(!nodes.empty()) << "validator node list in unpacked validator set is empty";
-  ton::validator::ValidatorSetQ vsetq{0, shard, std::move(nodes)};
-  return cb.store_long_bool(vsetq.get_validator_set_hash(), 32);
+  auto vset_hash = block::compute_validator_set_hash(0, shard, std::move(nodes));
+  LOG(DEBUG) << "initial validator set hash is " << vset_hash;
+  return cb.store_long_bool(vset_hash, 32);
 }
 
 // stores custom:(Maybe ^McStateExtra)
@@ -394,18 +420,17 @@ bool store_custom(vm::CellBuilder& cb) {
   }
   vm::CellBuilder cb2, cb3;
   bool ok = true;
-  PDO(cb2.store_long_bool(0xcc21, 16)  // masterchain_state_extra#cc21
-      && cb2.store_long_bool(0, 1)     // shard_hashes:ShardHashes = (HashmapE 32 ^(BinTree ShardDescr))
-      && cb2.store_long_bool(0, 1)     // shard_fees:ShardFees = HashmapAugE 32 .. CurrencyCollection
-      && block::tlb::t_CurrencyCollection.null_value(cb2)  // ...
-      && store_config_params(cb2)                          // config:ConfigParams
-      && store_validator_list_hash(cb3)                    // ^[ validator_list_hash_short:uint32
-      && cb3.store_long_bool(0, 32)                        //   catchain_seqno:uint32
-      && cb3.store_bool_bool(true)                         //   nx_cc_updated:Bool
-      && cb3.store_zeroes_bool(1 + 65)                     //   prev_blocks:OldMcBlocksInfo
-      && cb3.store_long_bool(2, 1 + 1)                     //   after_key_block:Bool last_key_block:(Maybe ...)
-      && cb2.store_ref_bool(cb3.finalize())                // ]
-      && cb.store_long_bool(1, 1)                          // just
+  PDO(cb2.store_long_bool(0xcc25, 16)        // masterchain_state_extra#cc25
+      && cb2.store_long_bool(0, 1)           // shard_hashes:ShardHashes = (HashmapE 32 ^(BinTree ShardDescr))
+      && store_config_params(cb2)            // config:ConfigParams
+      && store_validator_list_hash(cb3)      // ^[ validator_list_hash_short:uint32
+      && cb3.store_long_bool(0, 32)          //   catchain_seqno:uint32
+      && cb3.store_bool_bool(true)           //   nx_cc_updated:Bool
+      && cb3.store_zeroes_bool(1 + 65)       //   prev_blocks:OldMcBlocksInfo
+      && cb3.store_long_bool(2, 1 + 1)       //   after_key_block:Bool last_key_block:(Maybe ...)
+      && cb2.store_ref_bool(cb3.finalize())  // ]
+      && block::CurrencyCollection{total_smc_balance}.store(cb2)  // global_balance:CurrencyCollection
+      && cb.store_long_bool(1, 1)                                 // just
       && cb.store_ref_bool(cb2.finalize()));
   return ok;
 }
@@ -418,27 +443,27 @@ Ref<vm::Cell> create_state() {
   THRERR("workchain_id is unset, cannot generate state");
   PDO(workchain_id != wc_master || config_addr_set);
   THRERR("configuration smart contract must be selected");
-  PDO(cb.store_long_bool(0x9023afe1, 32)      // shard_state#9023afe1
+  PDO(cb.store_long_bool(0x9023afe2, 32)      // shard_state#9023afe2
       && cb.store_long_bool(global_id, 32));  // global_id:int32
   PDO(cb.store_long_bool(0, 8) && cb.store_long_bool(workchain_id, 32) &&
-      cb.store_long_bool(0, 64)             // shard_id:ShardIdent
-      && cb.store_long_bool(0, 32)          // seq_no:#
-      && cb.store_zeroes_bool(32)           // vert_seq_no:#
-      && cb.store_long_bool(now, 32)        // gen_utime:uint32
-      && cb.store_zeroes_bool(64)           // gen_lt:uint64
-      && cb.store_ones_bool(32)             // min_ref_mc_seqno:uint32
-      && cb2.store_zeroes_bool(1 + 64 + 2)  // OutMsgQueueInfo
-      && cb.store_ref_bool(cb2.finalize())  // out_msg_queue_info:^OutMsgQueueInfo
-      && cb.store_long_bool(0, 1)           // before_split:Bool
-      && store_accounts(cb)                 // accounts:ShardAccounts
-      && cb2.store_zeroes_bool(128)         // ^[ overload_history:uint64 underload_history:uint64
-      && block::tlb::t_Grams.store_integer_value(cb2, *total_smc_balance) &&
-      cb2.store_long_bool(0, 1)                            //   total_balance:CurrencyCollection
-      && block::tlb::t_CurrencyCollection.null_value(cb2)  //   total_validator_fees:CurrencyCollection
-      && store_public_libraries(cb2)                       //   libraries:(Hashmap 256 LibDescr)
-      && cb2.store_long_bool(0, 1)                         //   master_ref:(Maybe BlkMasterInfo)
-      && cb.store_ref_bool(cb2.finalize())                 // ]
-      && store_custom(cb));                                // custom:(Maybe  ^McStateExtra)
+      cb.store_long_bool(0, 64)                                   // shard_id:ShardIdent
+      && cb.store_long_bool(0, 32)                                // seq_no:#
+      && cb.store_zeroes_bool(32)                                 // vert_seq_no:#
+      && cb.store_long_bool(now, 32)                              // gen_utime:uint32
+      && cb.store_zeroes_bool(64)                                 // gen_lt:uint64
+      && cb.store_ones_bool(32)                                   // min_ref_mc_seqno:uint32
+      && cb2.store_zeroes_bool(1 + 64 + 2)                        // OutMsgQueueInfo
+      && cb.store_ref_bool(cb2.finalize())                        // out_msg_queue_info:^OutMsgQueueInfo
+      && cb.store_long_bool(0, 1)                                 // before_split:Bool
+      && store_accounts(cb2)                                      // accounts:^ShardAccounts
+      && cb.store_ref_bool(cb2.finalize())                        // ...
+      && cb2.store_zeroes_bool(128)                               // ^[ overload_history:uint64 underload_history:uint64
+      && block::CurrencyCollection{total_smc_balance}.store(cb2)  //   total_balance:CurrencyCollection
+      && block::tlb::t_CurrencyCollection.null_value(cb2)         //   total_validator_fees:CurrencyCollection
+      && store_public_libraries(cb2)                              //   libraries:(Hashmap 256 LibDescr)
+      && cb2.store_long_bool(0, 1)                                //   master_ref:(Maybe BlkMasterInfo)
+      && cb.store_ref_bool(cb2.finalize())                        // ]
+      && store_custom(cb));                                       // custom:(Maybe ^McStateExtra)
   THRERR("cannot create blockchain state");
   Ref<vm::Cell> cell = cb.finalize();
   if (verbosity > 2) {
@@ -470,13 +495,22 @@ Ref<vm::Cell> create_state() {
 // balance (int)
 // split_depth (int 0..32)
 // special (int 0..3, +2 = tick, +1 = tock)
-// mode (0 = compute address only, 1 = create uninit, 2 = create complete)
+// [ address (uint256) ]
+// mode (0 = compute address only, 1 = create uninit, 2 = create complete; +4 = with specified address)
 // --> 256-bit address
 void interpret_register_smartcontract(vm::Stack& stack) {
   if (workchain_id == wc_undef) {
     throw fift::IntError{"cannot register a smartcontract unless the workchain is specified first"};
   }
-  int mode = stack.pop_smallint_range(2);
+  td::RefInt256 spec_addr;
+  int mode = stack.pop_smallint_range(2 + 4);  // allowed modes: 0 1 2 4 5 6
+  if (mode == 3) {
+    throw fift::IntError{"invalid mode"};
+  }
+  if (mode & 4) {
+    spec_addr = stack.pop_int_finite();
+    mode &= ~4;
+  }
   int special = stack.pop_smallint_range(3);
   if (special && workchain_id != wc_master) {
     throw fift::IntError{"cannot create special smartcontracts outside of the masterchain"};
@@ -492,8 +526,8 @@ void interpret_register_smartcontract(vm::Stack& stack) {
   Ref<vm::Cell> library = stack.pop_cell();
   Ref<vm::Cell> data = stack.pop_cell();
   Ref<vm::Cell> code = stack.pop_cell();
-  td::RefInt256 addr = create_smartcontract(std::move(code), std::move(data), std::move(library), std::move(balance),
-                                            special, split_depth, mode);
+  td::RefInt256 addr = create_smartcontract(std::move(spec_addr), std::move(code), std::move(data), std::move(library),
+                                            std::move(balance), special, split_depth, mode);
   if (addr.is_null()) {
     throw fift::IntError{"internal error while creating smartcontract"};
   }

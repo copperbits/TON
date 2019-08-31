@@ -1,4 +1,29 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "CyclicBuffer.h"
+
+#include "td/utils/misc.h"
+#include "td/utils/Slice.h"
+
+#include <atomic>
+#include <limits>
+#include <memory>
 
 namespace td {
 namespace detail {
@@ -7,10 +32,14 @@ class CyclicBuffer : public StreamWriterInterface, public StreamReaderInterface 
   using Options = ::td::CyclicBuffer::Options;
 
   CyclicBuffer(Options options) {
+    CHECK(options.chunk_size != 0);
+    CHECK(options.count != 0);
+    CHECK(options.alignment != 0);
+    CHECK(options.chunk_size < (std::numeric_limits<size_t>::max() - options.alignment) / options.count);
     shared_.options_ = options;
     shared_.raw_data_ = std::make_unique<char[]>(options.size() + options.alignment - 1);
     auto pos = reinterpret_cast<uint64>(shared_.raw_data_.get());
-    auto offset = (options.alignment - static_cast<int64>(pos % options.alignment)) % options.alignment;
+    auto offset = (options.alignment - static_cast<size_t>(pos % options.alignment)) % options.alignment;
     CHECK(offset < options.alignment);
     shared_.data_ = MutableSlice(shared_.raw_data_.get() + offset, options.size());
   }
@@ -19,16 +48,16 @@ class CyclicBuffer : public StreamWriterInterface, public StreamReaderInterface 
   size_t reader_size() override {
     auto offset = reader_.pos_.load(std::memory_order_relaxed);
     auto size = writer_.pos_.load(std::memory_order_acquire) - offset;
-    return size;
+    return narrow_cast<size_t>(size);
   }
   Slice prepare_read() override {
     auto offset = reader_.pos_.load(std::memory_order_relaxed);
-    auto size = writer_.pos_.load(std::memory_order_acquire) - offset;
+    auto size = narrow_cast<size_t>(writer_.pos_.load(std::memory_order_acquire) - offset);
     if (size == 0) {
       return {};
     }
     offset %= (shared_.options_.chunk_size * shared_.options_.count);
-    return shared_.data_.substr(offset).truncate(size).truncate(shared_.options_.chunk_size);
+    return shared_.data_.substr(narrow_cast<size_t>(offset)).truncate(size).truncate(shared_.options_.chunk_size);
   }
   Span<IoSlice> prepare_readv() override {
     reader_.io_slice_ = as_io_slice(prepare_read());
@@ -55,7 +84,7 @@ class CyclicBuffer : public StreamWriterInterface, public StreamReaderInterface 
   size_t writer_size() override {
     auto offset = reader_.pos_.load(std::memory_order_acquire);
     auto size = writer_.pos_.load(std::memory_order_relaxed) - offset;
-    return size;
+    return narrow_cast<size_t>(size);
   }
   MutableSlice prepare_write() override {
     auto max_offset =
@@ -65,7 +94,7 @@ class CyclicBuffer : public StreamWriterInterface, public StreamReaderInterface 
       return {};
     }
     offset %= (shared_.options_.chunk_size * shared_.options_.count);
-    return shared_.data_.substr(offset, shared_.options_.chunk_size);
+    return shared_.data_.substr(narrow_cast<size_t>(offset), shared_.options_.chunk_size);
   }
   MutableSlice prepare_write_at_least(size_t size) override {
     UNREACHABLE();
@@ -103,7 +132,7 @@ class CyclicBuffer : public StreamWriterInterface, public StreamReaderInterface 
   } shared_;
 
   struct ReaderData {
-    std::atomic<int64> pos_{0};
+    std::atomic<uint64> pos_{0};
     std::atomic<bool> is_closed_{false};
     Status status_;
     IoSlice io_slice_;
@@ -112,7 +141,7 @@ class CyclicBuffer : public StreamWriterInterface, public StreamReaderInterface 
   char pad[128];
 
   struct WriterData {
-    std::atomic<int64> pos_{0};
+    std::atomic<uint64> pos_{0};
     std::atomic<bool> is_closed_{false};
     Status status_;
   } writer_;

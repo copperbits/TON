@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include <vector>
 #include <string>
@@ -15,6 +33,11 @@
 
 namespace funC {
 
+extern int verbosity;
+extern bool op_rewrite_comments;
+
+constexpr int optimize_depth = 12;
+
 enum Keyword {
   _Eof = -1,
   _Ident = 0,
@@ -28,9 +51,11 @@ enum Keyword {
   _While,
   _Until,
   _If,
+  _Ifnot,
   _Then,
   _Else,
   _Elseif,
+  _Elseifnot,
   _Eq,
   _Neq,
   _Leq,
@@ -59,11 +84,13 @@ enum Keyword {
   _Slice,
   _Builder,
   _Cont,
+  _Tuple,
   _Type,
   _Mapsto,
   _Asm,
   _Impure,
   _Extern,
+  _MethodId,
   _Operator,
   _Infix,
   _Infixl,
@@ -96,13 +123,14 @@ class IdSc {
  */
 
 struct TypeExpr {
-  enum te_type { te_Unknown, te_Indirect, te_Atomic, te_Tensor, te_Map, te_Type } constr;
+  enum te_type { te_Unknown, te_Indirect, te_Atomic, te_Tensor, te_Map, te_Type, te_ForAll } constr;
   enum {
     _Int = Keyword::_Int,
     _Cell = Keyword::_Cell,
     _Slice = Keyword::_Slice,
     _Builder = Keyword::_Builder,
     _Cont = Keyword::_Cont,
+    _Tuple = Keyword::_Tuple,
     _Type = Keyword::_Type
   };
   int value;
@@ -119,6 +147,16 @@ struct TypeExpr {
   }
   TypeExpr(te_type _constr, std::initializer_list<TypeExpr*> list)
       : constr(_constr), value((int)list.size()), args(std::move(list)) {
+    compute_width();
+  }
+  TypeExpr(te_type _constr, TypeExpr* elem0, std::vector<TypeExpr*> list)
+      : constr(_constr), value((int)list.size() + 1), args{elem0} {
+    args.insert(args.end(), list.begin(), list.end());
+    compute_width();
+  }
+  TypeExpr(te_type _constr, TypeExpr* elem0, std::initializer_list<TypeExpr*> list)
+      : constr(_constr), value((int)list.size() + 1), args{elem0} {
+    args.insert(args.end(), list.begin(), list.end());
     compute_width();
   }
   bool is_atomic() const {
@@ -142,9 +180,12 @@ struct TypeExpr {
   std::ostream& print(std::ostream& os, int prio = 0);
   void replace_with(TypeExpr* te2);
   int extract_components(std::vector<TypeExpr*>& comp_list);
-  static int holes;
+  static int holes, type_vars;
   static TypeExpr* new_hole() {
     return new TypeExpr{te_Unknown, ++holes};
+  }
+  static TypeExpr* new_hole(int width) {
+    return new TypeExpr{te_Unknown, ++holes, width};
   }
   static TypeExpr* new_unit() {
     return new TypeExpr{te_Tensor, 0, 0};
@@ -162,24 +203,41 @@ struct TypeExpr {
   static TypeExpr* new_tensor(std::initializer_list<TypeExpr*> list) {
     return new TypeExpr{te_Tensor, std::move(list)};
   }
+  static TypeExpr* new_tensor(TypeExpr* te1, TypeExpr* te2) {
+    return new_tensor({te1, te2});
+  }
+  static TypeExpr* new_tensor(TypeExpr* te1, TypeExpr* te2, TypeExpr* te3) {
+    return new_tensor({te1, te2, te3});
+  }
+  static TypeExpr* new_var() {
+    return new TypeExpr{te_Unknown, --type_vars, 1};
+  }
+  static TypeExpr* new_forall(std::vector<TypeExpr*> list, TypeExpr* body) {
+    return new TypeExpr{te_ForAll, body, std::move(list)};
+  }
+  static TypeExpr* new_forall(std::initializer_list<TypeExpr*> list, TypeExpr* body) {
+    return new TypeExpr{te_ForAll, body, std::move(list)};
+  }
   static bool remove_indirect(TypeExpr*& te, TypeExpr* forbidden = nullptr);
+  static bool remove_forall(TypeExpr*& te);
+  static bool remove_forall_in(TypeExpr*& te, TypeExpr* te2, const std::vector<TypeExpr*>& new_vars);
 };
 
 std::ostream& operator<<(std::ostream& os, TypeExpr* type_expr);
 
-struct UniformizeError {
+struct UnifyError {
   TypeExpr* te1;
   TypeExpr* te2;
   std::string msg;
-  UniformizeError(TypeExpr* _te1, TypeExpr* _te2, std::string _msg = "") : te1(_te1), te2(_te2), msg(_msg) {
+  UnifyError(TypeExpr* _te1, TypeExpr* _te2, std::string _msg = "") : te1(_te1), te2(_te2), msg(_msg) {
   }
   void print_message(std::ostream& os) const;
   std::string message() const;
 };
 
-std::ostream& operator<<(std::ostream& os, const UniformizeError& ue);
+std::ostream& operator<<(std::ostream& os, const UnifyError& ue);
 
-void uniformize(TypeExpr*& te1, TypeExpr*& te2);
+void unify(TypeExpr*& te1, TypeExpr*& te2);
 
 // extern int TypeExpr::holes;
 
@@ -226,14 +284,16 @@ struct VarDescr {
     _Finite = 4096,
     _Nan = 8192,
     _Even = 16384,
-    _Odd = 32768
+    _Odd = 32768,
+    _Null = (1 << 16),
+    _NotNull = (1 << 17)
   };
-  static constexpr int ConstZero = _Int | _Zero | _Pos | _Neg | _Bool | _Bit | _Finite | _Even;
-  static constexpr int ConstOne = _Int | _NonZero | _Pos | _Bit | _Finite | _Odd;
-  static constexpr int ConstTrue = _Int | _NonZero | _Neg | _Bool | _Finite | _Odd;
+  static constexpr int ConstZero = _Int | _Zero | _Pos | _Neg | _Bool | _Bit | _Finite | _Even | _NotNull;
+  static constexpr int ConstOne = _Int | _NonZero | _Pos | _Bit | _Finite | _Odd | _NotNull;
+  static constexpr int ConstTrue = _Int | _NonZero | _Neg | _Bool | _Finite | _Odd | _NotNull;
   static constexpr int ValBit = ConstZero & ConstOne;
   static constexpr int ValBool = ConstZero & ConstTrue;
-  static constexpr int FiniteInt = _Int | _Finite;
+  static constexpr int FiniteInt = _Int | _Finite | _NotNull;
   static constexpr int FiniteUInt = FiniteInt | _Pos;
   int val;
   td::RefInt256 int_const;
@@ -265,6 +325,12 @@ struct VarDescr {
   }
   bool always_odd() const {
     return val & _Odd;
+  }
+  bool always_null() const {
+    return val & _Null;
+  }
+  bool always_not_null() const {
+    return val & _NotNull;
   }
   bool is_const() const {
     return val & _Const;
@@ -309,6 +375,11 @@ struct VarDescr {
   void operator&=(const VarDescr& y);
   void set_value(const VarDescr& y);
   void set_value(VarDescr&& y);
+  void set_value(const VarDescr* y) {
+    if (y) {
+      set_value(*y);
+    }
+  }
   void clear_value();
   void show_value(std::ostream& os) const;
   void show(std::ostream& os, const char* var_name = nullptr) const;
@@ -540,7 +611,7 @@ inline ListIterator<Op> end(Op* op_list) {
 typedef std::tuple<TypeExpr*, SymDef*, SrcLocation> FormalArg;
 typedef std::vector<FormalArg> FormalArgList;
 
-class AsmOpList;
+struct AsmOpList;
 
 struct CodeBlob {
   int var_cnt, in_var_cnt, op_cnt;
@@ -597,6 +668,7 @@ struct CodeBlob {
 
 struct SymVal : sym::SymValBase {
   TypeExpr* sym_type;
+  td::RefInt256 method_id;
   bool impure;
   SymVal(int _type, int _idx, TypeExpr* _stype = nullptr, bool _impure = false)
       : sym::SymValBase(_type, _idx), sym_type(_stype), impure(_impure) {
@@ -750,6 +822,11 @@ struct AsmOp {
   int indent{0};
   int a, b, c;
   std::string op;
+  struct SReg {
+    int idx;
+    SReg(int _idx) : idx(_idx) {
+    }
+  };
   AsmOp() = default;
   AsmOp(int _t) : t(_t) {
   }
@@ -788,6 +865,10 @@ struct AsmOp {
   bool is_push(int x) const {
     return is_push() && a == x;
   }
+  bool is_push(int* x) const {
+    *x = a;
+    return is_push();
+  }
   bool is_pop() const {
     return t == a_pop;
   }
@@ -798,7 +879,12 @@ struct AsmOp {
     return t == a_xchg;
   }
   bool is_xchg(int x, int y) const {
-    return t == a_xchg && b == y && a == x;
+    return is_xchg() && b == y && a == x;
+  }
+  bool is_xchg(int* x, int* y) const {
+    *x = a;
+    *y = b;
+    return is_xchg();
   }
   bool is_swap() const {
     return is_xchg(0, 1);
@@ -874,15 +960,19 @@ struct AsmOp {
   static AsmOp Custom(std::string custom_op) {
     return AsmOp(a_custom, 255, 255, custom_op);
   }
+  static AsmOp Parse(std::string custom_op);
   static AsmOp Custom(std::string custom_op, int args, int retv = 1) {
     return AsmOp(a_custom, args, retv, custom_op);
   }
+  static AsmOp Parse(std::string custom_op, int args, int retv = 1);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const AsmOp& op) {
   op.out(os);
   return os;
 }
+
+std::ostream& operator<<(std::ostream& os, AsmOp::SReg stack_reg);
 
 struct AsmOpList {
   std::vector<AsmOp> list_;
@@ -897,6 +987,15 @@ struct AsmOpList {
     list_.emplace_back(std::forward<Args>(args)...);
     adjust_last();
     return *this;
+  }
+  bool append(const AsmOp& op) {
+    list_.push_back(op);
+    adjust_last();
+    return true;
+  }
+  bool append(const std::vector<AsmOp>& ops);
+  bool append(std::initializer_list<AsmOp> ops) {
+    return append(std::vector<AsmOp>(std::move(ops)));
   }
   AsmOpList& operator<<(const AsmOp& op) {
     return add(op);
@@ -975,7 +1074,7 @@ They act on stacks S on the right: Sf=S', such that S'[n]=S[f(n)].
 A stack transform f is determined by d_f and the finite set A of all pairs (x,y), such that x>=d_f, f(x-d_f) = y and y<>x. They are listed in increasing order by x.
 */
 struct StackTransform {
-  enum { max_n = 8, inf_x = 0x7fffffff, c_start = -1000 };
+  enum { max_n = 16, inf_x = 0x7fffffff, c_start = -1000 };
   int d{0}, n{0}, dp{0}, c{0};
   bool invalid{false};
   std::array<std::pair<short, short>, max_n> A;
@@ -1104,6 +1203,9 @@ struct StackTransform {
   bool is_blkdrop(int* i) const;
   bool is_reverse(int i, int j) const;
   bool is_reverse(int* i, int* j) const;
+  bool is_nip_seq(int i, int j = 0) const;
+  bool is_nip_seq(int* i) const;
+  bool is_nip_seq(int* i, int* j) const;
 
   void show(std::ostream& os, int mode = 0) const;
 
@@ -1132,7 +1234,7 @@ bool apply_op(StackTransform& trans, const AsmOp& op);
  */
 
 struct Optimizer {
-  enum { n = 6 };
+  enum { n = optimize_depth };
   AsmOpConsList code_;
   int l_{0}, l2_{0}, p_, pb_, q_, indent_;
   bool debug_{false};
@@ -1162,9 +1264,15 @@ struct Optimizer {
   void show_right() const;
   bool is_const_push_swap() const;
   bool rewrite_const_push_swap();
+  bool is_const_push_xchgs();
+  bool rewrite_const_push_xchgs();
   bool simple_rewrite(int p, AsmOp&& new_op);
+  bool simple_rewrite(int p, AsmOp&& new_op1, AsmOp&& new_op2);
   bool simple_rewrite(AsmOp&& new_op) {
     return simple_rewrite(p_, std::move(new_op));
+  }
+  bool simple_rewrite(AsmOp&& new_op1, AsmOp&& new_op2) {
+    return simple_rewrite(p_, std::move(new_op1), std::move(new_op2));
   }
   bool simple_rewrite_nop();
   bool is_pred(const std::function<bool(const StackTransform&)>& pred, int min_p = 2);
@@ -1196,6 +1304,7 @@ struct Optimizer {
   bool is_blkpush(int* i, int* j);
   bool is_blkdrop(int* i);
   bool is_reverse(int* i, int* j);
+  bool is_nip_seq(int* i, int* j);
   AsmOpConsList extract_code();
 };
 
@@ -1206,7 +1315,7 @@ void optimize_code(AsmOpList& ops);
 struct Stack {
   StackLayoutExt s;
   AsmOpList& o;
-  enum { _StkCmt = 1, _CptStkCmt = 2, _Shown = 256, _Garbage = -0x10000 };
+  enum { _StkCmt = 1, _CptStkCmt = 2, _DisableOpt = 4, _Shown = 256, _Garbage = -0x10000 };
   int mode;
   Stack(AsmOpList& _o, int _mode = 0) : o(_o), mode(_mode) {
   }
@@ -1282,23 +1391,46 @@ struct Stack {
 typedef std::function<AsmOp(std::vector<VarDescr>&, std::vector<VarDescr>&)> simple_compile_func_t;
 typedef std::function<bool(AsmOpList&, std::vector<VarDescr>&, std::vector<VarDescr>&)> compile_func_t;
 
-inline simple_compile_func_t simple_compile(AsmOp op) {
+inline simple_compile_func_t make_simple_compile(AsmOp op) {
   return [op](std::vector<VarDescr>& out, std::vector<VarDescr>& in) -> AsmOp { return op; };
 }
 
+inline compile_func_t make_ext_compile(std::vector<AsmOp> ops) {
+  return [ops = std::move(ops)](AsmOpList & dest, std::vector<VarDescr> & out, std::vector<VarDescr> & in)->bool {
+    return dest.append(ops);
+  };
+}
+
+inline compile_func_t make_ext_compile(AsmOp op) {
+  return
+      [op](AsmOpList& dest, std::vector<VarDescr>& out, std::vector<VarDescr>& in) -> bool { return dest.append(op); };
+}
+
 struct SymValAsmFunc : SymValFunc {
-  simple_compile_func_t compile;
+  simple_compile_func_t simple_compile;
+  compile_func_t ext_compile;
   ~SymValAsmFunc() override = default;
   SymValAsmFunc(TypeExpr* ft, const AsmOp& _macro, bool impure = false)
-      : SymValFunc(-1, ft, impure), compile(simple_compile(_macro)) {
+      : SymValFunc(-1, ft, impure), simple_compile(make_simple_compile(_macro)) {
   }
-  SymValAsmFunc(TypeExpr* ft, const simple_compile_func_t& _compile, bool impure = false)
-      : SymValFunc(-1, ft, impure), compile(_compile) {
+  SymValAsmFunc(TypeExpr* ft, std::vector<AsmOp> _macro, bool impure = false)
+      : SymValFunc(-1, ft, impure), ext_compile(make_ext_compile(std::move(_macro))) {
   }
-  SymValAsmFunc(TypeExpr* ft, const simple_compile_func_t& _compile, std::initializer_list<int> arg_order,
+  SymValAsmFunc(TypeExpr* ft, simple_compile_func_t _compile, bool impure = false)
+      : SymValFunc(-1, ft, impure), simple_compile(std::move(_compile)) {
+  }
+  SymValAsmFunc(TypeExpr* ft, compile_func_t _compile, bool impure = false)
+      : SymValFunc(-1, ft, impure), ext_compile(std::move(_compile)) {
+  }
+  SymValAsmFunc(TypeExpr* ft, simple_compile_func_t _compile, std::initializer_list<int> arg_order,
                 std::initializer_list<int> ret_order = {}, bool impure = false)
-      : SymValFunc(-1, ft, arg_order, ret_order, impure), compile(_compile) {
+      : SymValFunc(-1, ft, arg_order, ret_order, impure), simple_compile(std::move(_compile)) {
   }
+  SymValAsmFunc(TypeExpr* ft, compile_func_t _compile, std::initializer_list<int> arg_order,
+                std::initializer_list<int> ret_order = {}, bool impure = false)
+      : SymValFunc(-1, ft, arg_order, ret_order, impure), ext_compile(std::move(_compile)) {
+  }
+  bool compile(AsmOpList& dest, std::vector<VarDescr>& in, std::vector<VarDescr>& out) const;
 };
 
 // defined in builtins.cpp

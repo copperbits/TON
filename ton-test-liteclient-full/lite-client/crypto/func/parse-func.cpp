@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "func.h"
 #include <fstream>
 
@@ -63,6 +81,9 @@ TypeExpr* parse_type1(Lexer& lex) {
     case _Cont:
       lex.next();
       return TypeExpr::new_atomic(_Cont);
+    case _Tuple:
+      lex.next();
+      return TypeExpr::new_atomic(_Tuple);
     case _Var:
     case '_':
       lex.next();
@@ -242,11 +263,10 @@ Expr* parse_expr100(Lexer& lex, CodeBlob& code, bool nv) {
   if (t == Lexem::Number) {
     Expr* res = new Expr{Expr::_Const, lex.cur().loc};
     res->flags = Expr::_IsRvalue;
-    td::RefInt256 val{true};
-    if (!val.unique_write().parse_dec(lex.cur().str)) {
+    res->intval = td::string_to_int256(lex.cur().str);
+    if (res->intval.is_null()) {
       lex.cur().error_at("invalid integer constant `", "`");
     }
-    res->intval = std::move(val);
     res->e_type = TypeExpr::new_atomic(_Int);
     lex.next();
     return res;
@@ -342,8 +362,8 @@ Expr* parse_expr90(Lexer& lex, CodeBlob& code, bool nv) {
       res->e_type = tp;
       res->here = lex.cur().loc;
       try {
-        uniformize(res->e_type, x->e_type);
-      } catch (UniformizeError& ue) {
+        unify(res->e_type, x->e_type);
+      } catch (UnifyError& ue) {
         std::ostringstream os;
         os << "cannot transform expression of type " << x->e_type << " to explicitly requested type " << res->e_type
            << ": " << ue;
@@ -386,7 +406,9 @@ Expr* parse_expr80(Lexer& lex, CodeBlob& code, bool nv) {
       }
     }
     check_global_func(lex.cur(), name);
-    std::cerr << "using symbol `" << symbols.get_name(name) << "` for method call of " << lex.cur().str << std::endl;
+    if (verbosity >= 2) {
+      std::cerr << "using symbol `" << symbols.get_name(name) << "` for method call of " << lex.cur().str << std::endl;
+    }
     sym = sym::lookup_symbol(name);
     SymValFunc* val = sym ? dynamic_cast<SymValFunc*>(sym->value) : nullptr;
     if (!val) {
@@ -417,9 +439,29 @@ Expr* parse_expr80(Lexer& lex, CodeBlob& code, bool nv) {
   return res;
 }
 
+// parse [ ~ ] E
+Expr* parse_expr75(Lexer& lex, CodeBlob& code, bool nv) {
+  if (lex.tp() == '~') {
+    sym_idx_t name = symbols.lookup_add("~_");
+    check_global_func(lex.cur(), name);
+    SrcLocation loc{lex.cur().loc};
+    lex.next();
+    auto x = parse_expr80(lex, code, false);
+    x->chk_rvalue(lex.cur());
+    auto res = new Expr{Expr::_Apply, name, {x}};
+    res->here = loc;
+    res->set_val('~');
+    res->flags = Expr::_IsRvalue;
+    res->deduce_type(lex.cur());
+    return res;
+  } else {
+    return parse_expr80(lex, code, nv);
+  }
+}
+
 // parse E { (* | / | % | /% ) E }
 Expr* parse_expr30(Lexer& lex, CodeBlob& code, bool nv) {
-  Expr* res = parse_expr80(lex, code, nv);
+  Expr* res = parse_expr75(lex, code, nv);
   while (lex.tp() == '*' || lex.tp() == '/' || lex.tp() == '%' || lex.tp() == _DivMod || lex.tp() == _DivC ||
          lex.tp() == _DivR || lex.tp() == '&') {
     res->chk_rvalue(lex.cur());
@@ -428,7 +470,7 @@ Expr* parse_expr30(Lexer& lex, CodeBlob& code, bool nv) {
     SrcLocation loc{lex.cur().loc};
     check_global_func(lex.cur(), name);
     lex.next();
-    auto x = parse_expr80(lex, code, false);
+    auto x = parse_expr75(lex, code, false);
     x->chk_rvalue(lex.cur());
     res = new Expr{Expr::_Apply, name, {res, x}};
     res->here = loc;
@@ -606,8 +648,8 @@ blk_fl::val parse_return_stmt(Lexer& lex, CodeBlob& code) {
   expr->chk_rvalue(lex.cur());
   try {
     // std::cerr << "in return: ";
-    uniformize(expr->e_type, code.ret_type);
-  } catch (UniformizeError& ue) {
+    unify(expr->e_type, code.ret_type);
+  } catch (UnifyError& ue) {
     std::ostringstream os;
     os << "previous function return type " << code.ret_type
        << " cannot be unified with return statement expression type " << expr->e_type << ": " << ue;
@@ -623,8 +665,8 @@ blk_fl::val parse_implicit_ret_stmt(Lexer& lex, CodeBlob& code) {
   auto ret_type = TypeExpr::new_unit();
   try {
     // std::cerr << "in implicit return: ";
-    uniformize(ret_type, code.ret_type);
-  } catch (UniformizeError& ue) {
+    unify(ret_type, code.ret_type);
+  } catch (UnifyError& ue) {
     std::ostringstream os;
     os << "previous function return type " << code.ret_type
        << " cannot be unified with implicit end-of-block return type " << ret_type << ": " << ue;
@@ -636,9 +678,11 @@ blk_fl::val parse_implicit_ret_stmt(Lexer& lex, CodeBlob& code) {
 
 blk_fl::val parse_stmt(Lexer& lex, CodeBlob& code);
 
-blk_fl::val parse_block_stmt(Lexer& lex, CodeBlob& code) {
+blk_fl::val parse_block_stmt(Lexer& lex, CodeBlob& code, bool no_new_scope = false) {
   lex.expect('{');
-  sym::open_scope(lex);
+  if (!no_new_scope) {
+    sym::open_scope(lex);
+  }
   blk_fl::val res = blk_fl::init;
   bool warned = false;
   while (lex.tp() != '}') {
@@ -648,7 +692,9 @@ blk_fl::val parse_block_stmt(Lexer& lex, CodeBlob& code) {
     }
     blk_fl::combine(res, parse_stmt(lex, code));
   }
-  sym::close_scope(lex);
+  if (!no_new_scope) {
+    sym::close_scope(lex);
+  }
   lex.expect('}');
   return res;
 }
@@ -660,8 +706,8 @@ blk_fl::val parse_repeat_stmt(Lexer& lex, CodeBlob& code) {
   expr->chk_rvalue(lex.cur());
   auto cnt_type = TypeExpr::new_atomic(_Int);
   try {
-    uniformize(expr->e_type, cnt_type);
-  } catch (UniformizeError& ue) {
+    unify(expr->e_type, cnt_type);
+  } catch (UnifyError& ue) {
     std::ostringstream os;
     os << "repeat count value of type " << expr->e_type << " is not an integer: " << ue;
     lex.cur().error(os.str());
@@ -684,8 +730,8 @@ blk_fl::val parse_while_stmt(Lexer& lex, CodeBlob& code) {
   expr->chk_rvalue(lex.cur());
   auto cnt_type = TypeExpr::new_atomic(_Int);
   try {
-    uniformize(expr->e_type, cnt_type);
-  } catch (UniformizeError& ue) {
+    unify(expr->e_type, cnt_type);
+  } catch (UnifyError& ue) {
     std::ostringstream os;
     os << "while condition value of type " << expr->e_type << " is not an integer: " << ue;
     lex.cur().error(os.str());
@@ -707,14 +753,16 @@ blk_fl::val parse_do_stmt(Lexer& lex, CodeBlob& code) {
   Op& while_op = code.emplace_back(lex.cur().loc, Op::_Until);
   lex.expect(_Do);
   code.push_set_cur(while_op.block0);
-  blk_fl::val res = parse_block_stmt(lex, code);
+  sym::open_scope(lex);
+  blk_fl::val res = parse_block_stmt(lex, code, true);
   lex.expect(_Until);
   auto expr = parse_expr(lex, code);
   expr->chk_rvalue(lex.cur());
+  sym::close_scope(lex);
   auto cnt_type = TypeExpr::new_atomic(_Int);
   try {
-    uniformize(expr->e_type, cnt_type);
-  } catch (UniformizeError& ue) {
+    unify(expr->e_type, cnt_type);
+  } catch (UnifyError& ue) {
     std::ostringstream os;
     os << "`until` condition value of type " << expr->e_type << " is not an integer: " << ue;
     lex.cur().error(os.str());
@@ -734,8 +782,8 @@ blk_fl::val parse_if_stmt(Lexer& lex, CodeBlob& code, int first_lex = _If) {
   expr->chk_rvalue(lex.cur());
   auto flag_type = TypeExpr::new_atomic(_Int);
   try {
-    uniformize(expr->e_type, flag_type);
-  } catch (UniformizeError& ue) {
+    unify(expr->e_type, flag_type);
+  } catch (UnifyError& ue) {
     std::ostringstream os;
     os << "`if` condition value of type " << expr->e_type << " is not an integer: " << ue;
     lex.cur().error(os.str());
@@ -754,10 +802,15 @@ blk_fl::val parse_if_stmt(Lexer& lex, CodeBlob& code, int first_lex = _If) {
     code.push_set_cur(if_op.block1);
     res2 = parse_block_stmt(lex, code);
     code.close_pop_cur(lex.cur().loc);
-  } else if (lex.tp() == _Elseif) {
+  } else if (lex.tp() == _Elseif || lex.tp() == _Elseifnot) {
     code.push_set_cur(if_op.block1);
-    res2 = parse_if_stmt(lex, code, _Elseif);
+    res2 = parse_if_stmt(lex, code, lex.tp());
     code.close_pop_cur(lex.cur().loc);
+  } else {
+    if_op.block1 = std::make_unique<Op>(lex.cur().loc, Op::_Nop);
+  }
+  if (first_lex == _Ifnot || first_lex == _Elseifnot) {
+    std::swap(if_op.block0, if_op.block1);
   }
   blk_fl::combine_parallel(res1, res2);
   return res1;
@@ -779,7 +832,8 @@ blk_fl::val parse_stmt(Lexer& lex, CodeBlob& code) {
     case _Repeat:
       return parse_repeat_stmt(lex, code);
     case _If:
-      return parse_if_stmt(lex, code);
+    case _Ifnot:
+      return parse_if_stmt(lex, code, lex.tp());
     case _Do:
       return parse_do_stmt(lex, code);
     case _While:
@@ -889,18 +943,17 @@ SymValAsmFunc* parse_asm_func_body(Lexer& lex, TypeExpr* func_type, const Formal
     lex.expect(')');
   }
   while (lex.tp() == _String) {
-    asm_ops.push_back(AsmOp::Custom(lex.cur().str, cnt, 1));
+    asm_ops.push_back(AsmOp::Parse(lex.cur().str, cnt, width));
     lex.next();
-    cnt = width;
+    if (asm_ops.back().is_custom()) {
+      cnt = width;
+    }
   }
   if (asm_ops.empty()) {
     throw src::ParseError{lex.cur().loc, "string with assembler instruction expected"};
   }
   lex.expect(';');
-  if (asm_ops.size() != 1) {
-    throw src::ParseError{loc, "assembler definition must consist of exactly one string with an assembler instruction"};
-  }
-  auto res = new SymValAsmFunc{func_type, asm_ops[0], impure};
+  auto res = new SymValAsmFunc{func_type, asm_ops, impure};
   res->arg_order = std::move(arg_order);
   res->ret_order = std::move(ret_order);
   return res;
@@ -920,11 +973,27 @@ void parse_func_def(Lexer& lex) {
   if (impure) {
     lex.next();
   }
+  td::RefInt256 method_id;
+  if (lex.tp() == _MethodId) {
+    lex.next();
+    lex.expect('(');
+    if (lex.tp() != Lexem::Number) {
+      throw src::ParseError{lex.cur().loc, "integer method identifier expected"};
+    }
+    method_id = td::string_to_int256(lex.cur().str);
+    if (method_id.is_null()) {
+      lex.cur().error_at("invalid integer constant `", "`");
+    }
+    lex.next();
+    lex.expect(')');
+  }
   if (lex.tp() != ';' && lex.tp() != '{' && lex.tp() != _Asm) {
     lex.expect('{', "function body block expected");
   }
   TypeExpr* func_type = TypeExpr::new_map(extract_total_arg_type(arg_list), ret_type);
-  std::cerr << "function " << func_name.str << " : " << func_type << std::endl;
+  if (verbosity >= 1) {
+    std::cerr << "function " << func_name.str << " : " << func_type << std::endl;
+  }
   SymDef* func_sym = sym::define_global_symbol(func_name.val, 0, loc);
   assert(func_sym);
   SymValFunc* func_sym_val = dynamic_cast<SymValFunc*>(func_sym->value);
@@ -933,8 +1002,8 @@ void parse_func_def(Lexer& lex) {
       lex.cur().error("was not defined as a function before");
     }
     try {
-      uniformize(func_sym_val->sym_type, func_type);
-    } catch (UniformizeError& ue) {
+      unify(func_sym_val->sym_type, func_type);
+    } catch (UnifyError& ue) {
       std::ostringstream os;
       os << "previous type of function " << func_name.str << " : " << func_sym_val->sym_type
          << " cannot be unified with new type " << func_type << ": " << ue;
@@ -977,7 +1046,20 @@ void parse_func_def(Lexer& lex) {
     }
     func_sym->value = parse_asm_func_body(lex, func_type, arg_list, ret_type, impure);
   }
-  std::cerr << "new type of function " << func_name.str << " : " << func_type << std::endl;
+  if (method_id.not_null()) {
+    auto val = dynamic_cast<SymVal*>(func_sym->value);
+    if (!val) {
+      lex.cur().error("cannot set method id for unknown function `"s + func_name.str + "`");
+    }
+    if (val->method_id.is_null()) {
+      val->method_id = std::move(method_id);
+    } else if (val->method_id != method_id) {
+      lex.cur().error("integer method identifier for `"s + func_name.str + "` changed to a different value");
+    }
+  }
+  if (verbosity >= 1) {
+    std::cerr << "new type of function " << func_name.str << " : " << func_type << std::endl;
+  }
   sym::close_scope(lex);
 }
 

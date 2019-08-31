@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "keys.hpp"
 #include "auto/tl/ton_api.hpp"
 #include "td/utils/overloaded.h"
@@ -25,7 +43,7 @@ PublicKeyHash PublicKey::compute_short_id() const {
 }
 
 td::uint32 PublicKey::serialized_size() const {
-  td::uint32 res;
+  td::uint32 res = 0;
   pub_key_.visit([&](auto &obj) { res = obj.serialized_size(); });
   return res;
 }
@@ -34,6 +52,15 @@ tl_object_ptr<ton_api::PublicKey> PublicKey::tl() const {
   tl_object_ptr<ton_api::PublicKey> res;
   pub_key_.visit([&](auto &obj) { res = obj.tl(); });
   return res;
+}
+
+td::BufferSlice PublicKey::export_as_slice() const {
+  return serialize_tl_object(tl(), true);
+}
+
+td::Result<PublicKey> PublicKey::import(td::Slice s) {
+  TRY_RESULT(x, fetch_tl_object<ton_api::PublicKey>(s, true));
+  return PublicKey{x};
 }
 
 td::Result<std::unique_ptr<Encryptor>> PublicKey::create_encryptor() const {

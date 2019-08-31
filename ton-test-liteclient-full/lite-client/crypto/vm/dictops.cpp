@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <functional>
 #include "vm/log.h"
 #include "vm/opctable.h"
@@ -204,7 +222,7 @@ int exec_dict_get(VmState* st, unsigned args) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
   }
   if (args & 1) {
-    auto value = dict.lookup_ref(key.bits(), key.size());
+    auto value = dict.lookup_ref(key);
     if (value.not_null()) {
       stack.push_cell(std::move(value));
       stack.push_smallint(-1);
@@ -212,7 +230,7 @@ int exec_dict_get(VmState* st, unsigned args) {
       stack.push_smallint(0);
     }
   } else {
-    auto value = dict.lookup(key.bits(), key.size());
+    auto value = dict.lookup(key);
     if (value.not_null()) {
       stack.push_cellslice(std::move(value));
       stack.push_smallint(-1);
@@ -243,7 +261,7 @@ int exec_dict_get_optref(VmState* st, unsigned args) {
   if (!key.is_valid()) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
   }
-  stack.push_maybe_cell(dict.lookup_ref(key.bits(), key.size()));
+  stack.push_maybe_cell(dict.lookup_ref(key));
   return 0;
 }
 
@@ -268,19 +286,19 @@ int exec_dict_set(VmState* st, unsigned args, Dictionary::SetMode mode, const ch
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    res = dict.set_builder(key.bits(), key.size(), std::move(new_value), mode);
+    res = dict.set_builder(key, std::move(new_value), mode);
   } else if (!(args & 1)) {
     auto new_value = stack.pop_cellslice();
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    res = dict.set(key.bits(), key.size(), std::move(new_value), mode);
+    res = dict.set(key, std::move(new_value), mode);
   } else {
     auto new_value_ref = stack.pop_cell();
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    res = dict.set_ref(key.bits(), key.size(), std::move(new_value_ref), mode);
+    res = dict.set_ref(key, std::move(new_value_ref), mode);
   }
   push_dict(stack, std::move(dict));
   if (mode == Dictionary::SetMode::Set) {
@@ -312,7 +330,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    auto res = dict.lookup_set_builder(key.bits(), key.size(), std::move(new_value), mode);
+    auto res = dict.lookup_set_builder(key, std::move(new_value), mode);
     push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cellslice(std::move(res));
@@ -325,7 +343,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    auto res = dict.lookup_set(key.bits(), key.size(), std::move(new_value), mode);
+    auto res = dict.lookup_set(key, std::move(new_value), mode);
     push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cellslice(std::move(res));
@@ -338,7 +356,7 @@ int exec_dict_setget(VmState* st, unsigned args, Dictionary::SetMode mode, const
     if (!key.is_valid()) {
       throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
     }
-    auto res = dict.lookup_set_ref(key.bits(), key.size(), std::move(new_value_ref), mode);
+    auto res = dict.lookup_set_ref(key, std::move(new_value_ref), mode);
     push_dict(stack, std::move(dict));
     if (res.not_null()) {
       stack.push_cell(std::move(res));
@@ -371,7 +389,7 @@ int exec_dict_delete(VmState* st, unsigned args) {
   if (!key.is_valid()) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
   }
-  bool res = dict.lookup_delete(key.bits(), key.size()).not_null();
+  bool res = dict.lookup_delete(key).not_null();
   push_dict(stack, std::move(dict));
   stack.push_bool(res);
   return 0;
@@ -399,7 +417,7 @@ int exec_dict_deleteget(VmState* st, unsigned args) {
     throw VmError{Excno::cell_und, "not enough bits for a dictionary key"};
   }
   if (!(args & 1)) {
-    auto res = dict.lookup_delete(key.bits(), key.size());
+    auto res = dict.lookup_delete(key);
     push_dict(stack, std::move(dict));
     bool ok = res.not_null();
     if (ok) {
@@ -407,7 +425,7 @@ int exec_dict_deleteget(VmState* st, unsigned args) {
     }
     stack.push_bool(ok);
   } else {
-    auto res = dict.lookup_delete_ref(key.bits(), key.size());
+    auto res = dict.lookup_delete_ref(key);
     push_dict(stack, std::move(dict));
     bool ok = res.not_null();
     if (ok) {
@@ -437,9 +455,9 @@ int exec_dict_setget_optref(VmState* st, unsigned args) {
   }
   Ref<vm::Cell> value;
   if (new_value.not_null()) {
-    value = dict.lookup_set_ref(key.bits(), key.size(), std::move(new_value));
+    value = dict.lookup_set_ref(key, std::move(new_value));
   } else {
-    value = dict.lookup_delete_ref(key.bits(), key.size());
+    value = dict.lookup_delete_ref(key);
   }
   push_dict(stack, std::move(dict));
   stack.push_maybe_cell(std::move(value));

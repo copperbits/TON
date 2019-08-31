@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/filesystem.h"
 
 #include "td/utils/buffer.h"
@@ -5,6 +23,7 @@
 #include "td/utils/misc.h"
 #include "td/utils/PathView.h"
 #include "td/utils/port/FileFd.h"
+#include "td/utils/port/path.h"
 #include "td/utils/Slice.h"
 #include "td/utils/Status.h"
 #include "td/utils/unicode.h"
@@ -74,12 +93,22 @@ Status copy_file(CSlice from, CSlice to, int64 size) {
   return write_file(to, content.as_slice());
 }
 
-Status write_file(CSlice to, Slice data) {
+Status write_file(CSlice to, Slice data, WriteFileOptions options) {
   auto size = data.size();
   TRY_RESULT(to_file, FileFd::open(to, FileFd::Truncate | FileFd::Create | FileFd::Write));
+  if (options.need_lock) {
+    TRY_STATUS(to_file.lock(FileFd::LockFlags::Write, to.str(), 10));
+    TRY_STATUS(to_file.truncate_to_current_position(0));
+  }
   TRY_RESULT(written, to_file.write(data));
   if (written != size) {
     return Status::Error(PSLICE() << "Failed to write file: written " << written << " bytes instead of " << size);
+  }
+  if (options.need_sync) {
+    TRY_STATUS(to_file.sync());
+  }
+  if (options.need_lock) {
+    to_file.lock(FileFd::LockFlags::Unlock, to.str(), 10).ignore();
   }
   to_file.close();
   return Status::OK();
@@ -160,4 +189,17 @@ string clean_filename(CSlice name) {
   return filename;
 }
 
+Status atomic_write_file(CSlice path, Slice data, CSlice path_tmp) {
+  string path_tmp_buf;
+  if (path_tmp.empty()) {
+    path_tmp_buf = path.str() + ".tmp";
+    path_tmp = path_tmp_buf;
+  }
+
+  WriteFileOptions options;
+  options.need_sync = true;
+  options.need_lock = true;
+  TRY_STATUS(write_file(path_tmp, data, options));
+  return rename(path_tmp, path);
+}
 }  // namespace td

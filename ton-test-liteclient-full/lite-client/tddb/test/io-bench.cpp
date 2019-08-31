@@ -1,3 +1,21 @@
+/* 
+    This file is part of TON Blockchain source code.
+
+    TON Blockchain is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation; either version 2
+    of the License, or (at your option) any later version.
+
+    TON Blockchain is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with TON Blockchain.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/OptionsParser.h"
 #include "td/utils/filesystem.h"
 #include "td/utils/port/FileFd.h"
@@ -314,8 +332,8 @@ class FileWriter {
   }
 
  private:
-  constexpr static size_t max_cached_size = 256 * (1 << 10);
-  constexpr static size_t min_immediate_write_size = 32 * (1 << 10);
+  static constexpr size_t max_cached_size = 256 * (1 << 10);
+  static constexpr size_t min_immediate_write_size = 32 * (1 << 10);
 
   FileFd fd_;
 

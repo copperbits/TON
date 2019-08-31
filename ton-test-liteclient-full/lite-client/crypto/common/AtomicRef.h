@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/SpinLock.h"
@@ -174,7 +192,7 @@ class AtomicRefLockfree {
   static_assert(sizeof(Ptr) == 8, "sizeof(Ptr) must be 8 for atomic to work fine");
   static_assert(std::is_trivially_copyable<Ptr>::value, "Ptr must be tribially copyable");
 
-  mutable std::atomic<Ptr> ptr_{};
+  mutable std::atomic<Ptr> ptr_{Ptr()};
 };
 
 template <class T>

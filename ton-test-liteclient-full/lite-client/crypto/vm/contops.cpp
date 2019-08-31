@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <functional>
 #include "vm/contops.h"
 #include "vm/log.h"
@@ -988,7 +1006,6 @@ void register_exception_ops(OpcodeTable& cp0) {
       .insert(OpcodeInstr::mkfixedrange(0xf2f0, 0xf2f6, 16, 3, dump_throw_any, exec_throw_any))
       .insert(OpcodeInstr::mksimple(0xf2ff, 16, "TRY", std::bind(exec_try, _1, -1)))
       .insert(OpcodeInstr::mkfixed(0xf3, 8, 8, instr::dump_2c("TRYARGS ", ","), exec_try));
-  ;
 }
 
 int exec_set_cp_generic(VmState* st, int new_codepage) {

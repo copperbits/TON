@@ -4,7 +4,7 @@ if (NOT OPENSSL_FOUND)
   find_package(OpenSSL REQUIRED)
 endif()
 
-set (TON_CRYPTO_SOURCE
+set(TON_CRYPTO_SOURCE
   Ed25519.cpp
   common/bigint.cpp
   common/refcnt.cpp
@@ -117,7 +117,7 @@ set (TON_CRYPTO_SOURCE
   vm/db/BlobView.cpp
 )
 
-set (TON_DB_SOURCE
+set(TON_DB_SOURCE
   vm/db/DynamicBagOfCellsDb.cpp
   vm/db/CellStorage.cpp
   vm/db/TonDb.cpp
@@ -128,7 +128,7 @@ set (TON_DB_SOURCE
   vm/db/TonDb.h
 )
 
-set (FIFT_SOURCE
+set(FIFT_SOURCE
   fift/Dictionary.cpp
   fift/Fift.cpp
   fift/IntCtx.cpp
@@ -144,7 +144,7 @@ set (FIFT_SOURCE
   fift/words.h
 )
 
-set (PARSER_SOURCE
+set(PARSER_SOURCE
   parser/srcread.cpp
   parser/lexer.cpp
   parser/symtable.cpp
@@ -154,7 +154,7 @@ set (PARSER_SOURCE
   parser/symtable.h
 )
 
-set (FUNC_LIB_SOURCE
+set(FUNC_LIB_SOURCE
   func/keywords.cpp
   func/unify-types.cpp
   func/parse-func.cpp
@@ -173,7 +173,7 @@ set(TLB_BLOCK_AUTO
   ${CMAKE_CURRENT_SOURCE_DIR}/block/block-auto.h
 )
 
-set (BLOCK_SOURCE
+set(BLOCK_SOURCE
   block/Binlog.h
   block/Binlog.cpp
   block/block.cpp
@@ -267,7 +267,6 @@ if (WINGETOPT_FOUND)
   target_link_libraries_system(tlbc wingetopt)
 endif()
 
-set_source_files_properties(${TLB_BLOCK_AUTO} PROPERTIES GENERATED TRUE)
 add_library(ton_block ${BLOCK_SOURCE})
 target_include_directories(ton_block PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/block> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
@@ -279,14 +278,56 @@ if (TON_USE_ASAN AND NOT WIN32)
 endif()
 
 if (NOT CMAKE_CROSSCOMPILING)
-  set(GenerateTlbCmd tlbc)
-  add_custom_target(tlb_generate_block
+  set(GENERATE_TLB_CMD tlbc)
+  add_custom_command(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/block
     COMMAND ${TURN_OFF_LSAN}
-    COMMAND ${GenerateTlbCmd} -o block-auto -n block::gen -z block.tlb
+    COMMAND ${GENERATE_TLB_CMD} -o block-auto -n block::gen -z block.tlb
     COMMENT "Generate block tlb source files"
+    OUTPUT ${TLB_BLOCK_AUTO}
     DEPENDS tlbc block/block.tlb
   )
+  add_custom_target(tlb_generate_block DEPENDS ${TLB_BLOCK_AUTO})
   add_dependencies(ton_block tlb_generate_block)
+
+  add_custom_target(gen_fif ALL)
+  function(GenFif)
+    set(options )
+    set(oneValueArgs DEST)
+    set(multiValueArgs SOURCE)
+    set(FUNC_LIB_SOURCE smartcont/stdlib.fc)
+    cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
+    string(REGEX REPLACE "[^a-zA-Z_]" "_" ID ${ARG_DEST})
+    add_custom_command(
+      COMMENT "Generate ${ARG_DEST}"
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      COMMAND func -PS -o ${ARG_DEST} ${FUNC_LIB_SOURCE} ${ARG_SOURCE}
+      MAIN_DEPENDENCY ${ARG_SOURCE}
+      DEPENDS func ${FUNC_LIB_SOURCE}
+      OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/${ARG_DEST}
+    )
+    add_custom_target(gen_fif_${ID} DEPENDS ${ARG_DEST})
+    add_dependencies(gen_fif gen_fif_${ID})
+  endfunction()
+
+  GenFif(DEST smartcont/config-code.fif SOURCE smartcont/config-code.fc)
+  GenFif(DEST smartcont/wallet-code.fif SOURCE smartcont/wallet-code.fc)
+  GenFif(DEST smartcont/simple-wallet-code.fif SOURCE smartcont/simple-wallet-code.fc)
+  GenFif(DEST smartcont/elector-code.fif SOURCE smartcont/elector-code.fc)
 endif()
 
+add_executable(create-state block/create-state.cpp)
+target_include_directories(create-state PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
+target_link_libraries(create-state PUBLIC ton_crypto fift-lib ton_block)
+if (WINGETOPT_FOUND)
+  target_link_libraries_system(create-state wingetopt)
+endif()
+
+add_executable(test-block block/test-block.cpp)
+target_include_directories(test-block PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>)
+target_link_libraries(test-block PUBLIC ton_crypto fift-lib ton_block)
+if (WINGETOPT_FOUND)
+  target_link_libraries_system(test-block wingetopt)
+endif()

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/common.h"
@@ -7,6 +25,7 @@
 #include "td/utils/StorerBase.h"
 #include "td/utils/UInt.h"
 
+//FIXME
 #include "crypto/common/bitstring.h"
 
 #include <cstring>
@@ -64,9 +83,9 @@ class TlStorerUnsafe {
       *buf_++ = static_cast<unsigned char>((len >> 8) & 255);
       *buf_++ = static_cast<unsigned char>((len >> 16) & 255);
       *buf_++ = static_cast<unsigned char>((len >> 24) & 255);
-      *buf_++ = static_cast<unsigned char>((len >> 32) & 255);
-      *buf_++ = static_cast<unsigned char>((len >> 40) & 255);
-      *buf_++ = static_cast<unsigned char>((len >> 48) & 255);
+      *buf_++ = static_cast<unsigned char>(0);
+      *buf_++ = static_cast<unsigned char>(0);
+      *buf_++ = static_cast<unsigned char>(0);
     } else {
       LOG(FATAL) << "String size " << len << " is too big to be stored";
     }
@@ -243,6 +262,7 @@ class TlStorerToString {
     store_field_end();
   }
 
+  //FIXME
   void store_field(const char *name, const Bits128 &value) {
     store_field_begin(name);
     store_binary(as_slice(value));
@@ -250,6 +270,18 @@ class TlStorerToString {
   }
 
   void store_field(const char *name, const Bits256 &value) {
+    store_field_begin(name);
+    store_binary(as_slice(value));
+    store_field_end();
+  }
+
+  void store_field(const char *name, const UInt128 &value) {
+    store_field_begin(name);
+    store_binary(as_slice(value));
+    store_field_end();
+  }
+
+  void store_field(const char *name, const UInt256 &value) {
     store_field_begin(name);
     store_binary(as_slice(value));
     store_field_end();

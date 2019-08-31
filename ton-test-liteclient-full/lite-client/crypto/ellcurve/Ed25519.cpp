@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "Ed25519.h"
 
 #include "td/utils/Random.h"
@@ -17,7 +35,7 @@ bool all_bytes_same(const unsigned char *str, std::size_t size) {
 
 void PublicKey::clear(void) {
   if (inited != pk_empty) {
-    memset(pubkey, 0, pubkey_bytes);
+    std::memset(pubkey, 0, pubkey_bytes);
     PubKey.zeroize();
     PubKey_xz.zeroize();
   }
@@ -45,7 +63,7 @@ bool PublicKey::import_public_key(const unsigned char pub_key[pubkey_bytes]) {
     clear();
     return false;
   }
-  memcpy(pubkey, pub_key, pubkey_bytes);
+  std::memcpy(pubkey, pub_key, pubkey_bytes);
   PubKey_xz.X = PubKey.Z + PubKey.Y;
   PubKey_xz.Z = PubKey.Z - PubKey.Y;
   inited = pk_init;
@@ -71,10 +89,10 @@ bool PublicKey::import_public_key(const ellcurve::TwEdwardsCurve::SegrePoint &Pu
 
 bool PublicKey::export_public_key(unsigned char pubkey_buffer[pubkey_bytes]) const {
   if (inited != pk_init) {
-    memset(pubkey_buffer, 0, pubkey_bytes);
+    std::memset(pubkey_buffer, 0, pubkey_bytes);
     return false;
   } else {
-    memcpy(pubkey_buffer, pubkey, pubkey_bytes);
+    std::memcpy(pubkey_buffer, pubkey, pubkey_bytes);
     return true;
   }
 }
@@ -105,7 +123,7 @@ bool PublicKey::check_message_signature(const unsigned char signature[sign_bytes
   if (!pR1.export_point(pR1_bytes)) {
     return false;
   }
-  return !memcmp(pR1_bytes, signature, 32);
+  return !std::memcmp(pR1_bytes, signature, 32);
 }
 
 // ---------------------
@@ -121,8 +139,8 @@ bool PrivateKey::random_private_key(bool strong) {
 }
 
 void PrivateKey::clear(void) {
-  memset(privkey, 0, privkey_bytes);
-  memset(priv_salt, 0, sizeof(priv_salt));
+  std::memset(privkey, 0, privkey_bytes);
+  std::memset(priv_salt, 0, sizeof(priv_salt));
   priv_exp.clear();
   PubKey.clear();
   inited = false;
@@ -133,16 +151,16 @@ bool PrivateKey::import_private_key(const unsigned char pk[privkey_bytes]) {
   if (all_bytes_same(pk, privkey_bytes)) {
     return false;
   }
-  memcpy(privkey, pk, privkey_bytes);
+  std::memcpy(privkey, pk, privkey_bytes);
   return process_private_key();
 }
 
 bool PrivateKey::export_private_key(unsigned char pk[privkey_bytes]) const {  // careful!
   if (!inited) {
-    memset(pk, 0, privkey_bytes);
+    std::memset(pk, 0, privkey_bytes);
     return false;
   } else {
-    memcpy(pk, privkey, privkey_bytes);
+    std::memcpy(pk, privkey, privkey_bytes);
     return true;
   }
 }
@@ -150,7 +168,7 @@ bool PrivateKey::export_private_key(unsigned char pk[privkey_bytes]) const {  //
 bool PrivateKey::process_private_key() {
   unsigned char buff[64];
   digest::hash_str<digest::SHA512>(buff, privkey, privkey_bytes);
-  memcpy(priv_salt, buff + 32, 32);
+  std::memcpy(priv_salt, buff + 32, 32);
   buff[0] = (unsigned char)(buff[0] & -8);
   buff[31] = (unsigned char)((buff[31] | 0x40) & ~0x80);
   priv_exp.import_lsb(buff, 32);
@@ -164,14 +182,14 @@ bool PrivateKey::process_private_key() {
 
 bool PrivateKey::compute_shared_secret(unsigned char secret[shared_secret_bytes], const PublicKey &Pub) {
   if (!inited || !Pub.ok()) {
-    memset(secret, 0, shared_secret_bytes);
+    std::memset(secret, 0, shared_secret_bytes);
     *(long *)secret = static_cast<long>(td::Random::fast_uint64());
     return false;
   }
   // uniform power!
   auto P = ellcurve::Curve25519().power_xz(Pub.get_point_xz(), priv_exp);
   if (P.is_infty()) {
-    memset(secret, 0, shared_secret_bytes);
+    std::memset(secret, 0, shared_secret_bytes);
     *(long *)secret = static_cast<long>(td::Random::fast_uint64());
     return false;
   }
@@ -190,7 +208,7 @@ bool PrivateKey::compute_temp_shared_secret(unsigned char secret[shared_secret_b
 
 bool PrivateKey::sign_message(unsigned char signature[sign_bytes], const unsigned char *message, std::size_t msg_size) {
   if (!inited) {
-    memset(signature, 0, sign_bytes);
+    std::memset(signature, 0, sign_bytes);
     return false;
   }
   unsigned char r_bytes[64];
@@ -246,7 +264,7 @@ unsigned char *TempKeyGenerator::get_temp_private_key(unsigned char *to, const u
 void TempKeyGenerator::create_temp_private_key(PrivateKey &pk, const unsigned char *message, std::size_t size,
                                                const unsigned char *rand, std::size_t rand_size) {
   pk.import_private_key(get_temp_private_key(buffer, message, size, rand, rand_size));
-  memset(buffer, 0, privkey_bytes);
+  std::memset(buffer, 0, privkey_bytes);
 }
 
 bool TempKeyGenerator::create_temp_shared_secret(unsigned char temp_pub_key[pubkey_bytes],

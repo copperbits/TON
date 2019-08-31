@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/port/config.h"
@@ -7,8 +25,9 @@
 #include "td/utils/common.h"
 #include "td/utils/Context.h"
 #include "td/utils/port/detail/NativeFd.h"
-#include "td/utils/port/thread.h"
 #include "td/utils/Status.h"
+
+#include <memory>
 
 namespace td {
 namespace detail {
@@ -50,13 +69,15 @@ class IocpRef {
   IocpRef(IocpRef &&) = default;
   IocpRef &operator=(IocpRef &&) = default;
 
-  IocpRef(std::weak_ptr<NativeFd> iocp_handle);
+  explicit IocpRef(std::weak_ptr<NativeFd> iocp_handle);
 
   bool post(size_t size, Iocp::Callback *callback, WSAOVERLAPPED *overlapped);
+
  private:
   std::weak_ptr<NativeFd> iocp_handle_;
 };
-} // namespace detail
+
+}  // namespace detail
 }  // namespace td
 
 #endif

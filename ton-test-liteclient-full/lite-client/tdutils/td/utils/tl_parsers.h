@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/buffer.h"
@@ -152,11 +170,18 @@ class TlParser {
       check_len(sizeof(int32));
       result_len = data[1] + (data[2] << 8) + (data[3] << 16) + (data[4] << 24) + (static_cast<uint64>(data[5]) << 32) +
                    (static_cast<uint64>(data[6]) << 40) + (static_cast<uint64>(data[7]) << 48);
+      if (result_len > std::numeric_limits<size_t>::max() - 3) {
+        set_error("Too big string found");
+        return T();
+      }
       result_begin = reinterpret_cast<const char *>(data + 8);
       result_aligned_len = ((result_len + 3) >> 2) << 2;
       data += sizeof(int64);
     }
     check_len(result_aligned_len);
+    if (!error.empty()) {
+      return T();
+    }
     data += result_aligned_len;
     return T(result_begin, result_len);
   }
@@ -165,6 +190,9 @@ class TlParser {
   T fetch_string_raw(const size_t size) {
     //CHECK(size % sizeof(int32) == 0);
     check_len(size);
+    if (!error.empty()) {
+      return T();
+    }
     const char *result = reinterpret_cast<const char *>(data);
     data += size;
     return T(result, size);

@@ -1,10 +1,30 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "utils.h"
 #include "words.h"
 #include "td/utils/PathView.h"
 #include "td/utils/filesystem.h"
 #include "td/utils/port/path.h"
+
 namespace fift {
 namespace {
+
 std::string fift_dir() {
   return td::PathView(td::realpath(__FILE__).move_as_ok()).parent_dir().str() + "lib/";
 }
@@ -20,13 +40,16 @@ std::string load_Asm_fif() {
 std::string load_TonUtil_fif() {
   return load_source("TonUtil.fif");
 }
+std::string load_Lists_fif() {
+  return load_source("Lists.fif");
+}
 
 class MemoryFileLoader : public fift::FileLoader {
  public:
   td::Result<fift::FileLoader::File> read_file(td::CSlice filename) override {
     auto it = files_.find(filename);
     if (it == files_.end()) {
-      return td::Status::Error();
+      return td::Status::Error("File not found");
     }
     fift::FileLoader::File res;
     res.data = it->second;
@@ -45,13 +68,16 @@ class MemoryFileLoader : public fift::FileLoader {
   td::Result<File> read_file_part(td::CSlice filename, td::int64 size, td::int64 offset) override {
     auto it = files_.find(filename);
     if (it == files_.end()) {
-      return td::Status::Error();
+      return td::Status::Error("File not found");
     }
     fift::FileLoader::File res;
     if (static_cast<td::int64>(it->second.size()) < offset) {
-      return td::Status::Error();
+      return td::Status::Error("Offset too large");
     }
-    res.data = td::Slice(it->second).substr(offset, size).str();
+    if (size > static_cast<td::int64>(it->second.size())) {
+      size = static_cast<td::int64>(it->second.size());
+    }
+    res.data = td::Slice(it->second).substr(td::narrow_cast<size_t>(offset), td::narrow_cast<size_t>(size)).str();
     res.path = it->first;
     return std::move(res);
   }
@@ -74,6 +100,7 @@ fift::SourceLookup create_source_lookup(std::string main, bool need_preamble = t
     loader->add_file("/Asm.fif", load_Asm_fif());
   }
   if (need_ton_util) {
+    loader->add_file("/Lists.fif", load_Lists_fif());
     loader->add_file("/TonUtil.fif", load_TonUtil_fif());
   }
   auto res = fift::SourceLookup(std::move(loader));

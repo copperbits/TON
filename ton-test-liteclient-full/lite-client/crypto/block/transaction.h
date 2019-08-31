@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include "common/refcnt.hpp"
 #include "common/refint.h"
@@ -47,10 +65,10 @@ struct NewOutMsg {
   NewOutMsg(ton::LogicalTime _lt, Ref<vm::Cell> _msg, Ref<vm::Cell> _trans)
       : lt(_lt), msg(std::move(_msg)), trans(std::move(_trans)) {
   }
-  bool operator<(const NewOutMsg& other) const& {
+  bool operator<(const NewOutMsg& other) const & {
     return lt < other.lt || (lt == other.lt && msg->get_hash() < other.msg->get_hash());
   }
-  bool operator>(const NewOutMsg& other) const& {
+  bool operator>(const NewOutMsg& other) const & {
     return lt > other.lt || (lt == other.lt && other.msg->get_hash() < msg->get_hash());
   }
 };
@@ -83,6 +101,7 @@ struct ComputePhaseConfig {
   td::RefInt256 gas_price256;
   td::RefInt256 max_gas_threshold;
   std::unique_ptr<vm::Dictionary> libraries;
+  Ref<vm::Cell> global_config;
   td::BitArray<256> block_rand_seed;
   ComputePhaseConfig(td::uint64 _gas_price = 0, td::uint64 _gas_limit = 0, td::uint64 _gas_credit = 0)
       : gas_price(_gas_price), gas_limit(_gas_limit), gas_credit(_gas_credit) {
@@ -139,8 +158,9 @@ struct ActionPhaseConfig {
 
 struct CreditPhase {
   td::RefInt256 due_fees_collected;
-  td::RefInt256 credit;
-  Ref<vm::Cell> credit_extra;
+  block::CurrencyCollection credit;
+  // td::RefInt256 credit;
+  // Ref<vm::Cell> credit_extra;
 };
 
 struct ComputePhase {
@@ -182,10 +202,11 @@ struct ActionPhase {
   int msgs_created;
   Ref<vm::Cell> new_code;
   td::BitArray<256> action_list_hash;
-  td::RefInt256 remaining_balance;
-  Ref<vm::Cell> remaining_extra;
-  td::RefInt256 reserved_balance;
-  Ref<vm::Cell> reserved_extra;
+  block::CurrencyCollection remaining_balance, reserved_balance;
+  // td::RefInt256 remaining_balance;
+  // Ref<vm::Cell> remaining_extra;
+  // td::RefInt256 reserved_balance;
+  // Ref<vm::Cell> reserved_extra;
   std::vector<Ref<vm::Cell>> action_list;  // processed in reverse order
   std::vector<Ref<vm::Cell>> out_msgs;
   ton::LogicalTime end_lt;
@@ -223,8 +244,9 @@ struct Account {
   ton::LogicalTime block_lt;
   ton::UnixTime last_paid;
   vm::CellStorageStat storage_stat;
-  td::RefInt256 balance;
-  Ref<vm::Cell> extra_balance;
+  block::CurrencyCollection balance;
+  // td::RefInt256 balance;
+  // Ref<vm::Cell> extra_balance;
   td::RefInt256 due_payment;
   Ref<vm::Cell> orig_total_state;  // ^Account
   Ref<vm::Cell> total_state;       // ^Account
@@ -239,7 +261,7 @@ struct Account {
       : split_depth_set_(true), split_depth_((unsigned char)depth), workchain(wc), addr(_addr) {
   }
   block::CurrencyCollection get_balance() const {
-    return block::CurrencyCollection{balance, extra_balance};
+    return balance;
   }
   bool set_address(ton::WorkchainId wc, td::ConstBitPtr new_addr);
   bool unpack(Ref<vm::CellSlice> account, Ref<vm::CellSlice> extra, ton::UnixTime now, bool special = false);
@@ -306,14 +328,17 @@ struct Transaction {
   const Account& account;                     // only `commit` method modifies the account
   Ref<vm::CellSlice> my_addr, my_addr_exact;  // almost the same as in account.*
   ton::LogicalTime start_lt, end_lt;
-  td::RefInt256 balance, due_payment, msg_balance_remaining;
-  td::RefInt256 in_fwd_fee, msg_fwd_fees, total_fees{true, 0};
+  block::CurrencyCollection balance;
+  block::CurrencyCollection msg_balance_remaining;
+  td::RefInt256 due_payment;
+  td::RefInt256 in_fwd_fee, msg_fwd_fees;
+  block::CurrencyCollection total_fees{0};
   ton::UnixTime last_paid;
   Ref<vm::Cell> root;
   Ref<vm::Cell> new_total_state;
   Ref<vm::CellSlice> new_inner_state;
-  Ref<vm::Cell> extra_balance;
-  Ref<vm::Cell> msg_extra;
+  // Ref<vm::Cell> extra_balance;
+  // Ref<vm::Cell> msg_extra;
   Ref<vm::Cell> new_code, new_data, new_library;
   Ref<vm::Cell> in_msg, in_msg_state;
   Ref<vm::CellSlice> in_msg_body;

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/common.h"
@@ -51,7 +69,7 @@ class SpanImpl {
       return false;
     }
     for (size_t i = 0; i < size(); i++) {
-      if ((*this)[i] != other[i]) {
+      if (!((*this)[i] == other[i])) {
         return false;
       }
     }
@@ -109,11 +127,11 @@ template <class T>
 using MutableSpan = detail::SpanImpl<T, T>;
 
 template <class T>
-auto span(const T *ptr, size_t size) {
+Span<T> span(const T *ptr, size_t size) {
   return Span<T>(ptr, size);
 }
 template <class T>
-auto mutable_span(T *ptr, size_t size) {
+MutableSpan<T> mutable_span(T *ptr, size_t size) {
   return MutableSpan<T>(ptr, size);
 }
 

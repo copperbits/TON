@@ -1,7 +1,29 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
-#include "td/utils/common.h"
 #include "td/utils/bits.h"
+#include "td/utils/common.h"
+
+#include <limits>
+#include <type_traits>
+
 namespace td {
 
 class uint128_emulated {
@@ -9,9 +31,11 @@ class uint128_emulated {
   using uint128 = uint128_emulated;
   uint128_emulated(uint64 hi, uint64 lo) : hi_(hi), lo_(lo) {
   }
-  uint128_emulated(uint64 lo) : uint128_emulated(0, lo) {
+  template <class T, typename = std::enable_if_t<std::is_unsigned<T>::value>>
+  uint128_emulated(T lo) : uint128_emulated(0, lo) {
   }
   uint128_emulated() = default;
+
   uint64 hi() const {
     return hi_;
   }
@@ -34,28 +58,28 @@ class uint128_emulated {
   }
 
   uint128 shl(int cnt) const {
-    if (cnt >= 128) {
-      return uint128();
-    }
     if (cnt == 0) {
       return *this;
     }
     if (cnt < 64) {
       return uint128((hi() << cnt) | (lo() >> (64 - cnt)), lo() << cnt);
     }
-    return uint128(lo() << (cnt - 64), 0);
+    if (cnt < 128) {
+      return uint128(lo() << (cnt - 64), 0);
+    }
+    return uint128();
   }
   uint128 shr(int cnt) const {
-    if (cnt >= 128) {
-      return uint128();
-    }
     if (cnt == 0) {
       return *this;
     }
     if (cnt < 64) {
       return uint128(hi() >> cnt, (lo() >> cnt) | (hi() << (64 - cnt)));
     }
-    return uint128(0, hi() >> (cnt - 64));
+    if (cnt < 128) {
+      return uint128(0, hi() >> (cnt - 64));
+    }
+    return uint128();
   }
 
   uint128 mult(uint128 other) const {
@@ -150,7 +174,7 @@ class uint128_emulated {
   uint64 lo_{0};
 
   bool is_negative() const {
-    return static_cast<int64>(hi_) < 0;
+    return (hi_ >> 63) == 1;
   }
 
   int32 count_leading_zeroes() const {
@@ -173,6 +197,7 @@ class uint128_emulated {
     return res;
   }
 };
+
 #if TD_HAVE_INT128
 class uint128_intrinsic {
  public:
@@ -256,9 +281,11 @@ class uint128_intrinsic {
   }
 };
 #endif
+
 #if TD_HAVE_INT128
 using uint128 = uint128_intrinsic;
 #else
 using uint128 = uint128_emulated;
 #endif
+
 }  // namespace td

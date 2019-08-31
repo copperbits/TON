@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "common/refcnt.hpp"
@@ -38,9 +56,8 @@ class CellSlice : public td::CntObject {
   CellSlice(const CellSlice& cs, unsigned _bits_en, unsigned _refs_en);
   CellSlice(const CellSlice& cs, unsigned _bits_en, unsigned _refs_en, unsigned _bits_st, unsigned _refs_st);
   CellSlice(const CellSlice&);
+  CellSlice& operator=(const CellSlice& other) = default;
   CellSlice();
-  ~CellSlice() override {
-  }
   Cell::LoadedCell move_as_loaded_cell();
   td::CntObject* make_copy() const override {
     return new CellSlice{*this};
@@ -51,7 +68,7 @@ class CellSlice : public td::CntObject {
   bool load(NoVmOrd, Ref<Cell> cell_ref);
   bool load(NoVmSpec, Ref<Cell> cell_ref);
   bool load(Ref<DataCell> dc_ref);
-  bool load(Ref<Cell> cell, bool* is_special);
+  bool load(Ref<Cell> cell);
   bool load_ord(Ref<Cell> cell);
   unsigned size() const {
     return bits_en - bits_st;
@@ -302,8 +319,10 @@ Ref<CellSlice>& operator>>(Ref<CellSlice>& cs_ref, const T& val) {
 
 // If can_be_special is not null, then it is allowed to load special cell
 // Flag whether loaded cell is actually special will be stored into can_be_special
-CellSlice load_cell_slice(const Ref<Cell>& cell, bool* can_be_special = nullptr);
-Ref<CellSlice> load_cell_slice_ref(const Ref<Cell>& cell, bool* can_be_special = nullptr);
-void print_load_cell(std::ostream& os, Ref<Cell> cell, int indent = 0, bool can_be_special = true);
+CellSlice load_cell_slice(const Ref<Cell>& cell);
+Ref<CellSlice> load_cell_slice_ref(const Ref<Cell>& cell);
+CellSlice load_cell_slice_special(const Ref<Cell>& cell, bool& is_special);
+Ref<CellSlice> load_cell_slice_ref_special(const Ref<Cell>& cell, bool& is_special);
+void print_load_cell(std::ostream& os, Ref<Cell> cell, int indent = 0);
 
 }  // namespace vm

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "vm/stack.hpp"
 #include "vm/continuation.h"
 #include "vm/box.hpp"
@@ -243,6 +261,37 @@ const StackEntry& tuple_index(const Tuple& tup, unsigned idx) {
   return (*tup)[idx];
 }
 
+StackEntry tuple_extend_index(const Ref<Tuple>& tup, unsigned idx) {
+  if (tup.is_null() || idx >= tup->size()) {
+    return {};
+  } else {
+    return tup->at(idx);
+  }
+}
+
+unsigned tuple_extend_set_index(Ref<Tuple>& tup, unsigned idx, StackEntry&& value, bool force) {
+  if (tup.is_null()) {
+    if (value.empty() && !force) {
+      return 0;
+    }
+    tup = Ref<Tuple>{true, idx + 1};
+    tup.unique_write().at(idx) = std::move(value);
+    return idx + 1;
+  }
+  if (tup->size() <= idx) {
+    if (value.empty() && !force) {
+      return 0;
+    }
+    auto& tuple = tup.write();
+    tuple.resize(idx + 1);
+    tuple.at(idx) = std::move(value);
+    return idx + 1;
+  } else {
+    tup.write().at(idx) = std::move(value);
+    return (unsigned)tup->size();
+  }
+}
+
 Stack::Stack(const Stack& old_stack, unsigned copy_elem, unsigned skip_top) {
   push_from_stack(old_stack, copy_elem, skip_top);
 }
@@ -421,6 +470,32 @@ Ref<Tuple> Stack::pop_tuple_range(unsigned max_len, unsigned min_len) {
   return res;
 }
 
+Ref<Tuple> Stack::pop_maybe_tuple() {
+  check_underflow(1);
+  auto val = pop();
+  if (val.empty()) {
+    return {};
+  }
+  auto res = std::move(val).as_tuple();
+  if (res.is_null()) {
+    throw VmError{Excno::type_chk, "not a tuple"};
+  }
+  return res;
+}
+
+Ref<Tuple> Stack::pop_maybe_tuple_range(unsigned max_len) {
+  check_underflow(1);
+  auto val = pop();
+  if (val.empty()) {
+    return {};
+  }
+  auto res = std::move(val).as_tuple();
+  if (res.is_null() || res->size() > max_len) {
+    throw VmError{Excno::type_chk, "not a tuple of valid size"};
+  }
+  return res;
+}
+
 Ref<Atom> Stack::pop_atom() {
   check_underflow(1);
   auto res = pop().as_atom();
@@ -499,6 +574,14 @@ void Stack::push_box(Ref<Box> box) {
 
 void Stack::push_tuple(Ref<Tuple> tuple) {
   push(std::move(tuple));
+}
+
+void Stack::push_maybe_tuple(Ref<Tuple> tuple) {
+  if (tuple.not_null()) {
+    push(std::move(tuple));
+  } else {
+    push_null();
+  }
 }
 
 void Stack::push_tuple(const std::vector<StackEntry>& components) {

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "mc-config.h"
 #include "block/block.h"
 #include "block/block-parse.h"
@@ -97,7 +115,7 @@ td::Status ConfigInfo::unpack() {
     libraries_dict_ = std::make_unique<vm::Dictionary>(lib_root_, 256);
   }
   if (mode & needAccountsRoot) {
-    accounts_root = root_info.accounts;
+    accounts_root = vm::load_cell_slice_ref(root_info.accounts);
     LOG(DEBUG) << "requested accounts dictionary";
     accounts_dict = std::make_unique<vm::AugmentedDictionary>(accounts_root, 256, block::tlb::aug_ShardAccounts);
     LOG(DEBUG) << "accounts dictionary created";
@@ -238,6 +256,23 @@ td::Status Config::visit_validator_params() const {
   }
   get_catchain_validators_config();
   return td::Status::OK();
+}
+
+ton::ValidatorSessionConfig Config::get_consensus_config() const {
+  auto cc = get_config_param(29);
+  ton::ValidatorSessionConfig c;
+  block::gen::ConsensusConfig::Record r;
+  if (cc.not_null() && tlb::unpack_cell(cc, r)) {
+    c.catchain_idle_timeout = r.consensus_timeout_ms * 0.001;
+    c.catchain_max_deps = r.catchain_max_deps;
+    c.round_candidates = r.round_candidates;
+    c.next_candidate_delay = r.next_candidate_delay_ms * 0.001;
+    c.round_attempt_duration = r.attempt_duration;
+    c.max_round_attempts = r.fast_attempts;
+    c.max_block_size = r.max_block_bytes;
+    c.max_collated_data_size = r.max_collated_bytes;
+  }
+  return c;
 }
 
 std::unique_ptr<vm::Dictionary> ShardConfig::extract_shard_hashes_dict(Ref<vm::Cell> mc_state_root) {
@@ -450,10 +485,12 @@ CatchainValidatorsConfig Config::get_catchain_validators_config() const {
 }
 
 // compares all fields except fsm*, before_merge_, nx_cc_updated_, next_catchain_seqno_
-bool McShardHash::basic_info_equal(const McShardHash& other) const {
+bool McShardHash::basic_info_equal(const McShardHash& other, bool compare_fees, bool compare_reg_seqno) const {
   return blk_ == other.blk_ && start_lt_ == other.start_lt_ && end_lt_ == other.end_lt_ &&
-         gen_utime_ == other.gen_utime_ && min_ref_mc_seqno_ == other.min_ref_mc_seqno_ &&
-         before_split_ == other.before_split_ && want_split_ == other.want_split_ && want_merge_ == other.want_merge_;
+         (!compare_reg_seqno || reg_mc_seqno_ == other.reg_mc_seqno_) && gen_utime_ == other.gen_utime_ &&
+         min_ref_mc_seqno_ == other.min_ref_mc_seqno_ && before_split_ == other.before_split_ &&
+         want_split_ == other.want_split_ && want_merge_ == other.want_merge_ &&
+         (!compare_fees || (fees_collected_ == other.fees_collected_ && funds_created_ == other.funds_created_));
 }
 
 void McShardHash::set_fsm(FsmState fsm, ton::UnixTime fsm_utime, ton::UnixTime fsm_interval) {
@@ -464,13 +501,16 @@ void McShardHash::set_fsm(FsmState fsm, ton::UnixTime fsm_utime, ton::UnixTime f
 
 Ref<McShardHash> McShardHash::unpack(vm::CellSlice& cs, ton::ShardIdFull id) {
   gen::ShardDescr::Record descr;
-  if (!tlb::unpack_exact(cs, descr)) {
+  CurrencyCollection fees_collected, funds_created;
+  if (!(tlb::unpack_exact(cs, descr) && fees_collected.unpack(descr.fees_collected) &&
+        funds_created.unpack(descr.funds_created))) {
     return {};  // throw ?
   }
   auto res = Ref<McShardHash>(true, ton::BlockId{id, (unsigned)descr.seq_no}, descr.start_lt, descr.end_lt,
-                              descr.gen_utime, descr.root_hash, descr.file_hash, descr.min_ref_mc_seqno,
-                              descr.next_catchain_seqno, descr.next_validator_shard, /* descr.nx_cc_updated */ false,
-                              descr.before_split, descr.before_merge, descr.want_split, descr.want_merge);
+                              descr.gen_utime, descr.root_hash, descr.file_hash, fees_collected, funds_created,
+                              descr.reg_mc_seqno, descr.min_ref_mc_seqno, descr.next_catchain_seqno,
+                              descr.next_validator_shard, /* descr.nx_cc_updated */ false, descr.before_split,
+                              descr.before_merge, descr.want_split, descr.want_merge);
   McShardHash& sh = res.unique_write();
   switch (gen::t_FutureSplitMerge.get_tag(*(descr.split_merge_at))) {
     case gen::FutureSplitMerge::fsm_none:
@@ -495,7 +535,9 @@ Ref<McShardHash> McShardHash::unpack(vm::CellSlice& cs, ton::ShardIdFull id) {
 
 bool McShardHash::pack(vm::CellBuilder& cb) const {
   if (!(is_valid()                                        // (validate)
-        && cb.store_long_bool(blk_.id.seqno, 32)          // shard_descr$_ seq_no:uint32
+        && cb.store_long_bool(11, 4)                      // shard_descr#b
+        && cb.store_long_bool(blk_.id.seqno, 32)          // seq_no:uint32
+        && cb.store_long_bool(reg_mc_seqno_, 32)          // reg_mc_seqno:uint32
         && cb.store_long_bool(start_lt_, 64)              // start_lt:uint64
         && cb.store_long_bool(end_lt_, 64)                // end_lt:uint64
         && cb.store_bits_bool(blk_.root_hash)             // root_hash:bits256
@@ -513,19 +555,26 @@ bool McShardHash::pack(vm::CellBuilder& cb) const {
         )) {
     return false;
   }
-  switch (fsm_) {  // split_merge_at:FutureSplitMerge = ShardDescr;
+  bool ok;
+  switch (fsm_) {  // split_merge_at:FutureSplitMerge
     case FsmState::fsm_none:
-      return gen::t_FutureSplitMerge.pack_fsm_none(cb);
+      ok = gen::t_FutureSplitMerge.pack_fsm_none(cb);
+      break;
     case FsmState::fsm_split:
-      return gen::t_FutureSplitMerge.pack_fsm_split(cb, fsm_utime_, fsm_interval_);
+      ok = gen::t_FutureSplitMerge.pack_fsm_split(cb, fsm_utime_, fsm_interval_);
+      break;
     case FsmState::fsm_merge:
-      return gen::t_FutureSplitMerge.pack_fsm_merge(cb, fsm_utime_, fsm_interval_);
+      ok = gen::t_FutureSplitMerge.pack_fsm_merge(cb, fsm_utime_, fsm_interval_);
+      break;
     default:
       return false;
   }
+  return ok                                    // split_merge_at:FutureSplitMerge
+         && fees_collected_.store_or_zero(cb)  // fees_collected:CurrencyCollection
+         && funds_created_.store_or_zero(cb);  // funds_created:CurrencyCollection = ShardDescr;
 }
 
-Ref<McShardHash> McShardHash::from_block(Ref<vm::Cell> block_root, const ton::FileHash& fhash) {
+Ref<McShardHash> McShardHash::from_block(Ref<vm::Cell> block_root, const ton::FileHash& fhash, bool init_fees) {
   if (block_root.is_null()) {
     return {};
   }
@@ -537,9 +586,18 @@ Ref<McShardHash> McShardHash::from_block(Ref<vm::Cell> block_root, const ton::Fi
     return {};
   }
   ton::RootHash rhash = block_root->get_hash().bits();
+  CurrencyCollection fees_collected, funds_created;
+  if (init_fees) {
+    block::gen::ValueFlow::Record flow;
+    if (!(tlb::unpack_cell(rec.value_flow, flow) && fees_collected.unpack(flow.fees_collected) &&
+          funds_created.unpack(flow.r2.created))) {
+      return {};
+    }
+  }
   return Ref<McShardHash>(true, ton::BlockId{ton::ShardIdFull(shard), (unsigned)info.seq_no}, info.start_lt,
-                          info.end_lt, info.gen_utime, rhash, fhash, info.min_ref_mc_seqno, info.gen_catchain_seqno,
-                          shard.shard_pfx, false, info.before_split, false, info.want_split, info.want_merge);
+                          info.end_lt, info.gen_utime, rhash, fhash, fees_collected, funds_created, ~0U,
+                          info.min_ref_mc_seqno, info.gen_catchain_seqno, shard.shard_pfx, false, info.before_split,
+                          false, info.want_split, info.want_merge);
 }
 
 McShardDescr::McShardDescr(const McShardDescr& other)
@@ -560,7 +618,7 @@ McShardDescr& McShardDescr::operator=(const McShardDescr& other) {
 }
 
 Ref<McShardDescr> McShardDescr::from_block(Ref<vm::Cell> block_root, Ref<vm::Cell> state_root,
-                                           const ton::FileHash& fhash) {
+                                           const ton::FileHash& fhash, bool init_fees) {
   if (block_root.is_null()) {
     return {};
   }
@@ -582,12 +640,21 @@ Ref<McShardDescr> McShardDescr::from_block(Ref<vm::Cell> block_root, Ref<vm::Cel
     return {};
   }
   ton::RootHash rhash = block_root->get_hash().bits();
-  auto res =
-      Ref<McShardDescr>(true, ton::BlockId{ton::ShardIdFull(shard), (unsigned)info.seq_no}, info.start_lt, info.end_lt,
-                        info.gen_utime, rhash, fhash, info.min_ref_mc_seqno, info.gen_catchain_seqno, shard.shard_pfx,
-                        false, info.before_split, false, info.want_split, info.want_merge);
-  res.unique_write().block_root = std::move(block_root);
-  res.unique_write().state_root = std::move(state_root);
+  CurrencyCollection fees_collected, funds_created;
+  if (init_fees) {
+    block::gen::ValueFlow::Record flow;
+    if (!(tlb::unpack_cell(rec.value_flow, flow) && fees_collected.unpack(flow.fees_collected) &&
+          funds_created.unpack(flow.r2.created))) {
+      return {};
+    }
+  }
+  auto res = Ref<McShardDescr>(true, ton::BlockId{ton::ShardIdFull(shard), (unsigned)info.seq_no}, info.start_lt,
+                               info.end_lt, info.gen_utime, rhash, fhash, fees_collected, funds_created, ~0U,
+                               info.min_ref_mc_seqno, info.gen_catchain_seqno, shard.shard_pfx, false,
+                               info.before_split, false, info.want_split, info.want_merge);
+  auto& descr = res.unique_write();
+  descr.block_root = std::move(block_root);
+  descr.state_root = std::move(state_root);
   return res;
 }
 
@@ -608,7 +675,8 @@ Ref<McShardDescr> McShardDescr::from_state(ton::BlockIdExt blkid, Ref<vm::Cell> 
     return {};
   }
   auto res = Ref<McShardDescr>(true, blkid.id, info.gen_lt, info.gen_lt, info.gen_utime, blkid.root_hash,
-                               blkid.file_hash, info.min_ref_mc_seqno, 0, shard.shard_pfx, false, info.before_split);
+                               blkid.file_hash, CurrencyCollection{}, CurrencyCollection{}, ~0U, info.min_ref_mc_seqno,
+                               0, shard.shard_pfx, false, info.before_split);
   res.unique_write().state_root = state_root;
   res.unique_write().set_queue_root(qinfo.out_queue->prefetch_ref(0));
   return res;
@@ -677,7 +745,7 @@ bool ShardConfig::get_shard_hash_raw_from(vm::Dictionary& dict, vm::CellSlice& c
   if (root.is_null()) {
     return false;
   }
-  unsigned long long z = id.shard, m = -1LL;
+  unsigned long long z = id.shard, m = std::numeric_limits<unsigned long long>::max();
   int len = id.pfx_len();
   while (true) {
     cs.load(vm::NoVmOrd{}, leaf ? root : std::move(root));
@@ -716,6 +784,7 @@ Ref<McShardHash> ShardConfig::get_shard_hash(ton::ShardIdFull id, bool exact) co
   ton::ShardIdFull true_id;
   vm::CellSlice cs;
   if (get_shard_hash_raw(cs, id, true_id, exact)) {
+    // block::gen::t_ShardDescr.print(std::cerr, vm::CellSlice{cs});
     return McShardHash::unpack(cs, true_id);
   } else {
     return {};
@@ -724,7 +793,7 @@ Ref<McShardHash> ShardConfig::get_shard_hash(ton::ShardIdFull id, bool exact) co
 
 ton::CatchainSeqno ShardConfig::get_shard_cc_seqno(ton::ShardIdFull shard) const {
   if (shard.is_masterchain() || !shard.is_valid()) {
-    return -1U;
+    return std::numeric_limits<ton::CatchainSeqno>::max();
   }
   ton::ShardIdFull true_id;
   gen::ShardDescr::Record info;
@@ -732,7 +801,7 @@ ton::CatchainSeqno ShardConfig::get_shard_cc_seqno(ton::ShardIdFull shard) const
   if (!(get_shard_hash_raw(cs, shard - 1, true_id, false) &&
         (ton::shard_is_ancestor(true_id, shard) || ton::shard_is_parent(shard, true_id)) &&
         tlb::unpack_exact(cs, info))) {
-    return -1U;
+    return std::numeric_limits<ton::CatchainSeqno>::max();
   }
   ton::CatchainSeqno cc_seqno = info.next_catchain_seqno;
   if (ton::shard_is_ancestor(true_id, shard)) {
@@ -740,7 +809,7 @@ ton::CatchainSeqno ShardConfig::get_shard_cc_seqno(ton::ShardIdFull shard) const
   }
   if (!(get_shard_hash_raw(cs, shard + 1, true_id, false) && ton::shard_is_parent(shard, true_id) &&
         tlb::unpack_exact(cs, info))) {
-    return -1U;
+    return std::numeric_limits<ton::CatchainSeqno>::max();
   }
   return std::max(cc_seqno, info.next_catchain_seqno) + 1;
 }
@@ -758,7 +827,7 @@ ton::LogicalTime ShardConfig::get_shard_end_lt_ext(ton::AccountIdPrefixFull acc,
   vm::CellSlice cs;
   unsigned long long end_lt;
   return get_shard_hash_raw(cs, acc.as_leaf_shard(), actual_shard, false)  // lookup ShardDescr containing acc
-                 && cs.advance(96)                   // shard_descr$_ seq_no:uint32 start_lt:uint64
+                 && cs.advance(4 + 128)              // shard_descr#b seq_no:uint32 reg_mc_seqno:uint32 start_lt:uint64
                  && cs.fetch_ulong_bool(64, end_lt)  // end_lt:uint64
              ? end_lt
              : 0;
@@ -928,6 +997,9 @@ std::vector<ton::BlockId> ShardConfig::get_shard_hash_ids(
                 continue;
               }
               if (!t) {
+                if (!(cs.advance(4) && cs.have(32))) {
+                  return false;
+                }
                 res.emplace_back(workchain, shard, (int)cs.prefetch_ulong(32));
                 continue;
               }
@@ -1008,14 +1080,17 @@ std::vector<ton::WorkchainId> ShardConfig::get_workchains() const {
   return res;
 }
 
-bool ShardConfig::new_workchain(ton::WorkchainId workchain, const ton::RootHash& zerostate_root_hash,
-                                const ton::FileHash& zerostate_file_hash) {
+bool ShardConfig::new_workchain(ton::WorkchainId workchain, ton::BlockSeqno reg_mc_seqno,
+                                const ton::RootHash& zerostate_root_hash, const ton::FileHash& zerostate_file_hash) {
   if (!shard_hashes_dict_ || has_workchain(workchain)) {
     return false;
   }
   vm::CellBuilder cb;
   Ref<vm::Cell> cell;
-  return cb.store_zeroes_bool(1 + 32 + 64 * 2)  // bt_leaf$0 ; shard_descr$_ seq_no:uint32 start_lt:uint64 end_lt:uint64
+  return cb.store_long_bool(11, 1 + 4)               // bt_leaf$0 ; shard_descr#b
+         && cb.store_zeroes_bool(32)                 // seq_no:uint32
+         && cb.store_long_bool(reg_mc_seqno, 32)     // reg_mc_seqno:uint32
+         && cb.store_zeroes_bool(64 * 2)             // start_lt:uint64 end_lt:uint64
          && cb.store_bits_bool(zerostate_root_hash)  // root_hash:bits256
          && cb.store_bits_bool(zerostate_file_hash)  // file_hash:bits256
          && cb.store_long_bool(0, 8)                 // ... nx_cc_updated:Bool ...
@@ -1023,7 +1098,10 @@ bool ShardConfig::new_workchain(ton::WorkchainId workchain, const ton::RootHash&
          && cb.store_long_bool(1ULL << 63, 64)       // next_validator_shard:uint64
          && cb.store_long_bool(~0U, 32)              // min_ref_mc_seqno:uint32
          && cb.store_long_bool(0, 32)                // gen_utime:uint32
-         && cb.store_zeroes_bool(1)                  // split_merge_at:FutureSplitMerge
+         &&
+         cb.store_zeroes_bool(
+             1 + 5 +
+             5)  // split_merge_at:FutureSplitMerge fees_collected:CurrencyCollection funds_created:CurrencyCollection
          && cb.finalize_to(cell) && block::gen::t_BinTree_ShardDescr.validate_ref(cell) &&
          shard_hashes_dict_->set_ref(td::BitArray<32>{workchain}, std::move(cell), vm::Dictionary::SetMode::Add);
 }
@@ -1381,16 +1459,28 @@ std::vector<ton::ValidatorDescr> Config::compute_validator_set(ton::ShardIdFull 
 std::vector<ton::ValidatorDescr> ConfigInfo::compute_validator_set_cc(ton::ShardIdFull shard,
                                                                       const block::ValidatorSet& vset,
                                                                       ton::UnixTime time,
-                                                                      ton::CatchainSeqno& cc_seqno_delta) const {
-  if (cc_seqno_delta & -2) {
+                                                                      ton::CatchainSeqno* cc_seqno_delta) const {
+  if (cc_seqno_delta && (*cc_seqno_delta & -2)) {
     return {};
   }
   ton::CatchainSeqno cc_seqno = get_shard_cc_seqno(shard);
-  if (cc_seqno == -1U) {
+  if (cc_seqno == ~0U) {
     return {};
   }
-  cc_seqno_delta += cc_seqno;
-  return do_compute_validator_set(get_catchain_validators_config(), shard, vset, time, cc_seqno_delta);
+  if (cc_seqno_delta) {
+    cc_seqno = *cc_seqno_delta += cc_seqno;
+  }
+  return do_compute_validator_set(get_catchain_validators_config(), shard, vset, time, cc_seqno);
+}
+
+std::vector<ton::ValidatorDescr> ConfigInfo::compute_validator_set_cc(ton::ShardIdFull shard, ton::UnixTime time,
+                                                                      ton::CatchainSeqno* cc_seqno_delta) const {
+  auto vset = get_cur_validator_set();
+  if (!vset) {
+    return {};
+  } else {
+    return compute_validator_set_cc(shard, *vset, time, cc_seqno_delta);
+  }
 }
 
 void validator_set_descr::incr_seed() {

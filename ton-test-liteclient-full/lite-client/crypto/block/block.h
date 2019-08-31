@@ -1,9 +1,28 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include "common/refcnt.hpp"
 #include "vm/cells.h"
 #include "vm/cellslice.h"
 #include "vm/dict.h"
 #include "vm/boc.h"
+#include "vm/stack.hpp"
 #include <ostream>
 #include "tl/tlblib.hpp"
 #include "td/utils/bits.h"
@@ -253,59 +272,6 @@ struct BlockLimitStatus {
   }
 };
 
-struct ShardState {
-  enum { verbosity = 0 };
-  ton::BlockIdExt id_;
-  Ref<vm::Cell> root_;
-  int global_id_;
-  ton::UnixTime utime_;
-  ton::LogicalTime lt_;
-  ton::BlockSeqno mc_blk_seqno_;
-  bool before_split_{false};
-  std::unique_ptr<vm::AugmentedDictionary> account_dict_;
-  std::unique_ptr<vm::Dictionary> shard_libraries_;
-  Ref<vm::Cell> mc_state_extra_;
-  td::uint64 overload_history_{0}, underload_history_{0};
-  td::RefInt256 total_balance_, total_validator_fees_;
-  Ref<vm::Cell> total_balance_extra_;
-  std::unique_ptr<vm::AugmentedDictionary> out_msg_queue_;
-  std::unique_ptr<vm::Dictionary> ihr_pending_;
-  std::shared_ptr<block::MsgProcessedUptoCollection> processed_upto_;
-
-  bool is_valid() const {
-    return id_.is_valid();
-  }
-  bool invalidate() {
-    id_.invalidate();
-    return false;
-  }
-  td::Status unpack_state(ton::BlockIdExt id, Ref<vm::Cell> state_root);
-  td::Status unpack_state_ext(ton::BlockIdExt id, Ref<vm::Cell> state_root, int global_id,
-                              ton::BlockSeqno prev_mc_block_seqno, bool after_split, bool after_merge,
-                              std::function<bool(ton::BlockSeqno)> for_each_mcseqno);
-  td::Status merge_with(ShardState& sib);
-  td::Result<std::unique_ptr<vm::AugmentedDictionary>> compute_split_out_msg_queue(ton::ShardIdFull subshard);
-  td::Result<std::shared_ptr<block::MsgProcessedUptoCollection>> compute_split_processed_upto(
-      ton::ShardIdFull subshard);
-  td::Status split(ton::ShardIdFull subshard);
-  td::Status unpack_out_msg_queue_info(Ref<vm::Cell> out_msg_queue_info);
-  bool clear_load_history() {
-    overload_history_ = underload_history_ = 0;
-    return true;
-  }
-  bool clear_load_history_if(bool cond) {
-    return cond || clear_load_history();
-  }
-  td::Status check_before_split(bool before_split) const;
-  td::Status check_global_id(int req_global_id) const;
-  td::Status check_mc_blk_seqno(ton::BlockSeqno last_mc_block_seqno) const;
-  bool update_prev_utime_lt(ton::UnixTime& prev_utime, ton::LogicalTime& prev_lt) const;
-
-  bool for_each_mcseqno(std::function<bool(ton::BlockSeqno)> func) const {
-    return processed_upto_ && processed_upto_->for_each_mcseqno(std::move(func));
-  }
-};
-
 namespace tlb {
 struct CurrencyCollection;
 }  // namespace tlb
@@ -371,20 +337,106 @@ struct CurrencyCollection {
   static bool sub(const CurrencyCollection& a, CurrencyCollection&& b, CurrencyCollection& c);
   CurrencyCollection& operator-=(const CurrencyCollection& other);
   CurrencyCollection& operator-=(CurrencyCollection&& other);
+  CurrencyCollection& operator-=(td::RefInt256 other_grams);
   CurrencyCollection operator-(const CurrencyCollection& other) const;
   CurrencyCollection operator-(CurrencyCollection&& other) const;
+  CurrencyCollection operator-(td::RefInt256 other_grams) const;
   bool store(vm::CellBuilder& cb) const;
+  bool store_or_zero(vm::CellBuilder& cb) const;
   bool fetch(vm::CellSlice& cs);
+  bool fetch_exact(vm::CellSlice& cs);
   bool unpack(Ref<vm::CellSlice> csr);
   bool validate_unpack(Ref<vm::CellSlice> csr);
+  Ref<vm::CellSlice> pack() const;
+  bool pack_to(Ref<vm::CellSlice>& csr) const {
+    return (csr = pack()).not_null();
+  }
+  Ref<vm::Tuple> as_vm_tuple() const {
+    if (is_valid()) {
+      return vm::make_tuple_ref(grams, vm::StackEntry::maybe(extra));
+    } else {
+      return {};
+    }
+  }
   bool show(std::ostream& os) const;
   std::string to_str() const;
 };
 
 std::ostream& operator<<(std::ostream& os, const CurrencyCollection& cc);
 
+struct ShardState {
+  enum { verbosity = 0 };
+  ton::BlockIdExt id_;
+  Ref<vm::Cell> root_;
+  int global_id_;
+  ton::UnixTime utime_;
+  ton::LogicalTime lt_;
+  ton::BlockSeqno mc_blk_seqno_, min_ref_mc_seqno_;
+  ton::BlockIdExt mc_blk_ref_;
+  ton::LogicalTime mc_blk_lt_;
+  bool before_split_{false};
+  std::unique_ptr<vm::AugmentedDictionary> account_dict_;
+  std::unique_ptr<vm::Dictionary> shard_libraries_;
+  Ref<vm::Cell> mc_state_extra_;
+  td::uint64 overload_history_{0}, underload_history_{0};
+  CurrencyCollection total_balance_, total_validator_fees_, global_balance_;
+  std::unique_ptr<vm::AugmentedDictionary> out_msg_queue_;
+  std::unique_ptr<vm::Dictionary> ihr_pending_;
+  std::shared_ptr<block::MsgProcessedUptoCollection> processed_upto_;
+
+  bool is_valid() const {
+    return id_.is_valid();
+  }
+  bool is_masterchain() const {
+    return id_.is_masterchain();
+  }
+  bool invalidate() {
+    id_.invalidate();
+    return false;
+  }
+  td::Status unpack_state(ton::BlockIdExt id, Ref<vm::Cell> state_root);
+  td::Status unpack_state_ext(ton::BlockIdExt id, Ref<vm::Cell> state_root, int global_id,
+                              ton::BlockSeqno prev_mc_block_seqno, bool after_split, bool clear_history,
+                              std::function<bool(ton::BlockSeqno)> for_each_mcseqno);
+  td::Status merge_with(ShardState& sib);
+  td::Result<std::unique_ptr<vm::AugmentedDictionary>> compute_split_out_msg_queue(ton::ShardIdFull subshard);
+  td::Result<std::shared_ptr<block::MsgProcessedUptoCollection>> compute_split_processed_upto(
+      ton::ShardIdFull subshard);
+  td::Status split(ton::ShardIdFull subshard);
+  td::Status unpack_out_msg_queue_info(Ref<vm::Cell> out_msg_queue_info);
+  bool clear_load_history() {
+    overload_history_ = underload_history_ = 0;
+    return true;
+  }
+  bool clear_load_history_if(bool cond) {
+    return !cond || clear_load_history();
+  }
+  td::Status check_before_split(bool before_split) const;
+  td::Status check_global_id(int req_global_id) const;
+  td::Status check_mc_blk_seqno(ton::BlockSeqno last_mc_block_seqno) const;
+  bool update_prev_utime_lt(ton::UnixTime& prev_utime, ton::LogicalTime& prev_lt) const;
+
+  bool for_each_mcseqno(std::function<bool(ton::BlockSeqno)> func) const {
+    return processed_upto_ && processed_upto_->for_each_mcseqno(std::move(func));
+  }
+};
+
 struct ValueFlow {
-  CurrencyCollection from_prev_blk, to_next_blk, imported, exported, fees_collected, fees_imported, created, minted;
+  struct SetZero {};
+  CurrencyCollection from_prev_blk, to_next_blk, imported, exported, fees_collected, fees_imported, recovered, created,
+      minted;
+  ValueFlow() = default;
+  ValueFlow(SetZero)
+      : from_prev_blk{0}
+      , to_next_blk{0}
+      , imported{0}
+      , exported{0}
+      , fees_collected{0}
+      , fees_imported{0}
+      , recovered{0}
+      , created{0}
+      , minted{0} {
+  }
   bool is_valid() const {
     return from_prev_blk.is_valid() && minted.is_valid();
   }
@@ -392,6 +444,7 @@ struct ValueFlow {
   bool invalidate() {
     return from_prev_blk.invalidate();
   }
+  bool set_zero();
   bool store(vm::CellBuilder& cb) const;
   bool fetch(vm::CellSlice& cs);
   bool unpack(Ref<vm::CellSlice> csr);
@@ -403,6 +456,29 @@ struct ValueFlow {
 };
 
 std::ostream& operator<<(std::ostream& os, const ValueFlow& vflow);
+
+struct BlkProofLink {
+  ton::BlockIdExt from, to;
+  bool is_key{false}, is_fwd{false};
+  Ref<vm::Cell> dest_proof, shard_proof, proof;
+  ton::CatchainSeqno cc_seqno{0};
+  td::uint32 validator_set_hash{0};
+  std::vector<ton::BlockSignature> signatures;
+  BlkProofLink(ton::BlockIdExt _from, ton::BlockIdExt _to, bool _iskey = false)
+      : from(_from), to(_to), is_key(_iskey), is_fwd(to.seqno() > from.seqno()) {
+  }
+};
+
+struct BlkProofChain {
+  ton::BlockIdExt from, to;
+  int mode;
+  std::vector<BlkProofLink> links;
+  std::size_t link_count() const {
+    return links.size();
+  }
+  BlkProofChain(ton::BlockIdExt _from, ton::BlockIdExt _to, int _mode) : from(_from), to(_to), mode(_mode) {
+  }
+};
 
 int filter_out_msg_queue(vm::AugmentedDictionary& out_queue, ton::ShardIdFull old_shard, ton::ShardIdFull subshard);
 
@@ -424,7 +500,7 @@ bool store_UInt7(vm::CellBuilder& cb, unsigned long long value1, unsigned long l
 bool store_Maybe_Grams(vm::CellBuilder& cb, td::RefInt256 value);
 bool store_Maybe_Grams_nz(vm::CellBuilder& cb, td::RefInt256 value);
 bool store_CurrencyCollection(vm::CellBuilder& cb, td::RefInt256 value, Ref<vm::Cell> extra);
-bool fetch_CurrencyCollection(vm::CellSlice& cs, td::RefInt256& value, Ref<vm::Cell>& extra);
+bool fetch_CurrencyCollection(vm::CellSlice& cs, td::RefInt256& value, Ref<vm::Cell>& extra, bool inexact = false);
 bool unpack_CurrencyCollection(Ref<vm::CellSlice> csr, td::RefInt256& value, Ref<vm::Cell>& extra);
 
 bool valid_library_collection(Ref<vm::Cell> cell, bool catch_errors = true);
@@ -474,5 +550,20 @@ bool is_transaction_in_msg(Ref<vm::Cell> trans_ref, Ref<vm::Cell> msg);
 bool is_transaction_out_msg(Ref<vm::Cell> trans_ref, Ref<vm::Cell> msg);
 bool get_transaction_id(Ref<vm::Cell> trans_ref, ton::StdSmcAddress& account_addr, ton::LogicalTime& lt);
 bool get_transaction_owner(Ref<vm::Cell> trans_ref, ton::StdSmcAddress& addr);
+
+td::uint32 compute_validator_set_hash(ton::CatchainSeqno cc_seqno, ton::ShardIdFull from,
+                                      const std::vector<ton::ValidatorDescr>& nodes);
+
+td::Result<Ref<vm::Cell>> get_config_data_from_smc(Ref<vm::Cell> acc_root);
+td::Result<Ref<vm::Cell>> get_config_data_from_smc(Ref<vm::CellSlice> acc_csr);
+bool important_config_parameters_changed(Ref<vm::Cell> old_cfg_root, Ref<vm::Cell> new_cfg_root, bool coarse = false);
+
+bool is_public_library(td::ConstBitPtr key, Ref<vm::CellSlice> val);
+
+bool parse_hex_hash(const char* str, const char* end, td::Bits256& hash);
+bool parse_hex_hash(td::Slice str, td::Bits256& hash);
+
+bool parse_block_id_ext(const char* str, const char* end, ton::BlockIdExt& blkid);
+bool parse_block_id_ext(td::Slice str, ton::BlockIdExt& blkid);
 
 }  // namespace block

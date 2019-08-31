@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
 
 
-set (ADNL_LITE_SOURCE
+set(ADNL_LITE_SOURCE
   adnl-ext-client.cpp
   adnl-ext-connection.cpp
   adnl-query.cpp

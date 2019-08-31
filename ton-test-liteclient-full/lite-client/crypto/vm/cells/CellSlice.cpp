@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "vm/cells/CellSlice.h"
 #include "vm/excno.hpp"
 #include "td/utils/bits.h"
@@ -47,7 +65,7 @@ Cell::LoadedCell load_cell_nothrow(const Ref<Cell>& ref, int mode) {
   return {};
 }
 
-};  // namespace
+}  // namespace
 
 CellSlice::CellSlice(NoVm, Ref<Cell> ref) : CellSlice(load_cell_nothrow(std::move(ref))) {
 }
@@ -984,6 +1002,12 @@ VirtualCell::LoadedCell load_cell_slice_impl(const Ref<Cell>& cell, bool* can_be
     throw VmError{Excno::cell_und, "failed to load cell"};
   }
   auto loaded_cell = r_loaded_cell.move_as_ok();
+  if (loaded_cell.data_cell->special_type() == DataCell::SpecialType::PrunnedBranch) {
+    auto virtualization = loaded_cell.virt.get_virtualization();
+    if (virtualization != 0) {
+      throw VmVirtError{virtualization};
+    }
+  }
   if (can_be_special) {
     *can_be_special = loaded_cell.data_cell->is_special();
   } else if (loaded_cell.data_cell->is_special()) {
@@ -1000,34 +1024,37 @@ VirtualCell::LoadedCell load_cell_slice_impl(const Ref<Cell>& cell, bool* can_be
       }
       throw VmError{Excno::cell_und, "failed to load library cell (no vm_state_interface available)"};
     } else if (loaded_cell.data_cell->special_type() == DataCell::SpecialType::PrunnedBranch) {
-      auto virtualization = loaded_cell.virt.get_virtualization();
-      if (virtualization == 0) {  // no virtualization
-        throw VmError{Excno::cell_und, "trying to load prunned cell"};
-      } else {
-        throw VmVirtError{virtualization};
-      }
+      CHECK(loaded_cell.virt.get_virtualization() == 0);
+      throw VmError{Excno::cell_und, "trying to load prunned cell"};
     }
     throw VmError{Excno::cell_und, "unexpected special cell"};
   }
   return loaded_cell;
 }
 
-CellSlice load_cell_slice(const Ref<Cell>& cell, bool* can_be_special) {
-  return CellSlice{load_cell_slice_impl(cell, can_be_special)};
+CellSlice load_cell_slice(const Ref<Cell>& cell) {
+  return CellSlice{load_cell_slice_impl(cell, nullptr)};
 }
 
-Ref<CellSlice> load_cell_slice_ref(const Ref<Cell>& cell, bool* can_be_special) {
-  return Ref<CellSlice>{true, CellSlice(load_cell_slice_impl(cell, can_be_special))};
+CellSlice load_cell_slice_special(const Ref<Cell>& cell, bool& special) {
+  return CellSlice{load_cell_slice_impl(cell, &special)};
 }
 
-void print_load_cell(std::ostream& os, Ref<Cell> cell, int indent, bool can_be_special) {
-  bool special = false;
-  auto cs = load_cell_slice(cell, can_be_special ? &special : nullptr);
+Ref<CellSlice> load_cell_slice_ref(const Ref<Cell>& cell) {
+  return Ref<CellSlice>{true, CellSlice(load_cell_slice_impl(cell, nullptr))};
+}
+
+Ref<CellSlice> load_cell_slice_ref_special(const Ref<Cell>& cell, bool& special) {
+  return Ref<CellSlice>{true, CellSlice(load_cell_slice_impl(cell, &special))};
+}
+
+void print_load_cell(std::ostream& os, Ref<Cell> cell, int indent) {
+  auto cs = load_cell_slice(cell);
   cs.print_rec(os, indent);
 }
 
-bool CellSlice::load(Ref<Cell> cell, bool* is_special) {
-  return load(load_cell_slice_impl(std::move(cell), is_special));
+bool CellSlice::load(Ref<Cell> cell) {
+  return load(load_cell_slice_impl(std::move(cell), nullptr));
 }
 
 bool CellSlice::load_ord(Ref<Cell> cell) {

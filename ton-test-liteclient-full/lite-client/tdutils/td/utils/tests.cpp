@@ -1,6 +1,23 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/tests.h"
 
-#include "td/utils/base64.h"
 #include "td/utils/crypto.h"
 #include "td/utils/filesystem.h"
 #include "td/utils/Parser.h"
@@ -95,7 +112,7 @@ class RegressionTesterImpl : public RegressionTester {
 
   Status load_db(CSlice path) {
     TRY_RESULT(data, read_file(path));
-    Parser parser(data.as_slice());
+    ConstParser parser(data.as_slice());
     auto db_magic = parser.read_word();
     if (db_magic != magic()) {
       return Status::Error(PSLICE() << "Wrong magic " << db_magic);
@@ -222,4 +239,5 @@ Status TestsRunner::verify(Slice data) {
   }
   return regression_tester_->verify_test(PSLICE() << name() << "_default", data);
 }
+
 }  // namespace td

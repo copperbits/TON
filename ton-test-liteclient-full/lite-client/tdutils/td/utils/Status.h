@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/common.h"
@@ -21,6 +39,7 @@
       return try_status.move_as_error(); \
     }                                    \
   }
+
 #define TRY_STATUS_PREFIX(status, prefix)             \
   {                                                   \
     auto try_status = (status);                       \
@@ -28,23 +47,44 @@
       return try_status.move_as_error_prefix(prefix); \
     }                                                 \
   }
-#define TRY_RESULT(name, result) TRY_RESULT_IMPL(TD_CONCAT(TD_CONCAT(r_, name), __LINE__), name, result)
+
+#define TRY_RESULT(name, result) TRY_RESULT_IMPL(TD_CONCAT(TD_CONCAT(r_, name), __LINE__), auto name, result)
+
+#define TRY_RESULT_ASSIGN(name, result) TRY_RESULT_IMPL(TD_CONCAT(TD_CONCAT(r_, name), __LINE__), name, result)
+
 #define TRY_RESULT_PREFIX(name, result, prefix) \
+  TRY_RESULT_PREFIX_IMPL(TD_CONCAT(TD_CONCAT(r_, name), __LINE__), auto name, result, prefix)
+
+#define TRY_RESULT_PREFIX_ASSIGN(name, result, prefix) \
   TRY_RESULT_PREFIX_IMPL(TD_CONCAT(TD_CONCAT(r_, name), __LINE__), name, result, prefix)
+
+#define TRY_RESULT_PROMISE_PREFIX(promise_name, name, result, prefix) \
+  TRY_RESULT_PROMISE_PREFIX_IMPL(promise_name, TD_CONCAT(TD_CONCAT(r_, name), __LINE__), auto name, result, prefix)
+
+#define TRY_RESULT_PROMISE_PREFIX_ASSIGN(promise_name, name, result, prefix) \
+  TRY_RESULT_PROMISE_PREFIX_IMPL(promise_name, TD_CONCAT(TD_CONCAT(r_, name), __LINE__), name, result, prefix)
 
 #define TRY_RESULT_IMPL(r_name, name, result) \
   auto r_name = (result);                     \
   if (r_name.is_error()) {                    \
     return r_name.move_as_error();            \
   }                                           \
-  auto name = r_name.move_as_ok();
+  name = r_name.move_as_ok();
 
 #define TRY_RESULT_PREFIX_IMPL(r_name, name, result, prefix) \
   auto r_name = (result);                                    \
   if (r_name.is_error()) {                                   \
     return r_name.move_as_error_prefix(prefix);              \
   }                                                          \
-  auto name = r_name.move_as_ok();
+  name = r_name.move_as_ok();
+
+#define TRY_RESULT_PROMISE_PREFIX_IMPL(promise_name, r_name, name, result, prefix) \
+  auto r_name = (result);                                                          \
+  if (r_name.is_error()) {                                                         \
+    promise.set_error(r_name.move_as_error());                                     \
+    return;                                                                        \
+  }                                                                                \
+  name = r_name.move_as_ok();
 
 #define LOG_STATUS(status)                      \
   {                                             \
@@ -258,8 +298,18 @@ class Status {
     return std::move(*this);
   }
 
-  Status move_as_error_prefix(std::string prefix) TD_WARN_UNUSED_RESULT {
-    return td::Status::Error(code(), prefix + message().c_str());
+  Status move_as_error_prefix(Slice prefix) TD_WARN_UNUSED_RESULT {
+    CHECK(is_error());
+    Info info = get_info();
+    switch (info.error_type) {
+      case ErrorType::general:
+        return Error(code(), PSLICE() << prefix << message());
+      case ErrorType::os:
+        return Status(false, ErrorType::os, code(), PSLICE() << prefix << message());
+      default:
+        UNREACHABLE();
+        return {};
+    }
   }
 
  private:
@@ -432,10 +482,9 @@ class Result {
     };
     return std::move(status_);
   }
-  Status move_as_error_prefix(std::string prefix) TD_WARN_UNUSED_RESULT {
-    CHECK(status_.is_error());
+  Status move_as_error_prefix(Slice prefix) TD_WARN_UNUSED_RESULT {
     SCOPE_EXIT {
-      status_ = Status::Error<-4>();
+      status_ = Status::Error<-5>();
     };
     return status_.move_as_error_prefix(prefix);
   }

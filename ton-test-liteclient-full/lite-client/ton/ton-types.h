@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "crypto/common/bitstring.h"
@@ -35,11 +53,11 @@ constexpr unsigned min_split_merge_interval = 30;  // split/merge interval must 
 constexpr unsigned max_split_merge_delay =
     1000;  // end of split/merge interval must be at most 1000 seconds in the future
 
-static inline int shard_pfx_len(ShardId shard) {
+inline int shard_pfx_len(ShardId shard) {
   return shard ? 63 - td::count_trailing_zeroes_non_zero64(shard) : 0;
 }
 
-static inline std::string shard_to_str(ShardId shard) {
+inline std::string shard_to_str(ShardId shard) {
   char buffer[64];
   return std::string{buffer, (unsigned)snprintf(buffer, 63, "%016llx", static_cast<unsigned long long>(shard))};
 }
@@ -153,13 +171,14 @@ struct BlockId {
   bool is_valid_full() const {
     return is_valid() && shard && !(shard & 7) && seqno <= 0x7fffffff && (!is_masterchain() || shard == shardIdAll);
   }
-  void invalidate() {
+  bool invalidate() {
     workchain = workchainInvalid;
+    return false;
   }
-  void invalidate_clear() {
-    invalidate();
+  bool invalidate_clear() {
     shard = 0;
     seqno = 0;
+    return invalidate();
   }
   bool operator==(const BlockId& other) const {
     return workchain == other.workchain && seqno == other.seqno && shard == other.shard;
@@ -208,13 +227,13 @@ struct BlockIdExt {
   }
   BlockIdExt() : id(workchainIdNotYet, 0, 0) {
   }
-  void invalidate() {
-    id.invalidate();
+  bool invalidate() {
+    return id.invalidate();
   }
-  void invalidate_clear() {
-    id.invalidate_clear();
+  bool invalidate_clear() {
     root_hash.set_zero();
     file_hash.set_zero();
+    return id.invalidate_clear();
   }
   bool operator==(const BlockIdExt& b) const {
     return id == b.id && root_hash == b.root_hash && file_hash == b.file_hash;
@@ -246,6 +265,9 @@ struct BlockIdExt {
   }
   bool is_masterchain() const {
     return id.is_masterchain();
+  }
+  bool is_masterchain_ext() const {
+    return id.is_masterchain_ext();
   }
   std::string to_str() const {
     return id.to_str() + ':' + root_hash.to_hex() + ':' + file_hash.to_hex();
@@ -304,45 +326,6 @@ struct BlockBroadcast {
   td::BufferSlice proof;
 };
 
-// represents (the contents of) a block
-/*struct Block {
-  BlockIdExt id;
-  BlockStatus status;
-  td::BufferSlice data;
-  td::BufferSlice proof;
-  std::vector<BlockSignature> signatures;
-};*/
-
-// represents (the complete final) state of a block
-// if id.seqno == 0, represents the initial state ("zerostate") of a shardchain
-struct BlockState {
-  BlockId id;
-  RootHash root_hash;
-  FileHash file_hash;
-  td::BufferSlice data;
-};
-
-struct BlockCandidate {
-  BlockIdExt id;
-  FileHash collated_file_hash;
-  td::BufferSlice data;
-  td::BufferSlice collated_data;
-
-  BlockCandidate clone() const {
-    return BlockCandidate{id, collated_file_hash, data.clone(), collated_data.clone()};
-  }
-};
-
-inline td::UInt256 Bits256_2_UInt256(const Bits256& x) {
-  td::UInt256 r;
-  std::memcpy(r.raw, x.data(), 32);
-  return r;
-}
-
-inline Bits256 UInt256_2_Bits256(const td::UInt256& x) {
-  return Bits256(x.raw);
-}
-
 struct Ed25519_PrivateKey {
   Bits256 _privkey;
   explicit Ed25519_PrivateKey(const Bits256& x) : _privkey(x) {
@@ -356,12 +339,6 @@ struct Ed25519_PrivateKey {
   }
   operator Bits256() const {
     return _privkey;
-  }
-  td::UInt256 as_uint256() const {
-    return Bits256_2_UInt256(_privkey);
-  }
-  operator td::UInt256() const {
-    return Bits256_2_UInt256(_privkey);
   }
 };
 
@@ -379,11 +356,29 @@ struct Ed25519_PublicKey {
   operator Bits256() const {
     return _pubkey;
   }
-  td::UInt256 as_uint256() const {
-    return Bits256_2_UInt256(_pubkey);
+  bool operator==(const Ed25519_PublicKey& other) const {
+    return _pubkey == other._pubkey;
   }
-  operator td::UInt256() const {
-    return Bits256_2_UInt256(_pubkey);
+};
+
+// represents (the contents of) a block
+struct BlockCandidate {
+  BlockCandidate(Ed25519_PublicKey pubkey, BlockIdExt id, FileHash collated_file_hash, td::BufferSlice data,
+                 td::BufferSlice collated_data)
+      : pubkey(pubkey)
+      , id(id)
+      , collated_file_hash(collated_file_hash)
+      , data(std::move(data))
+      , collated_data(std::move(collated_data)) {
+  }
+  Ed25519_PublicKey pubkey;
+  BlockIdExt id;
+  FileHash collated_file_hash;
+  td::BufferSlice data;
+  td::BufferSlice collated_data;
+
+  BlockCandidate clone() const {
+    return BlockCandidate{pubkey, id, collated_file_hash, data.clone(), collated_data.clone()};
   }
 };
 
@@ -397,6 +392,27 @@ struct ValidatorDescr {
   ValidatorDescr(const Ed25519_PublicKey& key_, ValidatorWeight weight_, const Bits256& addr_)
       : key(key_), weight(weight_), addr(addr_) {
   }
+  bool operator==(const ValidatorDescr& other) const {
+    return key == other.key && weight == other.weight && addr == other.addr;
+  }
+  bool operator!=(const ValidatorDescr& other) const {
+    return !(operator==(other));
+  }
 };
 
-};  // namespace ton
+struct ValidatorSessionConfig {
+  td::uint32 proto_version = 0;
+
+  /* td::Clocks::Duration */ double catchain_idle_timeout = 16.0;
+  td::uint32 catchain_max_deps = 4;
+
+  td::uint32 round_candidates = 3;
+  /* td::Clocks::Duration */ double next_candidate_delay = 2.0;
+  td::uint32 round_attempt_duration = 16;
+  td::uint32 max_round_attempts = 4;
+
+  td::uint32 max_block_size = (4 << 20);
+  td::uint32 max_collated_data_size = (4 << 20);
+};
+
+}  // namespace ton

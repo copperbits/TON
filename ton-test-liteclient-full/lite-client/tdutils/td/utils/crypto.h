@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/buffer.h"
@@ -63,28 +81,25 @@ string sha256(Slice data) TD_WARN_UNUSED_RESULT;
 
 string sha512(Slice data) TD_WARN_UNUSED_RESULT;
 
-struct Sha256StateImpl;
-
-struct Sha256State;
-void sha256_init(Sha256State *state);
-void sha256_update(Slice data, Sha256State *state);
-void sha256_final(Sha256State *state, MutableSlice output, bool destroy = true);
-
-struct Sha256State {
+class Sha256State {
+ public:
   Sha256State();
-  Sha256State(Sha256State &&from);
-  Sha256State &operator=(Sha256State &&from);
+  Sha256State(const Sha256State &other) = delete;
+  Sha256State &operator=(const Sha256State &other) = delete;
+  Sha256State(Sha256State &&other);
+  Sha256State &operator=(Sha256State &&other);
   ~Sha256State();
-  void init() {
-    sha256_init(this);
-  }
-  void feed(Slice data) {
-    sha256_update(data, this);
-  }
-  void extract(MutableSlice dest) {
-    sha256_final(this, dest, false);
-  }
-  unique_ptr<Sha256StateImpl> impl;
+
+  void init();
+
+  void feed(Slice data);
+
+  void extract(MutableSlice dest, bool destroy = false);
+
+ private:
+  class Impl;
+  unique_ptr<Impl> impl_;
+  bool is_inited_ = false;
 };
 
 void md5(Slice input, MutableSlice output);

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include <vector>
 #include <string>
@@ -252,7 +270,7 @@ class AnyIntView {
   int parse_binary_any(const char* str, int str_len, int* frac = nullptr);
   std::string to_dec_string_destroy_any();
   std::string to_dec_string_slow_destroy_any();
-  std::string to_hex_string_any() const;
+  std::string to_hex_string_any(bool upcase = false) const;
   std::string to_hex_string_slow_destroy_any();
   std::string to_binary_string_any() const;
 
@@ -578,8 +596,13 @@ class BigIntG {
     return as_any_int().export_bits_any(bp.ptr, bp.offs, bits, sgnd);
   }
 
-  bool export_bits(const td::BitSliceWrite& bsw, bool sgnd = true) const {
-    return as_any_int().export_bits_any(bsw.get_ptr(), bsw.get_offs(), bsw.size(), sgnd);
+  template <typename T>
+  bool export_bits(T& bs, bool sgnd = true) const {
+    return export_bits(bs.bits(), bs.size(), sgnd);
+  }
+
+  bool export_bits(const BitSliceWrite& bs, bool sgnd = true) const {
+    return export_bits(bs.bits(), bs.size(), sgnd);
   }
 
   bool import_bits(const unsigned char* buff, int offs, unsigned bits, bool sgnd = true) {
@@ -590,8 +613,9 @@ class BigIntG {
     return as_any_int().import_bits_any(bp.ptr, bp.offs, bits, sgnd);
   }
 
-  bool import_bits(const td::BitSlice& bs, bool sgnd = true) {
-    return as_any_int().import_bits_any(bs.get_ptr(), bs.get_offs(), bs.size(), sgnd);
+  template <typename T>
+  bool import_bits(const T& bs, bool sgnd = true) {
+    return import_bits(bs.bits(), bs.size(), sgnd);
   }
 
   std::ostream& dump(std::ostream& os, bool nl = true) const;
@@ -620,7 +644,7 @@ class BigIntG {
   std::string to_dec_string_destroy();
   std::string to_dec_string_slow() const;
   std::string to_hex_string_slow() const;
-  std::string to_hex_string() const;
+  std::string to_hex_string(bool upcase = false) const;
   std::string to_binary_string() const;
   double to_double() const {
     return is_valid() ? ldexp(top_double(), (n - 1) * word_shift) : NAN;
@@ -692,11 +716,11 @@ template <class Tr>
 bool AnyIntView<Tr>::set_any(const AnyIntView<Tr>& yp) {
   if (yp.size() <= max_size()) {
     set_size(yp.size());
-    memcpy(digits.data(), yp.digits.data(), size() * sizeof(word_t));
+    std::memcpy(digits.data(), yp.digits.data(), size() * sizeof(word_t));
     return true;
   } else {
     set_size(max_size());
-    memcpy(digits.data(), yp.digits.data(), size() * sizeof(word_t));
+    std::memcpy(digits.data(), yp.digits.data(), size() * sizeof(word_t));
     return false;
   }
 }
@@ -787,7 +811,7 @@ bool AnyIntView<Tr>::log_op_any(const AnyIntView<Tr>& yp) {
     } else if (digits[0] == LogOp::neutral) {
       if (yp.size() <= max_size()) {
         set_size(yp.size());
-        memcpy(digits.data(), yp.digits.data(), size() * sizeof(word_t));
+        std::memcpy(digits.data(), yp.digits.data(), size() * sizeof(word_t));
         return true;
       } else {
         return invalidate_bool();
@@ -2236,6 +2260,7 @@ std::string AnyIntView<Tr>::to_dec_string_destroy_any() {
 }
 
 static const char hex_digits[] = "0123456789abcdef";
+static const char HEX_digits[] = "0123456789ABCDEF";
 
 template <class Tr>
 std::string AnyIntView<Tr>::to_hex_string_slow_destroy_any() {
@@ -2259,7 +2284,7 @@ std::string AnyIntView<Tr>::to_hex_string_slow_destroy_any() {
 }
 
 template <class Tr>
-std::string AnyIntView<Tr>::to_hex_string_any() const {
+std::string AnyIntView<Tr>::to_hex_string_any(bool upcase) const {
   if (!is_valid()) {
     return "NaN";
   }
@@ -2270,19 +2295,20 @@ std::string AnyIntView<Tr>::to_hex_string_any() const {
   std::string x;
   x.reserve(((size() * word_shift + word_bits) >> 2) + 2);
   assert(word_shift < word_bits - 4);
+  const char* hex_digs = (upcase ? HEX_digits : hex_digits);
   word_t v = 0;
   for (int i = 0; i < size(); i++) {
     v += ((s >= 0 ? digits[i] : -digits[i]) << k);
     k += word_shift;
     while (k >= 4 && (v || i < size() - 1)) {
-      x += hex_digits[v & 15];
+      x += hex_digs[v & 15];
       v >>= 4;
       k -= 4;
     }
   }
   assert(v >= 0);
   while (v > 0) {
-    x += hex_digits[v & 15];
+    x += hex_digs[v & 15];
     v >>= 4;
   }
   if (s < 0) {
@@ -2380,7 +2406,7 @@ int BigIntG<len, Tr>::parse_dec_slow(const char* str, int str_len) {
   *this = 0;
   int i;
   bool sgn = (str[0] == '-');
-  if (str_len <= sgn) {
+  if (str_len <= static_cast<int>(sgn)) {
     return 0;
   }
   for (i = sgn; i < str_len; i++) {
@@ -2466,8 +2492,8 @@ std::string BigIntG<len, Tr>::to_hex_string_slow() const {
 }
 
 template <int len, class Tr>
-std::string BigIntG<len, Tr>::to_hex_string() const {
-  return as_any_int().to_hex_string_any();
+std::string BigIntG<len, Tr>::to_hex_string(bool upcase) const {
+  return as_any_int().to_hex_string_any(upcase);
 }
 
 template <int len, class Tr>

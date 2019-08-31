@@ -1,5 +1,22 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "common/bitstring.h"
-#include <cassert>
 #include <cstring>
 #include <limits>
 #include "td/utils/as.h"
@@ -19,8 +36,8 @@ BitString::BitString(const BitSlice& bs, unsigned reserve_bits) {
     offs = bs.get_offs();
     len = bs.size();
     bytes_alloc = (bs.get_offs() + bs.size() + reserve_bits + 7) >> 3;
-    ptr = (unsigned char*)std::malloc(bytes_alloc);
-    assert(ptr);
+    ptr = static_cast<unsigned char*>(std::malloc(bytes_alloc));
+    CHECK(ptr);
     if (bs.size()) {
       std::memcpy(ptr, bs.get_ptr(), bs.byte_size());
     }
@@ -33,8 +50,8 @@ BitString::BitString(unsigned reserve_bits) {
     offs = len = bytes_alloc = 0;
   } else {
     bytes_alloc = (reserve_bits + 7) >> 3;
-    ptr = (unsigned char*)std::malloc(bytes_alloc);
-    assert(ptr);
+    ptr = static_cast<unsigned char*>(std::malloc(bytes_alloc));
+    CHECK(ptr);
     offs = len = 0;
   }
 }
@@ -56,7 +73,7 @@ BitString& BitString::reserve_bits(unsigned req_bits) {
   if (req_bits > bytes_alloc * 8) {
     bytes_alloc = (req_bits + 7) >> 3;
     ptr = (unsigned char*)std::realloc(ptr, bytes_alloc);
-    assert(ptr);
+    CHECK(ptr);
   }
   return *this;
 }
@@ -267,13 +284,14 @@ std::size_t bits_memscan(const unsigned char* ptr, int offs, std::size_t bit_cou
   if (!bit_count) {
     return 0;
   }
-  int xor_val = -cmp_to;
+  int xor_val = -static_cast<int>(cmp_to);
   ptr += (offs >> 3);
   offs &= 7;
   std::size_t rem = bit_count;
   unsigned v, c;
   if (offs) {
     v = ((unsigned)(ptr[0] ^ xor_val) << (24 + offs));
+    // std::cerr << "[A] rem=" << rem << " ptr=" << (const void*)ptr << " v=" << std::hex << v << std::dec << std::endl;
     c = td::count_leading_zeroes32(v);
     unsigned l = (unsigned)(8 - offs);
     if (c < l || bit_count <= l) {
@@ -282,16 +300,18 @@ std::size_t bits_memscan(const unsigned char* ptr, int offs, std::size_t bit_cou
     rem -= l;
     ptr++;
   }
-  while (rem >= 8 && reinterpret_cast<unsigned long long>(ptr) & 7) {
+  while (rem >= 8 && !td::is_aligned_pointer<8>(ptr)) {
     v = ((*ptr++ ^ xor_val) << 24);
+    // std::cerr << "[B] rem=" << rem << " ptr=" << (const void*)(ptr - 1) << " v=" << std::hex << v << std::dec << std::endl;
     if (v) {
       return bit_count - rem + td::count_leading_zeroes_non_zero32(v);
     }
     rem -= 8;
   }
-  unsigned long long xor_val_l = (cmp_to ? ~0LL : 0LL);
+  td::uint64 xor_val_l = (cmp_to ? ~0LL : 0LL);
   while (rem >= 64) {
-    unsigned long long z = as<unsigned long long>(ptr) ^ xor_val_l;
+    td::uint64 z = td::bswap64(as<td::uint64>(ptr)) ^ xor_val_l;
+    // std::cerr << "[C] rem=" << rem << " ptr=" << (const void*)ptr << " z=" << std::hex << z << std::dec << std::endl;
     if (z) {
       return bit_count - rem + td::count_leading_zeroes_non_zero64(z);
     }
@@ -300,6 +320,7 @@ std::size_t bits_memscan(const unsigned char* ptr, int offs, std::size_t bit_cou
   }
   while (rem >= 8) {
     v = ((*ptr++ ^ xor_val) << 24);
+    // std::cerr << "[D] rem=" << rem << " ptr=" << (const void*)(ptr - 1) << " v=" << std::hex << v << std::dec << std::endl;
     if (v) {
       return bit_count - rem + td::count_leading_zeroes_non_zero32(v);
     }
@@ -307,6 +328,7 @@ std::size_t bits_memscan(const unsigned char* ptr, int offs, std::size_t bit_cou
   }
   if (rem > 0) {
     v = ((*ptr ^ xor_val) << 24);
+    // std::cerr << "[E] rem=" << rem << " ptr=" << (const void*)ptr << " v=" << std::hex << v << std::dec << std::endl;
     c = td::count_leading_zeroes32(v);
     return c < rem ? bit_count - rem + c : bit_count;
   } else {
@@ -377,8 +399,8 @@ int bits_memcmp(const unsigned char* bs1, int bs1_offs, const unsigned char* bs2
   }
   z2 += bs2_offs;
 
-  assert(z1 == z2);
-  assert(z1 < 64);
+  CHECK(z1 == z2);
+  CHECK(z1 < 64);
   //fprintf(stderr, "acc1=%016llx acc2=%016llx z1=z2=%d\n", acc1, acc2, z1);
   if (z1) {
     if ((acc1 ^ acc2) & (~0ULL << (64 - z1))) {
@@ -412,7 +434,7 @@ int bits_lexcmp(ConstBitPtr bs1, std::size_t bs1_bit_count, ConstBitPtr bs2, std
 }
 
 void bits_store_long_top(unsigned char* to, int to_offs, unsigned long long val, unsigned top_bits) {
-  assert(top_bits <= 64);
+  CHECK(top_bits <= 64);
   if (top_bits <= 0) {
     return;
   }
@@ -460,7 +482,7 @@ void bits_store_long(BitPtr to, unsigned long long val, unsigned bits) {
 }
 
 unsigned long long bits_load_long_top(const unsigned char* from, int from_offs, unsigned top_bits) {
-  assert(top_bits <= 64);
+  CHECK(top_bits <= 64);
   if (!top_bits) {
     return 0;
   }
@@ -557,7 +579,7 @@ std::string bits_to_hex(const unsigned char* ptr, int offs, std::size_t len) {
     bits -= 4;
     s.push_back(hex_digits[(acc >> bits) & 15]);
   }
-  assert(!bits);
+  CHECK(!bits);
   if (f) {
     s.push_back('_');
   }

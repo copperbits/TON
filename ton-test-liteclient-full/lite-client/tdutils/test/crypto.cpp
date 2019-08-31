@@ -1,7 +1,26 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/base64.h"
 #include "td/utils/benchmark.h"
 #include "td/utils/common.h"
 #include "td/utils/crypto.h"
+#include "td/utils/logging.h"
 #include "td/utils/Slice.h"
 #include "td/utils/tests.h"
 #include "td/utils/UInt.h"
@@ -64,13 +83,15 @@ TEST(Crypto, Sha256State) {
     td::sha256(s, as_slice(baseline));
 
     td::Sha256State state;
-    td::sha256_init(&state);
+    state.init();
+    td::Sha256State state2 = std::move(state);
     auto v = td::rand_split(s);
     for (auto &x : v) {
-      td::sha256_update(x, &state);
+      state2.feed(x);
     }
+    state = std::move(state2);
     td::UInt256 result;
-    td::sha256_final(&state, as_slice(result));
+    state.extract(as_slice(result));
     ASSERT_TRUE(baseline == result);
   }
 }
@@ -172,10 +193,11 @@ TEST(Crypto, crc32c) {
     ASSERT_EQ(answers[i], b);
   }
 }
+
 TEST(Crypto, crc32c_benchmark) {
   class Crc32cExtendBenchmark : public td::Benchmark {
    public:
-    Crc32cExtendBenchmark(size_t chunk_size) : chunk_size_(chunk_size) {
+    explicit Crc32cExtendBenchmark(size_t chunk_size) : chunk_size_(chunk_size) {
     }
     std::string get_description() const override {
       return PSTRING() << "Crc32c with chunk_size=" << chunk_size_;

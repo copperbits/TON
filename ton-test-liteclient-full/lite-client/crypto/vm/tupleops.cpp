@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "vm/log.h"
 #include "vm/stackops.h"
 #include "vm/opctable.h"
@@ -35,15 +53,17 @@ int exec_null_swap_if(VmState* st, bool cond, int depth) {
   return 0;
 }
 
-int exec_mktuple_common(Stack& stack, unsigned n) {
+int exec_mktuple_common(VmState* st, unsigned n) {
+  Stack& stack = st->get_stack();
   stack.check_underflow(n);
-  Ref<vm::Tuple> ref{true};
+  Ref<Tuple> ref{true};
   auto& tuple = ref.unique_write();
   tuple.reserve(n);
   for (int i = n - 1; i >= 0; i--) {
     tuple.push_back(std::move(stack[i]));
   }
   stack.pop_many(n);
+  st->consume_tuple_gas(n);
   stack.push_tuple(std::move(ref));
   return 0;
 }
@@ -51,13 +71,13 @@ int exec_mktuple_common(Stack& stack, unsigned n) {
 int exec_mktuple(VmState* st, unsigned args) {
   args &= 15;
   VM_LOG(st) << "execute TUPLE " << args;
-  return exec_mktuple_common(st->get_stack(), args);
+  return exec_mktuple_common(st, args);
 }
 
 int exec_mktuple_var(VmState* st) {
   VM_LOG(st) << "execute TUPLEVAR";
   unsigned args = st->get_stack().pop_smallint_range(255);
-  return exec_mktuple_common(st->get_stack(), args);
+  return exec_mktuple_common(st, args);
 }
 
 int exec_tuple_index_common(Stack& stack, unsigned n) {
@@ -74,12 +94,31 @@ int exec_tuple_index(VmState* st, unsigned args) {
 
 int exec_tuple_index_var(VmState* st) {
   VM_LOG(st) << "execute INDEXVAR";
-  st->get_stack().check_underflow(2);
-  unsigned args = st->get_stack().pop_smallint_range(255);
+  st->check_underflow(2);
+  unsigned args = st->get_stack().pop_smallint_range(254);
   return exec_tuple_index_common(st->get_stack(), args);
 }
 
-int do_explode_tuple(Stack& stack, Ref<Tuple> tuple, unsigned n) {
+int exec_tuple_quiet_index_common(Stack& stack, unsigned n) {
+  stack.push(tuple_extend_index(stack.pop_maybe_tuple_range(255), n));
+  return 0;
+}
+
+int exec_tuple_quiet_index(VmState* st, unsigned args) {
+  args &= 15;
+  VM_LOG(st) << "execute INDEXQ " << args;
+  return exec_tuple_quiet_index_common(st->get_stack(), args);
+}
+
+int exec_tuple_quiet_index_var(VmState* st) {
+  VM_LOG(st) << "execute INDEXVARQ";
+  st->check_underflow(2);
+  unsigned args = st->get_stack().pop_smallint_range(254);
+  return exec_tuple_quiet_index_common(st->get_stack(), args);
+}
+
+int do_explode_tuple(VmState* st, Ref<Tuple> tuple, unsigned n) {
+  auto& stack = st->get_stack();
   if (tuple.is_unique()) {
     auto& tw = tuple.unique_write();
     for (unsigned i = 0; i < n; i++) {
@@ -91,71 +130,74 @@ int do_explode_tuple(Stack& stack, Ref<Tuple> tuple, unsigned n) {
       stack.push(t[i]);
     }
   }
+  st->consume_tuple_gas(n);
   return 0;
 }
 
-int exec_untuple_common(Stack& stack, unsigned n) {
-  return do_explode_tuple(stack, stack.pop_tuple_range(n, n), n);
+int exec_untuple_common(VmState* st, unsigned n) {
+  return do_explode_tuple(st, st->get_stack().pop_tuple_range(n, n), n);
 }
 
 int exec_untuple(VmState* st, unsigned args) {
   args &= 15;
   VM_LOG(st) << "execute UNTUPLE " << args;
-  return exec_untuple_common(st->get_stack(), args);
+  return exec_untuple_common(st, args);
 }
 
 int exec_untuple_var(VmState* st) {
   VM_LOG(st) << "execute UNTUPLEVAR";
-  st->get_stack().check_underflow(2);
+  st->check_underflow(2);
   unsigned args = st->get_stack().pop_smallint_range(255);
-  return exec_untuple_common(st->get_stack(), args);
+  return exec_untuple_common(st, args);
 }
 
-int exec_untuple_first_common(Stack& stack, unsigned n) {
-  return do_explode_tuple(stack, stack.pop_tuple_range(255, n), n);
+int exec_untuple_first_common(VmState* st, unsigned n) {
+  return do_explode_tuple(st, st->get_stack().pop_tuple_range(255, n), n);
 }
 
 int exec_untuple_first(VmState* st, unsigned args) {
   args &= 15;
   VM_LOG(st) << "execute UNPACKFIRST " << args;
-  return exec_untuple_first_common(st->get_stack(), args);
+  return exec_untuple_first_common(st, args);
 }
 
 int exec_untuple_first_var(VmState* st) {
   VM_LOG(st) << "execute UNPACKFIRSTVAR";
-  st->get_stack().check_underflow(2);
+  st->check_underflow(2);
   unsigned args = st->get_stack().pop_smallint_range(255);
-  return exec_untuple_first_common(st->get_stack(), args);
+  return exec_untuple_first_common(st, args);
 }
 
-int exec_explode_tuple_common(Stack& stack, unsigned n) {
-  auto t = stack.pop_tuple_range(n);
+int exec_explode_tuple_common(VmState* st, unsigned n) {
+  auto t = st->get_stack().pop_tuple_range(n);
   unsigned l = (unsigned)(t->size());
-  do_explode_tuple(stack, std::move(t), l);
-  stack.push_smallint(l);
+  do_explode_tuple(st, std::move(t), l);
+  st->get_stack().push_smallint(l);
   return 0;
 }
 
 int exec_explode_tuple(VmState* st, unsigned args) {
   args &= 15;
   VM_LOG(st) << "execute EXPLODE " << args;
-  return exec_explode_tuple_common(st->get_stack(), args);
+  return exec_explode_tuple_common(st, args);
 }
 
 int exec_explode_tuple_var(VmState* st) {
   VM_LOG(st) << "execute EXPLODEVAR";
-  st->get_stack().check_underflow(2);
+  st->check_underflow(2);
   unsigned args = st->get_stack().pop_smallint_range(255);
-  return exec_explode_tuple_common(st->get_stack(), args);
+  return exec_explode_tuple_common(st, args);
 }
 
-int exec_tuple_set_index_common(Stack& stack, unsigned idx) {
+int exec_tuple_set_index_common(VmState* st, unsigned idx) {
+  Stack& stack = st->get_stack();
   auto x = stack.pop();
   auto tuple = stack.pop_tuple_range(255);
   if (idx >= tuple->size()) {
     throw VmError{Excno::range_chk, "tuple index out of range"};
   }
   tuple.write()[idx] = std::move(x);
+  st->consume_tuple_gas(tuple);
   stack.push(std::move(tuple));
   return 0;
 }
@@ -163,15 +205,44 @@ int exec_tuple_set_index_common(Stack& stack, unsigned idx) {
 int exec_tuple_set_index(VmState* st, unsigned args) {
   args &= 15;
   VM_LOG(st) << "execute SETINDEX " << args;
-  st->get_stack().check_underflow(2);
-  return exec_tuple_set_index_common(st->get_stack(), args);
+  st->check_underflow(2);
+  return exec_tuple_set_index_common(st, args);
 }
 
 int exec_tuple_set_index_var(VmState* st) {
   VM_LOG(st) << "execute SETINDEXVAR";
-  st->get_stack().check_underflow(3);
-  unsigned args = st->get_stack().pop_smallint_range(255);
-  return exec_tuple_set_index_common(st->get_stack(), args);
+  st->check_underflow(3);
+  unsigned args = st->get_stack().pop_smallint_range(254);
+  return exec_tuple_set_index_common(st, args);
+}
+
+int exec_tuple_quiet_set_index_common(VmState* st, unsigned idx) {
+  Stack& stack = st->get_stack();
+  auto x = stack.pop();
+  auto tuple = stack.pop_maybe_tuple_range(255);
+  if (idx >= 255) {
+    throw VmError{Excno::range_chk, "tuple index out of range"};
+  }
+  auto tpay = tuple_extend_set_index(tuple, idx, std::move(x));
+  if (tpay > 0) {
+    st->consume_tuple_gas(tpay);
+  }
+  stack.push_maybe_tuple(std::move(tuple));
+  return 0;
+}
+
+int exec_tuple_quiet_set_index(VmState* st, unsigned args) {
+  args &= 15;
+  VM_LOG(st) << "execute SETINDEXQ " << args;
+  st->check_underflow(2);
+  return exec_tuple_quiet_set_index_common(st, args);
+}
+
+int exec_tuple_quiet_set_index_var(VmState* st) {
+  VM_LOG(st) << "execute SETINDEXVARQ";
+  st->check_underflow(3);
+  unsigned args = st->get_stack().pop_smallint_range(254);
+  return exec_tuple_quiet_set_index_common(st, args);
 }
 
 int exec_tuple_length(VmState* st) {
@@ -212,6 +283,7 @@ int exec_tuple_push(VmState* st) {
   auto x = stack.pop();
   auto t = stack.pop_tuple_range(254);
   t.write().push_back(std::move(x));
+  st->consume_tuple_gas(t);
   stack.push(std::move(t));
   return 0;
 }
@@ -222,6 +294,7 @@ int exec_tuple_pop(VmState* st) {
   auto t = stack.pop_tuple_range(255, 1);
   auto x = std::move(t.write().back());
   t.write().pop_back();
+  st->consume_tuple_gas(t);
   stack.push(std::move(t));
   stack.push(std::move(x));
   return 0;
@@ -281,12 +354,16 @@ void register_tuple_ops(OpcodeTable& cp0) {
       .insert(OpcodeInstr::mkfixed(0x6f3, 12, 4, instr::dump_1c("UNPACKFIRST "), exec_untuple_first))
       .insert(OpcodeInstr::mkfixed(0x6f4, 12, 4, instr::dump_1c("EXPLODE "), exec_explode_tuple))
       .insert(OpcodeInstr::mkfixed(0x6f5, 12, 4, instr::dump_1c("SETINDEX "), exec_tuple_set_index))
+      .insert(OpcodeInstr::mkfixed(0x6f6, 12, 4, instr::dump_1c("INDEXQ "), exec_tuple_quiet_index))
+      .insert(OpcodeInstr::mkfixed(0x6f7, 12, 4, instr::dump_1c("SETINDEXQ "), exec_tuple_quiet_set_index))
       .insert(OpcodeInstr::mksimple(0x6f80, 16, "TUPLEVAR", exec_mktuple_var))
       .insert(OpcodeInstr::mksimple(0x6f81, 16, "INDEXVAR", exec_tuple_index_var))
       .insert(OpcodeInstr::mksimple(0x6f82, 16, "UNTUPLEVAR", exec_untuple_var))
       .insert(OpcodeInstr::mksimple(0x6f83, 16, "UNPACKFIRSTVAR", exec_untuple_first_var))
       .insert(OpcodeInstr::mksimple(0x6f84, 16, "EXPLODEVAR", exec_explode_tuple_var))
       .insert(OpcodeInstr::mksimple(0x6f85, 16, "SETINDEXVAR", exec_tuple_set_index_var))
+      .insert(OpcodeInstr::mksimple(0x6f86, 16, "INDEXVARQ", exec_tuple_quiet_index_var))
+      .insert(OpcodeInstr::mksimple(0x6f87, 16, "SETINDEXVARQ", exec_tuple_quiet_set_index_var))
       .insert(OpcodeInstr::mksimple(0x6f88, 16, "TLEN", exec_tuple_length))
       .insert(OpcodeInstr::mksimple(0x6f89, 16, "QTLEN", exec_tuple_length_quiet))
       .insert(OpcodeInstr::mksimple(0x6f8a, 16, "ISTUPLE", exec_is_tuple))

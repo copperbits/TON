@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "Binlog.h"
 
 #include "BinlogReaderHelper.h"
@@ -11,6 +29,7 @@
 
 #include "td/actor/actor.h"
 
+#include "td/utils/misc.h"
 #include "td/utils/port/path.h"
 #include "td/utils/VectorQueue.h"
 
@@ -115,7 +134,10 @@ Status Binlog::replay_sync(BinlogReaderInterface& binlog_reader) {
 
   BinlogReaderHelper helper;
   while (fd_size != 0) {
-    auto read_to = buf_writer.prepare_write().truncate(fd_size);
+    auto read_to = buf_writer.prepare_write();
+    if (static_cast<int64>(read_to.size()) > fd_size) {
+      read_to.truncate(narrow_cast<size_t>(fd_size));
+    }
     TRY_RESULT(read, fd.read(read_to));
     if (read == 0) {
       return Status::Error("Unexpected end of file");

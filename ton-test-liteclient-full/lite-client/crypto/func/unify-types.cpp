@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "func.h"
 
 namespace funC {
@@ -8,7 +26,7 @@ namespace funC {
  * 
  */
 
-int TypeExpr::holes = 0;  // not thread safe, but it is ok for now
+int TypeExpr::holes = 0, TypeExpr::type_vars = 0;  // not thread safe, but it is ok for now
 
 void TypeExpr::compute_width() {
   switch (constr) {
@@ -105,11 +123,60 @@ bool TypeExpr::remove_indirect(TypeExpr*& te, TypeExpr* forbidden) {
     te = te->args[0];
   }
   if (te->constr == te_Unknown) {
-    return te == forbidden;
+    return te != forbidden;
   }
-  bool res = false;
+  bool res = true;
   for (auto& x : te->args) {
-    res |= remove_indirect(x, forbidden);
+    res &= remove_indirect(x, forbidden);
+  }
+  return res;
+}
+
+bool TypeExpr::remove_forall(TypeExpr*& te) {
+  assert(te);
+  if (te->constr != te_ForAll) {
+    return false;
+  }
+  assert(te->args.size() >= 1);
+  std::vector<TypeExpr*> new_vars;
+  for (std::size_t i = 1; i < te->args.size(); i++) {
+    new_vars.push_back(new_hole(1));
+  }
+  TypeExpr* te2 = te;
+  // std::cerr << "removing universal quantifier in " << te << std::endl;
+  te = te->args[0];
+  remove_forall_in(te, te2, new_vars);
+  // std::cerr << "-> " << te << std::endl;
+  return true;
+}
+
+bool TypeExpr::remove_forall_in(TypeExpr*& te, TypeExpr* te2, const std::vector<TypeExpr*>& new_vars) {
+  assert(te);
+  assert(te2 && te2->constr == te_ForAll);
+  if (te->constr == te_Unknown) {
+    for (std::size_t i = 0; i < new_vars.size(); i++) {
+      if (te == te2->args[i + 1]) {
+        te = new_vars[i];
+        return true;
+      }
+    }
+    return false;
+  }
+  if (te->constr == te_ForAll) {
+    return false;
+  }
+  if (te->args.empty()) {
+    return false;
+  }
+  auto te1 = new TypeExpr(*te);
+  bool res = false;
+  for (auto& arg : te1->args) {
+    res |= remove_forall_in(arg, te2, new_vars);
+  }
+  if (res) {
+    te = te1;
+  } else {
+    delete te1;
   }
   return res;
 }
@@ -134,7 +201,13 @@ std::ostream& operator<<(std::ostream& os, TypeExpr* type_expr) {
 std::ostream& TypeExpr::print(std::ostream& os, int lex_level) {
   switch (constr) {
     case te_Unknown:
-      return os << "??" << value;
+      if (value >= 0) {
+        return os << "??" << value;
+      } else if (value >= -26) {
+        return os << (char)(64 - value);
+      } else {
+        return os << "TVAR" << -value;
+      }
     case te_Indirect:
       return os << args[0];
     case te_Atomic: {
@@ -149,6 +222,8 @@ std::ostream& TypeExpr::print(std::ostream& os, int lex_level) {
           return os << "builder";
         case _Cont:
           return os << "cont";
+        case _Tuple:
+          return os << "tuple";
         case _Type:
           return os << "type";
         default:
@@ -181,36 +256,53 @@ std::ostream& TypeExpr::print(std::ostream& os, int lex_level) {
       }
       return os;
     }
+    case te_ForAll: {
+      assert(args.size() >= 1);
+      if (lex_level > 0) {
+        os << '(';
+      }
+      os << "Forall ";
+      for (std::size_t i = 1; i < args.size(); i++) {
+        os << (i > 1 ? ' ' : '(');
+        args[i]->print(os);
+      }
+      os << ") ";
+      args[0]->print(os);
+      if (lex_level > 0) {
+        os << ')';
+      }
+      return os;
+    }
     default:
       return os << "unknown-type-expr-" << constr;
   }
 }
 
-void UniformizeError::print_message(std::ostream& os) const {
+void UnifyError::print_message(std::ostream& os) const {
   os << "cannot unify type " << te1 << " with " << te2;
   if (!msg.empty()) {
     os << ": " << msg;
   }
 }
 
-std::ostream& operator<<(std::ostream& os, const UniformizeError& ue) {
+std::ostream& operator<<(std::ostream& os, const UnifyError& ue) {
   ue.print_message(os);
   return os;
 }
 
-std::string UniformizeError::message() const {
+std::string UnifyError::message() const {
   std::ostringstream os;
-  UniformizeError::print_message(os);
+  UnifyError::print_message(os);
   return os.str();
 }
 
 void check_width_compat(TypeExpr* te1, TypeExpr* te2) {
   if (te1->minw > te2->maxw || te2->minw > te1->maxw) {
-    std::ostringstream os{"cannot uniformize types of widths "};
+    std::ostringstream os{"cannot unify types of widths "};
     te1->show_width(os);
     os << " and ";
     te2->show_width(os);
-    throw UniformizeError{te1, te2, os.str()};
+    throw UnifyError{te1, te2, os.str()};
   }
 }
 
@@ -221,9 +313,9 @@ void check_update_widths(TypeExpr* te1, TypeExpr* te2) {
   assert(te1->minw <= te2->minw);
 }
 
-void uniformize(TypeExpr*& te1, TypeExpr*& te2) {
+void unify(TypeExpr*& te1, TypeExpr*& te2) {
   assert(te1 && te2);
-  // std::cerr << "uniformize( " << te1 << " , " << te2 << " )\n";
+  // std::cerr << "unify( " << te1 << " , " << te2 << " )\n";
   while (te1->constr == TypeExpr::te_Indirect) {
     te1 = te1->args[0];
   }
@@ -233,12 +325,28 @@ void uniformize(TypeExpr*& te1, TypeExpr*& te2) {
   if (te1 == te2) {
     return;
   }
+  if (te1->constr == TypeExpr::te_ForAll) {
+    TypeExpr* te = te1;
+    if (!TypeExpr::remove_forall(te)) {
+      throw UnifyError{te1, te2, "cannot remove universal type quantifier while performing type unification"};
+    }
+    unify(te, te2);
+    return;
+  }
+  if (te2->constr == TypeExpr::te_ForAll) {
+    TypeExpr* te = te2;
+    if (!TypeExpr::remove_forall(te)) {
+      throw UnifyError{te2, te1, "cannot remove universal type quantifier while performing type unification"};
+    }
+    unify(te1, te);
+    return;
+  }
   if (te1->constr == TypeExpr::te_Unknown) {
     if (te2->constr == TypeExpr::te_Unknown) {
       assert(te1->value != te2->value);
     }
-    if (TypeExpr::remove_indirect(te2, te1)) {
-      throw UniformizeError{te1, te2, "uniformization results in an infinite cyclic type"};
+    if (!TypeExpr::remove_indirect(te2, te1)) {
+      throw UnifyError{te1, te2, "type unification results in an infinite cyclic type"};
     }
     check_update_widths(te1, te2);
     te1->replace_with(te2);
@@ -246,8 +354,8 @@ void uniformize(TypeExpr*& te1, TypeExpr*& te2) {
     return;
   }
   if (te2->constr == TypeExpr::te_Unknown) {
-    if (TypeExpr::remove_indirect(te1, te2)) {
-      throw UniformizeError{te2, te1, "uniformization results in an infinite cyclic type"};
+    if (!TypeExpr::remove_indirect(te1, te2)) {
+      throw UnifyError{te2, te1, "type unification results in an infinite cyclic type"};
     }
     check_update_widths(te2, te1);
     te2->replace_with(te1);
@@ -255,17 +363,17 @@ void uniformize(TypeExpr*& te1, TypeExpr*& te2) {
     return;
   }
   if (te1->constr != te2->constr || te1->value != te2->value || te1->args.size() != te2->args.size()) {
-    throw UniformizeError{te1, te2};
+    throw UnifyError{te1, te2};
   }
   for (std::size_t i = 0; i < te1->args.size(); i++) {
-    uniformize(te1->args[i], te2->args[i]);
+    unify(te1->args[i], te2->args[i]);
   }
   if (te1->constr == TypeExpr::te_Tensor) {
     if (!te1->recompute_width()) {
-      throw UniformizeError{te1, te2, "uniformization incompatible with known width of first type"};
+      throw UnifyError{te1, te2, "type unification incompatible with known width of first type"};
     }
     if (!te2->recompute_width()) {
-      throw UniformizeError{te2, te1, "uniformization incompatible with known width of first type"};
+      throw UnifyError{te2, te1, "type unification incompatible with known width of first type"};
     }
     check_update_widths(te1, te2);
   }

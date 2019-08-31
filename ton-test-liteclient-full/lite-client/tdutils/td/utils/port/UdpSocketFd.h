@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/port/config.h"
@@ -39,8 +57,8 @@ class UdpSocketFd {
   UdpSocketFd(const UdpSocketFd &) = delete;
   UdpSocketFd &operator=(const UdpSocketFd &) = delete;
 
-  td::Result<td::uint32> maximize_snd_buffer(td::uint32 max_buffer_size = 0);
-  td::Result<td::uint32> maximize_rcv_buffer(td::uint32 max_buffer_size = 0);
+  Result<uint32> maximize_snd_buffer(uint32 max_buffer_size = 0);
+  Result<uint32> maximize_rcv_buffer(uint32 max_buffer_size = 0);
 
   static Result<UdpSocketFd> open(const IPAddress &address) TD_WARN_UNUSED_RESULT;
 
@@ -78,8 +96,8 @@ class UdpSocketFd {
 #endif
 
  private:
-  static constexpr td::uint32 default_udp_max_snd_buffer_size = (1 << 24);
-  static constexpr td::uint32 default_udp_max_rcv_buffer_size = (1 << 24);
+  static constexpr uint32 default_udp_max_snd_buffer_size = (1 << 24);
+  static constexpr uint32 default_udp_max_rcv_buffer_size = (1 << 24);
   std::unique_ptr<detail::UdpSocketFdImpl, detail::UdpSocketFdImplDeleter> impl_;
   explicit UdpSocketFd(unique_ptr<detail::UdpSocketFdImpl> impl);
 };

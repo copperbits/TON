@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "common/refcnt.hpp"
@@ -371,7 +389,8 @@ class VmState final : public VmStateInterface {
   int stack_trace{0}, debug_off{0};
 
  public:
-  static constexpr unsigned cell_load_gas_price = 100, cell_create_gas_price = 500, exception_gas_price = 10;
+  static constexpr unsigned cell_load_gas_price = 100, cell_create_gas_price = 500, exception_gas_price = 50,
+                            tuple_entry_gas_price = 1;
   VmState();
   VmState(Ref<CellSlice> _code);
   VmState(Ref<CellSlice> _code, Ref<Stack> _stack, int flags = 0, Ref<Cell> _data = {}, VmLog log = {},
@@ -392,10 +411,22 @@ class VmState final : public VmStateInterface {
   void consume_gas(long long amount) {
     gas.consume(amount);
   }
+  void consume_tuple_gas(unsigned tuple_len) {
+    consume_gas(tuple_len * tuple_entry_gas_price);
+  }
+  void consume_tuple_gas(const Ref<vm::Tuple>& tup) {
+    if (tup.not_null()) {
+      consume_tuple_gas((unsigned)tup->size());
+    }
+  }
   GasLimits get_gas_limits() const {
     return gas;
   }
   void change_gas_limit(long long new_limit);
+  template <typename... Args>
+  void check_underflow(Args... args) {
+    stack->check_underflow(args...);
+  }
   bool register_library_collection(Ref<Cell> lib);
   Ref<Cell> load_library(
       td::ConstBitPtr hash) override;  // may throw a dictionary exception; returns nullptr if library is not found

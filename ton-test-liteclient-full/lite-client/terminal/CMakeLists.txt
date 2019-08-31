@@ -4,7 +4,7 @@ if (NOT OPENSSL_FOUND)
   find_package(OpenSSL REQUIRED)
 endif()
 
-set (TERMINAL_SOURCE
+set(TERMINAL_SOURCE
   terminal.cpp
 
   terminal.h

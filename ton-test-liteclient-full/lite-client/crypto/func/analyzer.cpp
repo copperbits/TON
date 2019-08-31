@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "func.h"
 
 namespace funC {
@@ -334,33 +352,29 @@ bool Op::compute_used_vars(const CodeBlob& code, bool edit) {
     case _Let: {
       // left = right
       std::size_t cnt = next_var_info.count_used(left);
-      if (!cnt) {
-        // all variables in `left` are not needed
-        if (edit) {
-          disable();
+      assert(left.size() == right.size());
+      auto l_it = left.cbegin(), r_it = right.cbegin();
+      VarDescrList new_var_info{next_var_info};
+      new_var_info -= left;
+      new_var_info.clear_last();
+      std::vector<var_idx_t> new_left, new_right;
+      for (; l_it < left.cend(); ++l_it, ++r_it) {
+        if (std::find(l_it + 1, left.cend(), *l_it) == left.cend()) {
+          auto p = next_var_info[*l_it];
+          new_var_info.add_var(*r_it, !p || p->is_unused());
+          new_left.push_back(*l_it);
+          new_right.push_back(*r_it);
         }
-        return std_compute_used_vars(true);
-      } else {
-        assert(left.size() == right.size());
-        auto l_it = left.cbegin(), r_it = right.cbegin();
-        VarDescrList new_var_info{next_var_info};
-        new_var_info -= left;
-        new_var_info.clear_last();
-        std::vector<var_idx_t> new_left, new_right;
-        for (; l_it < left.cend(); ++l_it, ++r_it) {
-          if (std::find(l_it + 1, left.cend(), *l_it) == left.cend()) {
-            auto p = next_var_info[*l_it];
-            new_var_info.add_var(*r_it, !p || p->is_unused());
-            new_left.push_back(*l_it);
-            new_right.push_back(*r_it);
-          }
-        }
-        if (new_left.size() < left.size()) {
-          left = std::move(new_left);
-          right = std::move(new_right);
-        }
-        return set_var_info(std::move(new_var_info));
       }
+      if (new_left.size() < left.size()) {
+        left = std::move(new_left);
+        right = std::move(new_right);
+      }
+      if (!cnt && edit) {
+        // all variables in `left` are not needed
+        disable();
+      }
+      return set_var_info(std::move(new_var_info));
     }
     case _Return: {
       // return left
@@ -385,9 +399,16 @@ bool Op::compute_used_vars(const CodeBlob& code, bool edit) {
     }
     case _If: {
       // if (left) then block0 else block1
+      //  VarDescrList nx_var_info = next_var_info;
+      //  nx_var_info.clear_last();
       code.compute_used_code_vars(block0, next_var_info, edit);
-      code.compute_used_code_vars(block1, next_var_info, edit);
-      VarDescrList merge_info = block0->var_info + block1->var_info;
+      VarDescrList merge_info;
+      if (block1) {
+        code.compute_used_code_vars(block1, next_var_info, edit);
+        merge_info = block0->var_info + block1->var_info;
+      } else {
+        merge_info = block0->var_info + next_var_info;
+      }
       merge_info.clear_last();
       merge_info += left;
       return set_var_info(std::move(merge_info));
@@ -665,7 +686,8 @@ VarDescrList Op::fwd_analyze(VarDescrList values) {
         for (var_idx_t i : left) {
           res.emplace_back(i);
         }
-        func->compile(res, args);  // abstract interpretation of res := f (args)
+        AsmOpList tmp;
+        func->compile(tmp, res, args);  // abstract interpretation of res := f (args)
         int j = 0;
         for (var_idx_t i : left) {
           values.add_newval(i).set_value(res[j++]);
@@ -688,8 +710,24 @@ VarDescrList Op::fwd_analyze(VarDescrList values) {
       assert(left.size() == right.size());
       for (std::size_t i = 0; i < right.size(); i++) {
         const VarDescr* ov = values[right[i]];
-        assert(ov);
-        old_val.push_back(*ov);
+        if (!ov && verbosity >= 5) {
+          std::cerr << "FATAL: error in assignment at right component #" << i << " (no value for _" << right[i] << ")"
+                    << std::endl;
+          for (auto x : left) {
+            std::cerr << '_' << x << " ";
+          }
+          std::cerr << "= ";
+          for (auto x : right) {
+            std::cerr << '_' << x << " ";
+          }
+          std::cerr << std::endl;
+        }
+        // assert(ov);
+        if (ov) {
+          old_val.push_back(*ov);
+        } else {
+          old_val.emplace_back();
+        }
       }
       for (std::size_t i = 0; i < left.size(); i++) {
         values.add_newval(left[i]).set_value(std::move(old_val[i]));
@@ -698,7 +736,7 @@ VarDescrList Op::fwd_analyze(VarDescrList values) {
     }
     case _If: {
       VarDescrList val1 = block0->fwd_analyze(values);
-      VarDescrList val2 = block1->fwd_analyze(std::move(values));
+      VarDescrList val2 = block1 ? block1->fwd_analyze(std::move(values)) : std::move(values);
       values = val1 | val2;
       break;
     }
@@ -783,7 +821,7 @@ bool Op::mark_noreturn() {
     case _Return:
       return set_noreturn(true);
     case _If:
-      return set_noreturn((block0->mark_noreturn() & block1->mark_noreturn()) | next->mark_noreturn());
+      return set_noreturn((block0->mark_noreturn() & (block1 && block1->mark_noreturn())) | next->mark_noreturn());
     case _Again:
       block0->mark_noreturn();
       return set_noreturn(false);

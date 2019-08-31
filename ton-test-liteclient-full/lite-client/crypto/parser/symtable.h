@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include "srcread.h"
 #include "lexer.h"
@@ -49,15 +67,15 @@ class SymTableBase {
   unsigned p;
   std::unique_ptr<Symbol>* sym_table;
   sym_idx_t def_kw, def_sym;
-  constexpr static int max_kw_idx = 10000;
+  static constexpr int max_kw_idx = 10000;
   sym_idx_t keywords[max_kw_idx];
 
  public:
   SymTableBase(unsigned p_, std::unique_ptr<Symbol>* sym_table_)
       : p(p_), sym_table(sym_table_), def_kw(0x100), def_sym(0) {
-    memset(keywords, 0, sizeof(keywords));
+    std::memset(keywords, 0, sizeof(keywords));
   }
-  constexpr static sym_idx_t not_found = 0;
+  static constexpr sym_idx_t not_found = 0;
   SymTableBase& add_keyword(std::string str, sym_idx_t idx = 0);
   SymTableBase& add_kw_char(char c) {
     return add_keyword(std::string{c}, c);
@@ -91,7 +109,7 @@ class SymTableBase {
 template <unsigned pp>
 class SymTable : public SymTableBase {
  public:
-  constexpr static int hprime = pp;
+  static constexpr int hprime = pp;
   static int size() {
     return pp + 1;
   }

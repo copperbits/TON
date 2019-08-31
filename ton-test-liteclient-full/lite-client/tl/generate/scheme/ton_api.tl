@@ -55,6 +55,13 @@ pub.overlay name:bytes = PublicKey;
 
 adnl.id.short id:int256 = adnl.id.Short;
 
+adnl.proxyToFastHash ip:int port:int date:int data_hash:int256 shared_secret:int256 = adnl.ProxyTo;
+adnl.proxyToFast ip:int port:int date:int signature:int256 = adnl.ProxyToSign;
+
+adnl.proxy.none = adnl.Proxy;
+adnl.proxy.fast shared_secret:bytes = adnl.Proxy;
+
+
 adnl.address.udp ip:int port:int = adnl.Address;
 adnl.address.udp6 ip:int128 port:int = adnl.Address;
 //adnl.address.tcp ip:int port:int = adnl.Address;
@@ -120,13 +127,12 @@ rldp.confirm transfer_id:int256 part:int seqno:int = rldp.MessagePart;
 rldp.complete transfer_id:int256 part:int = rldp.MessagePart;
 
 rldp.message id:int256 data:bytes = rldp.Message;
-rldp.query query_id:int256 timeout:int data:bytes = rldp.Message;
+rldp.query query_id:int256 max_answer_size:long timeout:int data:bytes = rldp.Message;
 rldp.answer query_id:int256 data:bytes = rldp.Message;
 
 
 ---functions---
 ---types---
-
 dht.node id:PublicKey addr_list:adnl.addressList version:int signature:bytes = dht.Node;
 dht.nodes nodes:(vector dht.node) = dht.Nodes;
 
@@ -157,7 +163,7 @@ dht.ping random_id:long = dht.Pong;
 dht.store value:dht.value = dht.Stored;
 dht.findNode key:int256 k:int = dht.Nodes; 
 dht.findValue key:int256 k:int = dht.ValueResult; 
-dht.getSignedAddressList = adnl.Node;
+dht.getSignedAddressList = dht.Node;
 
 dht.query node:dht.node = True;
 
@@ -242,7 +248,6 @@ catchain.getBlockHistory block:int256 height:long stop_if:(vector int256) = catc
 
 ---types---
 
-validatorSession.id slice:int256 start_time:int end_time:int participants:(vector int256) = validatorSession.Id;
 validatorSession.round.id session:int256 height:long prev_block:int256 seqno:int = validatorSession.round.Id;
 
 validatorSession.candidate.id round:int256 block_hash:int256 = validatorSession.tempBlock.Id;
@@ -252,11 +257,12 @@ validatorSession.message.finishSession = validatorSession.Message;
 
 validatorSession.message.submittedBlock round:int root_hash:int256 file_hash:int256 
                collated_data_file_hash:int256 = validatorSession.round.Message;
-validatorSession.message.approvedBlock round:int candidate:int256 = validatorSession.round.Message;
+validatorSession.message.approvedBlock round:int candidate:int256 signature:bytes = validatorSession.round.Message;
 validatorSession.message.rejectedBlock round:int candidate:int256 reason:bytes = validatorSession.round.Message;
 validatorSession.message.commit round:int candidate:int256 signature:bytes = validatorSession.round.Message;
 
 validatorSession.message.vote round:int attempt:int candidate:int256 = validatorSession.round.Message;
+validatorSession.message.voteFor round:int attempt:int candidate:int256 = validatorSession.round.Message;
 validatorSession.message.precommit round:int attempt:int candidate:int256 = validatorSession.round.Message;
 validatorSession.message.empty round:int attempt:int = validatorSession.round.Message;
 
@@ -266,6 +272,9 @@ validatorSession.candidateId src:int256 root_hash:int256 file_hash:int256 collat
 
 validatorSession.blockUpdate ts:long actions:(vector validatorSession.round.Message) state:int = validatorSession.BlockUpdate;
 validatorSession.candidate src:int256 round:int root_hash:int256 data:bytes collated_data:bytes = validatorSession.Candidate;
+
+validatorSession.config catchain_idle_timeout:double catchain_max_deps:int round_candidates:int next_candidate_delay:double round_attempt_duration:int
+        max_round_attempts:int max_block_size:int max_collated_data_size:int = validatorSession.Config;
 
 ---functions---
 
@@ -281,8 +290,8 @@ hashable.int256 value:int256 = Hashable;
 hashable.bytes value:bytes = Hashable;
 hashable.pair left:int right:int = Hashable;
 hashable.vector value:(vector int) = Hashable;
-hashable.validatorSessionOldRound seqno:int block:int signatures:int = Hashable;
-hashable.validatorSessionRoundAttempt seqno:int votes:int precommitted:int = Hashable;
+hashable.validatorSessionOldRound seqno:int block:int signatures:int approve_signatures:int = Hashable;
+hashable.validatorSessionRoundAttempt seqno:int votes:int precommitted:int vote_for_inited:int vote_for:int = Hashable;
 hashable.validatorSessionRound locked_round:int locked_block:int seqno:int precommitted:Bool
           first_attempt:int approved_blocks:int signatures:int attempts:int = Hashable;
 hashable.blockSignature signature:int = Hashable;
@@ -290,6 +299,7 @@ hashable.sentBlock src:int root_hash:int file_hash:int collated_data_file_hash:i
 hashable.sentBlockEmpty = Hashable;
 hashable.vote block:int node:int = Hashable;
 hashable.blockCandidate block:int approved:int = Hashable;
+hashable.blockVoteCandidate block:int approved:int = Hashable;
 hashable.blockCandidateAttempt block:int votes:int = Hashable;
 
 hashable.cntVector data:int = Hashable;
@@ -301,7 +311,7 @@ hashable.validatorSession ts:int old_rounds:int cur_round:int = Hashable;
 ---types---
 
 
-tonNode.sessionId workchain:int shard:long utime_from:int utime_to:int = tonNode.SessionId; 
+tonNode.sessionId workchain:int shard:long cc_seqno:int opts_hash:int256 = tonNode.SessionId; 
 
 
 tonNode.blockSignature who:int256 signature:bytes = tonNode.BlockSignature;
@@ -340,6 +350,7 @@ tonNode.shardPublicOverlayId workchain:int shard:long zero_state_file_hash:int25
 tonNode.keyBlocks blocks:(vector tonNode.blockIdExt) incomplete:Bool error:Bool = tonNode.KeyBlocks;
 
 ton.blockId root_cell_hash:int256 file_hash:int256 = ton.BlockId;
+ton.blockIdApprove root_cell_hash:int256 file_hash:int256 = ton.BlockId;
 
 ---functions---
 
@@ -354,40 +365,6 @@ tonNode.downloadPersistentState block:tonNode.blockIdExt masterchain_block:tonNo
 tonNode.downloadZeroState block:tonNode.blockIdExt = tonNode.Data;
 tonNode.downloadBlockProof block:tonNode.blockIdExt = tonNode.Data;
 tonNode.downloadBlockProofLink block:tonNode.blockIdExt = tonNode.Data;
-
----types---
-
-test.validatorSession.block root_hash:int256 height:long data:bytes = test.validatorSession.Block;
-
-test0.blockSignatures signatures:(vector tonNode.blockSignature) = test0.BlockSignatures;
-
-test0.proofLink id:tonNode.blockIdExt prev:(vector tonNode.blockIdExt) state:int256 split:Bool = test.ProofLink; 
-test0.proof link:test0.proofLink catchain_seqno:int validator_set_hash:int signatures:test0.blockSignatures = test.Proof;
-
-test0.masterchain.shardInfo last_block:tonNode.blockIdExt before_merge:Bool before_split:Bool after_merge:Bool after_split:Bool 
-          = test0.masterchain.ShardInfo;
-
-test0.masterchainBlockExtra.empty = test0.MasterchainBlockExtra;
-test0.masterchainBlockExtra.extra randseed:int rotate:Bool shards:(vector test0.masterchain.shardInfo) = test0.MasterchainBlockExtra;
-
-test0.masterchainStateExtra.empty = test0.MasterchainStateExtra;
-test0.masterchainStateExtra.extra validator_ts:int validator_randseed:int next_randseed:int next_rotate_at:int prev_blocks:(vector tonNode.blockIdExt) shards:(vector test0.masterchain.shardInfo) pool:(vector PublicKey) = test0.MasterchainStateExtra;
-
-test0.shardchain.block workchain:int shard:long seqno:int prev:(vector tonNode.blockIdExt) split:Bool ts:int state:int256 
-            catchain_seqno:int validator_set_hash:int pad:bytes extra:test0.MasterchainBlockExtra = test.shardchain.Block;
-test0.shardchain.state workchain:int shard:long seqno:int ts:int split:Bool extra:test0.MasterchainStateExtra = test.shardchain.State; 
-
-test0.topShardBlockDescription block_id:tonNode.blockIdExt after_split:Bool after_merge:Bool before_split:Bool 
-  catchain_seqno:int validator_set_hash:int signatures:bytes = test0.TopShardBlockDescription;
-
-test0.validatorSessionId workchain:int shard:long shard_from:long ts:int = test0.ValidatorSessionId;
-
-test0.validatorSetItem id:int256 weight:long = test0.ValidatorSetItem;
-test0.validatorSet ts:int validators:(vector test0.validatorSetItem) = test0.ValidatorSet; 
-
-test0.extMessage workchain:int shard:long data:bytes = test0.ExtMessage;
-
----functions---
 
 ---types---
 
@@ -422,8 +399,8 @@ db.blockdb.lru id:tonNode.blockIdExt prev:int256 next:int256 = db.blockdb.Lru;
 db.blockdb.key.lru id:tonNode.blockIdExt = db.blockdb.Key;
 db.blockdb.key.value id:tonNode.blockIdExt = db.blockdb.Key;
 
-db.candidate id:tonNode.blockIdExt data:bytes collated_data:bytes = db.Candidate;
-db.candidate.id id:tonNode.blockIdExt collated_data_file_hash:int256 = db.candidate.Id; 
+db.candidate source:PublicKey id:tonNode.blockIdExt data:bytes collated_data:bytes = db.Candidate;
+db.candidate.id source:PublicKey id:tonNode.blockIdExt collated_data_file_hash:int256 = db.candidate.Id; 
 
 db.filedb.key.empty = db.filedb.Key;
 db.filedb.key.blockFile block_id:tonNode.blockIdExt = db.filedb.Key; 
@@ -475,16 +452,17 @@ dht.config.global static_nodes:dht.nodes k:int a:int = dht.config.Global;
 adnl.config.global static_nodes:adnl.nodes = adnl.config.Global;
 catchain.config.global tag:int256 nodes:(vector PublicKey) = catchain.config.Global;
 dummyworkchain0.config.global zero_state_hash:int256 = dummyworkchain0.config.Global;
-validator.config.global zero_state:tonNode.blockIdExt init_block:tonNode.blockIdExt = validator.config.Global;
+validator.config.global zero_state:tonNode.blockIdExt init_block:tonNode.blockIdExt hardforks:(vector tonNode.blockIdExt) = validator.config.Global;
 config.global adnl:adnl.config.global dht:dht.config.global validator:validator.config.global = config.Global;
 
 liteserver.desc id:PublicKey ip:int port:int = liteserver.Desc;
 liteclient.config.global liteservers:(vector liteserver.desc) = liteclient.config.Global;
 
 engine.adnl id:int256 category:int = engine.Adnl;
-engine.addr ip:int port:int is_proxy:Bool categories:(vector int) priority_categories:(vector int) = engine.Addr;
+engine.addr ip:int port:int categories:(vector int) priority_categories:(vector int) = engine.Addr;
+engine.addrProxy in_ip:int in_port:int out_ip:int out_port:int 
+          proxy_type:adnl.Proxy categories:(vector int) priority_categories:(vector int) = engine.Addr;
 engine.dht id:int256 = engine.Dht;
-engine.fullNode id:int256 adnl:int256 expire_at:int = engine.FullNode;
 engine.validatorTempKey key:int256 expire_at:int = engine.ValidatorTempKey;
 engine.validatorAdnlAddress id:int256 expire_at:int = engine.ValidatorAdnlAddress;
 engine.validator id:int256 temp_keys:(vector engine.validatorTempKey) adnl_addrs:(vector engine.validatorAdnlAddress) expire_at:int = engine.Validator;
@@ -494,11 +472,18 @@ engine.controlInterface id:int256 port:int allowed:(vector engine.controlProcess
 engine.gc ids:(vector int256) = engine.Gc;
 
 engine.dht.config dht:(vector engine.dht) gc:engine.gc = engine.dht.Config;
-engine.validator.config addrs:(vector engine.addr) adnl:(vector engine.adnl) 
-        dht:(vector engine.dht) fullnode:engine.fullNode 
-        validators:(vector engine.validator) liteservers:(vector engine.liteServer) 
-        control:(vector engine.controlInterface)
+engine.validator.config out_port:int addrs:(vector engine.Addr) adnl:(vector engine.adnl) 
+        dht:(vector engine.dht)
+        validators:(vector engine.validator) fullnode:int256  
+        liteservers:(vector engine.liteServer) control:(vector engine.controlInterface)
         gc:engine.gc = engine.validator.Config; 
+
+---functions---
+---types---
+
+engine.adnlProxy.port in_port:int out_port:int dst_ip:int dst_port:int proxy_type:adnl.Proxy = engine.adnlProxy.Port;
+
+engine.adnlProxy.config ports:(vector engine.adnlProxy.port) = engine.adnlProxy.Config;
 
 ---functions---
 
@@ -515,35 +500,40 @@ engine.validator.controlQueryError code:int message:string = engine.validator.Co
 engine.validator.time time:int = engine.validator.Time;
 engine.validator.success = engine.validator.Success;
 
+engine.validator.jsonConfig data:string = engine.validator.JsonConfig;
 ---functions---
 
-engine.validator.setPassword password:bytes = engine.validator.Success;
-engine.validator.changePassword old_password:bytes new_password:bytes = engine.validator.Success;
-
 engine.validator.getTime = engine.validator.Time;
-engine.validator.importLocalKey key_hash:int256 = engine.validator.KeyHash;
 engine.validator.importPrivateKey key:PrivateKey = engine.validator.KeyHash;
 engine.validator.exportPrivateKey key_hash:int256 = PrivateKey;
 engine.validator.exportPublicKey key_hash:int256 = PublicKey;
 engine.validator.generateKeyPair = engine.validator.KeyHash;
-engine.validator.addAdnlId key_hash:int256 category:int = engine.validator.Success;
+engine.validator.addAdnlId key_hash:int256 category:int priority:int = engine.validator.Success;
 engine.validator.addDhtId key_hash:int256 = engine.validator.Success;
 engine.validator.addValidatorPermanentKey key_hash:int256 ttl:int = engine.validator.Success;
 engine.validator.addValidatorTempKey permanent_key_hash:int256 key_hash:int256 ttl:int = engine.validator.Success;
 engine.validator.addValidatorAdnlAddress permanent_key_hash:int256 key_hash:int256 ttl:int = engine.validator.Success;
-engine.validator.delAdnlId = engine.validator.Success;
-engine.validator.delDhtId = engine.validator.Success;
-engine.validator.delValidatorPermanentKey key_hash:int256 = engine.validator.Success;
-engine.validator.delValidatorTempKey key_hash:int256 = engine.validator.Success;
-engine.validator.delValidatorAdnlAddress key_hash:int256 = engine.validator.Success;
-engine.validator.addListeningPort ip:int port:int categories:(vector int) priority_categories:(vector int) = engine.validator.Success;
-engine.validator.addProxy ip:int port:int categories:(vector int) = engine.validator.Success;
-engine.validator.delListeningPort ip:int port:int categories:(vector int) priority_categories:(vector int) = engine.validator.Success;
-engine.validator.delProxy ip:int port:int categories:(vector int) = engine.validator.Success;
+engine.validator.changeFullNodeAdnlAddress adnl_id:int256 = engine.validator.Success; 
+engine.validator.addLiteserver key_hash:int256 port:int = engine.validator.Success;
+engine.validator.addControlInterface key_hash:int256 port:int = engine.validator.Success;
+engine.validator.addControlProcess key_hash:int256 port:int peer_key:int256 permissions:int = engine.validator.Success;
 
-engine.validator.sign data:bytes = engine.validator.Signature;
+engine.validator.delAdnlId key_hash:int256 = engine.validator.Success;
+engine.validator.delDhtId key_hash:int256 = engine.validator.Success;
+engine.validator.delValidatorPermanentKey key_hash:int256 = engine.validator.Success;
+engine.validator.delValidatorTempKey permanent_key_hash:int256 key_hash:int256 = engine.validator.Success;
+engine.validator.delValidatorAdnlAddress permanent_key_hash:int256 key_hash:int256 = engine.validator.Success;
+
+engine.validator.addListeningPort ip:int port:int categories:(vector int) priority_categories:(vector int) = engine.validator.Success;
+engine.validator.addProxy in_ip:int in_port:int out_ip:int out_port:int proxy:adnl.Proxy categories:(vector int) priority_categories:(vector int) = engine.validator.Success;
+engine.validator.delListeningPort ip:int port:int categories:(vector int) priority_categories:(vector int) = engine.validator.Success;
+engine.validator.delProxy out_ip:int out_port:int categories:(vector int) priority_categories:(vector int) = engine.validator.Success;
+
+engine.validator.sign key_hash:int256 data:bytes = engine.validator.Signature;
 
 engine.validator.getStats = engine.validator.Stats;
-engine.validator.getConfig = engine.validator.Config;
+engine.validator.getConfig = engine.validator.JsonConfig;
+
+engine.validator.setVerbosity verbosity:int = engine.validator.Success; 
 
 engine.validator.controlQuery data:bytes = Object;

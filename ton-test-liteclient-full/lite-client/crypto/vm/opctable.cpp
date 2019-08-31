@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <cassert>
 #include <iterator>
 #include "vm/opctable.h"
@@ -100,7 +118,7 @@ const OpcodeInstr* OpcodeTable::lookup_instr(const CellSlice& cs, unsigned& opco
   bits = max_opcode_bits;
   unsigned long long prefetch = cs.prefetch_ulong_top(bits);
   opcode = (unsigned)(prefetch >> (64 - max_opcode_bits));
-  opcode &= (static_cast<int32_t>(static_cast<uint32_t>(-1) << max_opcode_bits) >> bits);
+  opcode &= (static_cast<int32_t>(static_cast<td::uint32>(-1) << max_opcode_bits) >> bits);
   return lookup_instr(opcode, bits);
 }
 
