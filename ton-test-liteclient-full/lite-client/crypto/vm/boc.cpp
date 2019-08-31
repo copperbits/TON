@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
@@ -351,7 +369,7 @@ int BagOfCells::revisit(int cell_idx, int force) {
   return dci.new_idx = -3;  // mark as visited (and all children processed)
 }
 
-std::size_t BagOfCells::compute_sizes(int mode, int& r_size, int& o_size) {
+td::uint64 BagOfCells::compute_sizes(int mode, int& r_size, int& o_size) {
   int rs = 0, os = 0;
   if (!root_count || !data_bytes) {
     r_size = o_size = 0;
@@ -360,10 +378,10 @@ std::size_t BagOfCells::compute_sizes(int mode, int& r_size, int& o_size) {
   while (cell_count >= (1 << (rs << 3))) {
     rs++;
   }
-  std::size_t hashes =
+  td::uint64 hashes =
       (((mode & Mode::WithTopHash) ? top_hashes : 0) + ((mode & Mode::WithIntHashes) ? int_hashes : 0)) *
       (Cell::hash_bytes + Cell::depth_bytes);
-  std::size_t data_bytes_adj = data_bytes + (unsigned long long)int_refs * rs + hashes;
+  td::uint64 data_bytes_adj = data_bytes + (unsigned long long)int_refs * rs + hashes;
   td::uint64 max_offset = (mode & Mode::WithCacheBits) ? data_bytes_adj * 2 : data_bytes_adj;
   while (max_offset >= (1ULL << (os << 3))) {
     os++;
@@ -391,7 +409,7 @@ std::size_t BagOfCells::estimate_serialized_size(int mode) {
     info.invalidate();
     return 0;
   }
-  long long data_bytes_adj = compute_sizes(mode, info.ref_byte_size, info.offset_byte_size);
+  auto data_bytes_adj = compute_sizes(mode, info.ref_byte_size, info.offset_byte_size);
   if (!data_bytes_adj) {
     info.invalidate();
     return 0;
@@ -412,7 +430,12 @@ std::size_t BagOfCells::estimate_serialized_size(int mode) {
   }
   info.magic = Info::boc_generic;
   info.data_size = data_bytes_adj;
-  return info.total_size = info.data_offset + data_bytes_adj + crc_size;
+  info.total_size = info.data_offset + data_bytes_adj + crc_size;
+  auto res = td::narrow_cast_safe<size_t>(info.total_size);
+  if (res.is_error()) {
+    return 0;
+  }
+  return res.ok();
 }
 
 BagOfCells& BagOfCells::serialize(int mode) {

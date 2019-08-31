@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "tlbc-gen-cpp.h"
 #include "td/utils/bits.h"
 #include "td/utils/filesystem.h"
@@ -81,6 +99,7 @@ void init_forbidden_cpp_idents() {
   l.insert("cell_ref");
   l.insert("type_class");
   l.insert("pp");
+  l.insert("weak");
 }
 
 std::string CppIdentSet::compute_cpp_ident(std::string orig_ident, int count) {
@@ -797,7 +816,7 @@ void CppTypeCode::generate_get_tag_param(std::ostream& os, std::string nl, unsig
   assert(mmdim > 0);
   for (int p1 = 0; p1 < mmdim; p1++) {
     char A[4];
-    memset(A, 0, sizeof(A));
+    std::memset(A, 0, sizeof(A));
     int c;
     for (c = 0; c < 64; c++) {
       if ((tag >> c) & 1) {
@@ -815,7 +834,7 @@ void CppTypeCode::generate_get_tag_param(std::ostream& os, std::string nl, unsig
   for (int p2 = 0; p2 < mmdim; p2++) {
     for (int p1 = 0; p1 < p2; p1++) {
       char A[4][4];
-      memset(A, 0, sizeof(A));
+      std::memset(A, 0, sizeof(A));
       int c;
       for (c = 0; c < 64; c++) {
         if ((tag >> c) & 1) {
@@ -837,7 +856,7 @@ void CppTypeCode::generate_get_tag_param(std::ostream& os, std::string nl, unsig
     for (int p2 = 0; p2 < p3; p2++) {
       for (int p1 = 0; p1 < p2; p1++) {
         char A[4][4][4];
-        memset(A, 0, sizeof(A));
+        std::memset(A, 0, sizeof(A));
         int c;
         for (c = 0; c < 64; c++) {
           if ((tag >> c) & 1) {
@@ -903,7 +922,7 @@ void CppTypeCode::generate_get_tag_param1(std::ostream& os, std::string nl, cons
       match_param_pattern(os, nl, A, 8, "# > 1 && (# & 1)", param_names[0])) {
     return;
   }
-  os << nl << "static inline long nat_abs(int x) { return (x > 1) * 2 + (x & 1); }";
+  os << nl << "static inline size_t nat_abs(int x) { return (x > 1) * 2 + (x & 1); }";
   os << nl << "static signed char ctab[4] = { ";
   for (int i = 0; i < 4; i++) {
     if (i > 0) {
@@ -922,7 +941,7 @@ void CppTypeCode::generate_get_tag_param2(std::ostream& os, std::string nl, cons
       os << ' ' << (int)A[i][j];
     }
   }
-  os << nl << "static inline long nat_abs(int x) { return (x > 1) * 2 + (x & 1); }";
+  os << nl << "static inline size_t nat_abs(int x) { return (x > 1) * 2 + (x & 1); }";
   os << nl << "static signed char ctab[4][4] = { ";
   for (int i = 0; i < 16; i++) {
     if (i > 0) {
@@ -945,7 +964,7 @@ void CppTypeCode::generate_get_tag_param3(std::ostream& os, std::string nl, cons
       }
     }
   }
-  os << nl << "static inline long nat_abs(int x) { return (x > 1) * 2 + (x & 1); }";
+  os << nl << "static inline size_t nat_abs(int x) { return (x > 1) * 2 + (x & 1); }";
   os << nl << "static signed char ctab[4][4][4] = { ";
   for (int i = 0; i < 64; i++) {
     if (i > 0) {
@@ -1973,7 +1992,7 @@ void CppTypeCode::generate_skip_field(const Constructor& constr, const Field& fi
       output_cpp_expr(ss, expr, 100, true);
       ss << '.';
     }
-    ss << (validating ? "validate_" : "") << "skip(cs";
+    ss << (validating ? "validate_skip(cs, weak" : "skip(cs");
     output_negative_type_arguments(ss, expr);
     ss << ")";
     actions += Action{std::move(ss)};
@@ -2013,7 +2032,7 @@ void CppTypeCode::generate_skip_field(const Constructor& constr, const Field& fi
       output_cpp_expr(ss, expr, 100);
       ss << '.';
     }
-    ss << (validating ? "validate_" : "") << "skip(cs)" << tail;
+    ss << (validating ? "validate_skip(cs, weak)" : "skip(cs)") << tail;
     actions += Action{std::move(ss)};
     return;
   }
@@ -2033,7 +2052,7 @@ void CppTypeCode::generate_skip_field(const Constructor& constr, const Field& fi
     output_cpp_expr(ss, expr, 100);
     ss << '.';
   }
-  ss << "validate_skip_ref(cs)" << tail;
+  ss << "validate_skip_ref(cs, weak)" << tail;
   actions += Action{ss.str()};
 }
 
@@ -2060,7 +2079,8 @@ void CppTypeCode::generate_skip_cons_method(std::ostream& os, std::string nl, in
 void CppTypeCode::generate_skip_method(std::ostream& os, int options) {
   bool validate = options & 1;
   bool ret_ext = options & 2;
-  os << "\nbool " << cpp_type_class_name << "::" << (validate ? "validate_" : "") << "skip(vm::CellSlice& cs";
+  os << "\nbool " << cpp_type_class_name << "::" << (validate ? "validate_" : "") << "skip(vm::CellSlice& cs"
+     << (validate ? ", bool weak" : "");
   if (ret_ext) {
     os << skip_extra_args;
   }
@@ -2428,7 +2448,7 @@ void CppTypeCode::generate_unpack_field(const CppTypeCode::ConsField& fi, const 
       output_cpp_expr(ss, expr, 100, true);
       ss << '.';
     }
-    ss << (validating ? "validate_" : "") << "fetch_to(cs, " << field_vars.at(i);
+    ss << (validating ? "validate_fetch_to(cs, weak, " : "fetch_to(cs, ") << field_vars.at(i);
     output_negative_type_arguments(ss, expr);
     ss << ")";
     actions += Action{std::move(ss)};
@@ -2473,7 +2493,7 @@ void CppTypeCode::generate_unpack_field(const CppTypeCode::ConsField& fi, const 
       ss << '.';
     }
     ss << (validating ? "validate_" : "") << "fetch_" << (cvt == ct_enum ? "enum_" : "") << "to(cs, "
-       << field_vars.at(i) << ")" << tail;
+       << (validating ? "weak, " : "") << field_vars.at(i) << ")" << tail;
     field_var_set[i] = true;
     actions += Action{std::move(ss)};
     return;
@@ -2986,7 +3006,7 @@ void CppTypeCode::generate_store_enum_method(std::ostream& os, int options) {
     os << "  return !value;\n";
   } else if (cons_num == 1) {
     const Constructor& constr = *type.constructors.at(0);
-    os << "  return !value && cb.store_ulong_bool(" << HexConstWriter{constr.tag >> (64 - constr.tag_bits)} << ", "
+    os << "  return !value && cb.store_long_bool(" << HexConstWriter{constr.tag >> (64 - constr.tag_bits)} << ", "
        << minl << ");\n";
   } else if (minl == maxl) {
     if (exact) {
@@ -3030,6 +3050,10 @@ void CppTypeCode::generate_header(std::ostream& os, int options) {
   for (int i = 0; i < cons_num; i++) {
     records.at(i).declare_record(os, "  ", options);
   }
+  if (type.is_special) {
+    os << "  bool always_special() const override {\n";
+    os << "    return true;\n  }\n";
+  }
   int sz = type.size.min_size();
   sz = ((sz & 0xff) << 16) | (sz >> 8);
   if (simple_get_size) {
@@ -3047,7 +3071,7 @@ void CppTypeCode::generate_header(std::ostream& os, int options) {
   if (ret_params) {
     os << "  bool skip(vm::CellSlice& cs" << skip_extra_args << ") const;\n";
   }
-  os << "  bool validate_skip(vm::CellSlice& cs) const override";
+  os << "  bool validate_skip(vm::CellSlice& cs, bool weak = false) const override";
   if (!inline_validate_skip) {
     os << ";\n";
   } else if (sz) {
@@ -3056,7 +3080,7 @@ void CppTypeCode::generate_header(std::ostream& os, int options) {
     os << " {\n    return true;\n  }\n";
   }
   if (ret_params) {
-    os << "  bool validate_skip(vm::CellSlice& cs" << skip_extra_args << ") const;\n";
+    os << "  bool validate_skip(vm::CellSlice& cs, bool weak" << skip_extra_args << ") const;\n";
     os << "  bool fetch_to(vm::CellSlice& cs, Ref<vm::CellSlice>& res" << skip_extra_args << ") const;\n";
   }
   if (type.is_simple_enum) {

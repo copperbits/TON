@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
 
-set (BENCHMARK_SOURCE
+set(BENCHMARK_SOURCE
   benchmark.cpp
   third_party/mp-queue.c
 

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/port/signals.h"
 
 #include "td/utils/port/config.h"
@@ -18,6 +36,7 @@
 
 #include <cerrno>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <limits>
@@ -292,27 +311,28 @@ void signal_safe_write_pointer(void *p, bool add_header) {
   signal_safe_write(Slice(ptr, end), add_header);
 }
 
-static void unblock_stdin() {
+static void block_stdin() {
 #if TD_PORT_POSIX
-  td::Stdin().get_native_fd().set_is_blocking(true).ignore();
+  Stdin().get_native_fd().set_is_blocking(true).ignore();
 #endif
 }
-void default_failure_signal_hanler(int sig) {
-  td::signal_safe_write_signal_number(sig, true);
 
-  td::Stacktrace::PrintOptions options;
+static void default_failure_signal_handler(int sig) {
+  signal_safe_write_signal_number(sig);
+
+  Stacktrace::PrintOptions options;
   options.use_gdb = true;
-  td::Stacktrace::print_to_stderr(options);
+  Stacktrace::print_to_stderr(options);
 
-  unblock_stdin();
+  block_stdin();
   _Exit(EXIT_FAILURE);
 }
 
 Status set_default_failure_signal_handler() {
-  atexit(unblock_stdin);
+  std::atexit(block_stdin);
   TRY_STATUS(setup_signals_alt_stack());
-  TRY_STATUS(set_signal_handler(td::SignalType::Abort, default_failure_signal_hanler));
-  TRY_STATUS(td::set_signal_handler(td::SignalType::Error, default_failure_signal_hanler));
+  TRY_STATUS(set_signal_handler(SignalType::Abort, default_failure_signal_handler));
+  TRY_STATUS(set_signal_handler(SignalType::Error, default_failure_signal_handler));
   return Status::OK();
 }
 

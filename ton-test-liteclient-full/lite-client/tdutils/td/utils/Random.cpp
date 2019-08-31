@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/Random.h"
 
 #include "td/utils/logging.h"
@@ -126,6 +144,13 @@ int Random::fast(int min, int max) {
   }
   DCHECK(min <= max);
   return static_cast<int>(min + fast_uint32() % (max - min + 1));  // TODO signed_cast
+}
+
+double Random::fast(double min, double max) {
+  DCHECK(min <= max);
+  return min +
+         fast_uint32() * 1.0 /
+             (static_cast<double>(std::numeric_limits<td::uint32>::max()) - std::numeric_limits<td::uint32>::min());
 }
 
 Random::Xorshift128plus::Xorshift128plus(uint64 seed) {

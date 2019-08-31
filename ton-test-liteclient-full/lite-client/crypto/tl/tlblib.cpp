@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <tl/tlblib.hpp>
 
 namespace tlb {
@@ -90,20 +108,20 @@ bool TupleT::skip(vm::CellSlice& cs) const {
   return !i;
 }
 
-bool TupleT::validate_skip(vm::CellSlice& cs) const {
+bool TupleT::validate_skip(vm::CellSlice& cs, bool weak) const {
   int i = n;
   for (; i > 0; --i) {
-    if (!X.validate_skip(cs)) {
+    if (!X.validate_skip(cs, weak)) {
       break;
     }
   }
   return !i;
 }
 
-bool TLB::validate_ref_internal(Ref<vm::Cell> cell_ref) const {
+bool TLB::validate_ref_internal(Ref<vm::Cell> cell_ref, bool weak) const {
   bool is_special;
-  auto cs = load_cell_slice(std::move(cell_ref), &is_special);
-  return is_special || (validate_skip(cs) && cs.empty_ext());
+  auto cs = load_cell_slice_special(std::move(cell_ref), is_special);
+  return always_special() ? is_special : (is_special ? weak : (validate_skip(cs) && cs.empty_ext()));
 }
 
 bool TLB::print_skip(PrettyPrinter& pp, vm::CellSlice& cs) const {
@@ -131,7 +149,7 @@ bool TLB::print_ref(PrettyPrinter& pp, Ref<vm::Cell> cell_ref) const {
     return pp.fail("null cell reference");
   }
   bool is_special;
-  auto cs = load_cell_slice(std::move(cell_ref), &is_special);
+  auto cs = load_cell_slice_special(std::move(cell_ref), is_special);
   if (is_special) {
     return print_special(pp, cs);
   } else {

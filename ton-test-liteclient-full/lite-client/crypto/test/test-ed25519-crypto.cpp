@@ -1,3 +1,21 @@
+/* 
+    This file is part of TON Blockchain source code.
+
+    TON Blockchain is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation; either version 2
+    of the License, or (at your option) any later version.
+
+    TON Blockchain is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with TON Blockchain.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -77,13 +95,13 @@ bool test_ed25519_impl(void) {
   my_assert(sG1.get_u() == sG2.get_u());
   my_assert(sG1.get_y() == sG2.get_y());
   unsigned char buff[32];
-  memset(buff, 0, 32);
+  std::memset(buff, 0, 32);
   my_assert(sG1.export_point(buff));
   std::cout << "sG export = " << buffer_to_hex(buff) << std::endl;
   bool ok;
   auto sG3 = Edw.import_point(buff, ok);
   my_assert(ok);
-  my_assert(!memcmp(buff, test_vector1, 32));
+  my_assert(!std::memcmp(buff, test_vector1, 32));
   my_assert(sG3.get_u() == sG1.get_u());
   my_assert(sG2.get_x() == sG2.get_x());
   my_assert(sG2.get_y() == sG2.get_y());
@@ -122,10 +140,10 @@ bool test_ed25519_impl(void) {
   std::cout << "n = " << n.to_hex() << std::endl;
   std::cout << "u(nP) = " << nP.get_u().extract().to_hex() << std::endl;
   unsigned char buffer[32];
-  memset(buffer, 0, 32);
+  std::memset(buffer, 0, 32);
   nP.export_point_u(buffer);
   std::cout << "u(nP) export = " << buffer_to_hex(buffer) << std::endl;
-  my_assert(!memcmp(buffer, rfc7748_output, 32));
+  my_assert(!std::memcmp(buffer, rfc7748_output, 32));
 
   std::cout << "********* ok\n\n";
   return true;
@@ -240,21 +258,21 @@ bool test_ed25519_crypto() {
   PK4.export_public_key(pub_export);
   std::cout << "PK4.private_key = " << buffer_to_hex(rfc8032_secret_key1) << std::endl;
   std::cout << "PK4.public_key = " << buffer_to_hex(pub_export) << std::endl;
-  my_assert(!memcmp(pub_export, rfc8032_public_key1, 32));
+  my_assert(!std::memcmp(pub_export, rfc8032_public_key1, 32));
   ok = PK4.sign_message(signature, (const unsigned char*)"", 0);
   std::cout << "PK4.signature('') = " << buffer_to_hex(signature, 64) << std::endl;
   my_assert(ok);
-  my_assert(!memcmp(signature, rfc8032_signature1, 32));
+  my_assert(!std::memcmp(signature, rfc8032_signature1, 32));
 
   PK5.import_private_key(rfc8032_secret_key2);
   PK5.export_public_key(pub_export);
   std::cout << "PK5.private_key = " << buffer_to_hex(rfc8032_secret_key2) << std::endl;
   std::cout << "PK5.public_key = " << buffer_to_hex(pub_export) << std::endl;
-  my_assert(!memcmp(pub_export, rfc8032_public_key2, 32));
+  my_assert(!std::memcmp(pub_export, rfc8032_public_key2, 32));
   ok = PK5.sign_message(signature, rfc8032_message2, 2);
   std::cout << "PK5.signature('') = " << buffer_to_hex(signature, 64) << std::endl;
   my_assert(ok);
-  my_assert(!memcmp(signature, rfc8032_signature2, 32));
+  my_assert(!std::memcmp(signature, rfc8032_signature2, 32));
   crypto::Ed25519::PublicKey PubK5(pub_export);
 
   //  for (int i = 0; i < 10000; i++) {

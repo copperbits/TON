@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include <cassert>
@@ -242,6 +260,8 @@ Ref<Tuple> make_tuple_ref(Args&&... args) {
 }
 
 const StackEntry& tuple_index(const Tuple& tup, unsigned idx);
+StackEntry tuple_extend_index(const Ref<Tuple>& tup, unsigned idx);
+unsigned tuple_extend_set_index(Ref<Tuple>& tup, unsigned idx, StackEntry&& value, bool force = false);
 
 class Stack : public td::CntObject {
   std::vector<StackEntry> stack;
@@ -423,6 +443,8 @@ class Stack : public td::CntObject {
   Ref<Box> pop_box();
   Ref<Tuple> pop_tuple();
   Ref<Tuple> pop_tuple_range(unsigned max_len = 255, unsigned min_len = 0);
+  Ref<Tuple> pop_maybe_tuple();
+  Ref<Tuple> pop_maybe_tuple_range(unsigned max_len = 255);
   Ref<Atom> pop_atom();
   std::string pop_string();
   std::string pop_bytes();
@@ -445,6 +467,7 @@ class Stack : public td::CntObject {
   void push_tuple(Ref<Tuple> tuple);
   void push_tuple(const std::vector<StackEntry>& components);
   void push_tuple(std::vector<StackEntry>&& components);
+  void push_maybe_tuple(Ref<Tuple> tuple);
   void push_atom(Ref<Atom> atom);
   template <typename T>
   void push_object(Ref<T> obj) {

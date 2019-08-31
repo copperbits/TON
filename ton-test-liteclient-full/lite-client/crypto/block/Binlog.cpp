@@ -1,6 +1,25 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "crypto/block/Binlog.h"
 
 #include "td/utils/as.h"
+#include "td/utils/misc.h"
 #include "td/utils/port/path.h"
 
 #include <sstream>
@@ -26,7 +45,7 @@ BinlogBuffer::BinlogBuffer(std::unique_ptr<BinlogCallback> cb, std::size_t _max_
     , created(false)
     , ok(false) {
   max_size = _max_size;
-  start = (unsigned char*)malloc(max_size);
+  start = static_cast<unsigned char*>(std::malloc(max_size));
   DCHECK(start);
   rptr = wptr = cptr = start;
   end = start + max_size;
@@ -208,7 +227,9 @@ void BinlogBuffer::replay_range(unsigned char* ptr, unsigned long long pos_start
         avail = pos_end - pos_start;
       }
     }
-    int res = (avail >= 4 ? cb->replay_log_event(*this, (const unsigned*)ptr, avail, pos_start) : -0x7ffffffc);
+    int res = (avail >= 4 ? cb->replay_log_event(*this, reinterpret_cast<const unsigned*>(ptr),
+                                                 td::narrow_cast<size_t>(avail), pos_start)
+                          : -0x7ffffffc);
     if (res <= 0 || res > avail) {
       std::ostringstream ss;
       ss << "cannot interpret newly-committed binlog event 0x" << std::hex
@@ -229,7 +250,9 @@ int BinlogBuffer::replay_pending(bool allow_partial) {
   long long avail = tptr - rptr;
   DCHECK(tptr && avail >= 0);
   while (rptr != cptr) {
-    int res = (avail >= 4 ? cb->replay_log_event(*this, (const unsigned*)rptr, avail, log_rpos) : -0x7ffffffc);
+    int res = (avail >= 4 ? cb->replay_log_event(*this, reinterpret_cast<const unsigned*>(rptr),
+                                                 td::narrow_cast<size_t>(avail), log_rpos)
+                          : -0x7ffffffc);
     if (res > 0) {
       if (res > avail) {
         throw BinlogError{"binlog event used more bytes than available"};
@@ -262,7 +285,7 @@ int BinlogBuffer::replay_pending(bool allow_partial) {
       long long total_avail = avail + (rptr > cptr ? cptr - start : 0);
       if (need > total_avail) {
         if (allow_partial) {
-          need_more_bytes = need - total_avail;
+          need_more_bytes = td::narrow_cast<size_t>(need - total_avail);
           return 2;
         } else {
           throw BinlogError{"binlog event extends past end of buffer"};
@@ -270,15 +293,17 @@ int BinlogBuffer::replay_pending(bool allow_partial) {
       }
       if (need <= 1024) {
         unsigned char tmp[1024];
-        memcpy(tmp, rptr, avail);
-        memcpy(tmp + avail, start, need - avail);
-        res = cb->replay_log_event(*this, (const unsigned*)tmp, need, log_rpos);
+        std::memcpy(tmp, rptr, td::narrow_cast<size_t>(avail));
+        std::memcpy(tmp + avail, start, td::narrow_cast<size_t>(need - avail));
+        res = cb->replay_log_event(*this, reinterpret_cast<const unsigned*>(tmp), td::narrow_cast<size_t>(need),
+                                   log_rpos);
       } else {
-        unsigned char* tmp = (unsigned char*)malloc(need);
-        memcpy(tmp, rptr, avail);
-        memcpy(tmp + avail, start, need - avail);
-        res = cb->replay_log_event(*this, (const unsigned*)tmp, need, log_rpos);
-        free(tmp);
+        unsigned char* tmp = static_cast<unsigned char*>(std::malloc(td::narrow_cast<size_t>(need)));
+        std::memcpy(tmp, rptr, td::narrow_cast<size_t>(avail));
+        std::memcpy(tmp + avail, start, td::narrow_cast<size_t>(need - avail));
+        res = cb->replay_log_event(*this, reinterpret_cast<const unsigned*>(tmp), td::narrow_cast<size_t>(need),
+                                   log_rpos);
+        std::free(tmp);
       }
       if (res > need) {
         throw BinlogError{"binlog event used more bytes than available"};
@@ -311,7 +336,7 @@ BinlogBuffer::~BinlogBuffer() {
     if (writing) {
       flush(2);
     }
-    free(start);
+    std::free(start);
   }
 }
 

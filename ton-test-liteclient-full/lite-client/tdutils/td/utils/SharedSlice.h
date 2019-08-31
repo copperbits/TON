@@ -1,46 +1,79 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
+
 #include "td/utils/Slice.h"
+
 #include <atomic>
 #include <memory>
 
 namespace td {
-class BufferSlice;
+
 namespace detail {
 struct SharedSliceHeader {
-  explicit SharedSliceHeader(size_t size) : refcnt_{1}, size_{0} {
+  explicit SharedSliceHeader(size_t size) : refcnt_{1}, size_{size} {
   }
-  std::atomic<uint64> refcnt_;
-  size_t size_;
+
   void inc() {
     refcnt_.fetch_add(1, std::memory_order_relaxed);
   }
+
   bool dec() {
-    return refcnt_.fetch_add(-1, std::memory_order_acq_rel) == 1;
+    return refcnt_.fetch_sub(1, std::memory_order_acq_rel) == 1;
   }
+
   bool is_unique() const {
-    //NB: race is std::memory_order_relaxed is used
+    // NB: race if std::memory_order_relaxed is used
     // reader may see a change by a new writer
     return refcnt_.load(std::memory_order_acquire) == 1;
   }
+
   size_t size() const {
     return size_;
   }
-};
-struct UniqueSliceHeader {
-  explicit UniqueSliceHeader(size_t size) : size_{0} {
-  }
+
+ private:
+  std::atomic<uint64> refcnt_;
   size_t size_;
+};
+
+struct UniqueSliceHeader {
+  explicit UniqueSliceHeader(size_t size) : size_{size} {
+  }
+
   void inc() {
   }
+
   bool dec() {
     return true;
   }
+
   bool is_unique() const {
     return true;
   }
+
   size_t size() const {
     return size_;
   }
+
+ private:
+  size_t size_;
 };
 
 template <class HeaderT, bool zero_on_destruct = false>
@@ -48,9 +81,13 @@ class UnsafeSharedSlice {
  public:
   UnsafeSharedSlice() = default;
   UnsafeSharedSlice clone() const {
+    if (is_null()) {
+      return UnsafeSharedSlice();
+    }
     header()->inc();
     return UnsafeSharedSlice(ptr_.get());
   }
+
   bool is_null() const {
     return !ptr_;
   }
@@ -68,6 +105,7 @@ class UnsafeSharedSlice {
     }
     return MutableSlice(ptr_.get() + sizeof(HeaderT), header()->size());
   }
+
   Slice as_slice() const {
     if (is_null()) {
       return Slice();
@@ -87,7 +125,6 @@ class UnsafeSharedSlice {
     auto ptr = std::make_unique<char[]>(size + sizeof(HeaderT));
     auto header_ptr = new (ptr.get()) HeaderT(size);
     CHECK(reinterpret_cast<char *>(header_ptr) == ptr.get());
-    header_ptr->size_ = size;
 
     return UnsafeSharedSlice(std::move(ptr));
   }
@@ -128,7 +165,10 @@ class UnsafeSharedSlice {
 };
 }  // namespace detail
 
+class BufferSlice;
+
 class UniqueSharedSlice;
+
 class SharedSlice {
   using Impl = detail::UnsafeSharedSlice<detail::SharedSliceHeader>;
 
@@ -152,7 +192,7 @@ class SharedSlice {
     return impl_.as_slice();
   }
 
-  td::BufferSlice clone_as_buffer_slice() const;
+  BufferSlice clone_as_buffer_slice() const;
 
   operator Slice() const {
     return as_slice();
@@ -186,7 +226,7 @@ class SharedSlice {
 
  private:
   friend class UniqueSharedSlice;
-  SharedSlice(Impl impl) : impl_(std::move(impl)) {
+  explicit SharedSlice(Impl impl) : impl_(std::move(impl)) {
   }
   Impl impl_;
 };
@@ -258,7 +298,7 @@ class UniqueSharedSlice {
 
  private:
   friend class SharedSlice;
-  UniqueSharedSlice(Impl impl) : impl_(std::move(impl)) {
+  explicit UniqueSharedSlice(Impl impl) : impl_(std::move(impl)) {
   }
   Impl impl_;
 };
@@ -284,8 +324,8 @@ class UniqueSliceImpl {
   UniqueSliceImpl(const char *ptr, size_t size) : UniqueSliceImpl(Slice(ptr, size)) {
   }
 
-  UniqueSliceImpl<zero_on_destruct> copy() const {
-    return UniqueSliceImpl<zero_on_destruct>(as_slice());
+  UniqueSliceImpl copy() const {
+    return UniqueSliceImpl(as_slice());
   }
 
   Slice as_slice() const {
@@ -329,7 +369,7 @@ class UniqueSliceImpl {
   }
 
  private:
-  UniqueSliceImpl(Impl impl) : impl_(std::move(impl)) {
+  explicit UniqueSliceImpl(Impl impl) : impl_(std::move(impl)) {
   }
   Impl impl_;
 };

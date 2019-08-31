@@ -1,10 +1,32 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
+
 #include "td/utils/common.h"
 #include "td/utils/logging.h"
 #include "td/utils/port/sleep.h"
-#include "td/utils/port/thread.h"
+
+#include <atomic>
+#include <memory>
 
 namespace td {
+
 template <class T>
 class EpochBasedMemoryReclamation {
  public:
@@ -12,6 +34,7 @@ class EpochBasedMemoryReclamation {
   EpochBasedMemoryReclamation &operator=(const EpochBasedMemoryReclamation &other) = delete;
   EpochBasedMemoryReclamation(EpochBasedMemoryReclamation &&other) = delete;
   EpochBasedMemoryReclamation &operator=(EpochBasedMemoryReclamation &&other) = delete;
+  ~EpochBasedMemoryReclamation() = default;
 
   class Locker {
    public:
@@ -70,18 +93,17 @@ class EpochBasedMemoryReclamation {
 
   size_t to_delete_size_unsafe() const {
     size_t res = 0;
-    for (auto &thread : threads_) {
-      LOG(ERROR) << "---" << thread.epoch.load() / 2;
+    for (auto &thread_data : threads_) {
+      // LOG(ERROR) << "---" << thread_data.epoch.load() / 2;
       for (size_t i = 0; i < MAX_BAGS; i++) {
-        res += thread.to_delete[i].size();
-        LOG(ERROR) << thread.to_delete[i].size();
+        res += thread_data.to_delete[i].size();
+        // LOG(ERROR) << thread_data.to_delete[i].size();
       }
     }
     return res;
   }
 
  private:
-  friend class Locker;
   static constexpr size_t MAX_BAGS = 3;
   struct ThreadData {
     std::atomic<int64> epoch{1};
@@ -187,4 +209,5 @@ class EpochBasedMemoryReclamation {
     data.to_delete[data.bag_i].push_back(unique_ptr<T>{ptr});
   }
 };
+
 }  // namespace td

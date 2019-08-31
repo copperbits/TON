@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/bits.h"
 #include "block/block.h"
 #include "block/block-auto.h"
@@ -5,6 +23,7 @@
 #include "ton/ton-shard.h"
 #include "common/util.h"
 #include "td/utils/crypto.h"
+#include "td/utils/tl_storers.h"
 
 namespace block {
 using namespace std::literals::string_literals;
@@ -17,7 +36,7 @@ bool pack_std_smc_addr_to(char result[48], bool base64_url, ton::WorkchainId wc,
   unsigned char buffer[36];
   buffer[0] = (unsigned char)(0x51 - bounceable * 0x40 + testnet * 0x80);
   buffer[1] = (unsigned char)wc;
-  memcpy(buffer + 2, addr.data(), 32);
+  std::memcpy(buffer + 2, addr.data(), 32);
   unsigned crc = td::crc16(td::Slice{buffer, 34});
   buffer[34] = (unsigned char)(crc >> 8);
   buffer[35] = (unsigned char)(crc & 0xff);
@@ -52,7 +71,7 @@ bool unpack_std_smc_addr(const char packed[48], ton::WorkchainId& wc, ton::StdSm
   testnet = (buffer[0] & 0x80);
   bounceable = !(buffer[0] & 0x40);
   wc = (td::int8)buffer[1];
-  memcpy(addr.data(), buffer + 2, 32);
+  std::memcpy(addr.data(), buffer + 2, 32);
   return true;
 }
 
@@ -481,6 +500,10 @@ bool MsgProcessedUpto::already_processed(const EnqueuedMsgDescr& msg) const {
   if (msg.lt_ == last_inmsg_lt && last_inmsg_hash < msg.hash_) {
     return false;
   }
+  if (ton::shard_contains(shard, msg.cur_prefix_.account_id_prefix)) {
+    // ? enable this branch only if an extra boolean parameter is set ?
+    return true;
+  }
   auto shard_end_lt = compute_shard_end_lt(msg.cur_prefix_);
   // LOG(DEBUG) << "enqueued_lt = " << msg.enqueued_lt_ << " , shard_end_lt = " << shard_end_lt;
   return msg.enqueued_lt_ < shard_end_lt;
@@ -648,8 +671,8 @@ td::Status ShardState::unpack_state(ton::BlockIdExt blkid, Ref<vm::Cell> prev_st
   id_ = blkid;
   root_ = std::move(prev_state_root);
   before_split_ = state.before_split;
-  account_dict_ =
-      std::make_unique<vm::AugmentedDictionary>(std::move(state.accounts), 256, block::tlb::aug_ShardAccounts);
+  account_dict_ = std::make_unique<vm::AugmentedDictionary>(
+      vm::load_cell_slice(std::move(state.accounts)).prefetch_ref(), 256, block::tlb::aug_ShardAccounts);
   // check that all keys in account_dict have correct prefixes
   td::BitArray<64> acc_pfx{(long long)shard1.shard};
   int acc_pfx_len = shard_prefix_length(shard1);
@@ -670,44 +693,50 @@ td::Status ShardState::unpack_state(ton::BlockIdExt blkid, Ref<vm::Cell> prev_st
   mc_state_extra_ = state.custom->prefetch_ref();
   vm::CellSlice cs{*state.r1.master_ref};  // master_ref:(Maybe BlkMasterInfo)
   if ((int)cs.fetch_ulong(1) == 1) {
-    block::gen::ExtBlkRef::Record mc_blk;
-    if (!tlb::unpack_exact(cs, mc_blk)) {
+    if (!(block::tlb::t_ExtBlkRef.unpack(cs, mc_blk_ref_, &mc_blk_lt_) && cs.empty_ext())) {
       return td::Status::Error(-666, "cannot unpack master_ref in shardchain state of "s + id_.to_str());
     }
-    mc_blk_seqno_ = mc_blk.seq_no;
+    mc_blk_seqno_ = mc_blk_ref_.seqno();
   } else {
     mc_blk_seqno_ = 0;
+    mc_blk_lt_ = 0;
+    mc_blk_ref_.invalidate();
   }
+  min_ref_mc_seqno_ = state.min_ref_mc_seqno;
   global_id_ = state.global_id;
   utime_ = state.gen_utime;
   lt_ = state.gen_lt;
-  if (!block::tlb::t_CurrencyCollection.unpack_special(state.r1.total_balance.write(), total_balance_,
-                                                       total_balance_extra_)) {
+  if (!total_balance_.validate_unpack(state.r1.total_balance)) {
     return td::Status::Error(
         -666, "cannot unpack total_balance:CurrencyCollection from previous ShardState of "s + id_.to_str());
   }
   auto accounts_extra = account_dict_->get_root_extra();
-  td::RefInt256 old_total_balance;
-  Ref<vm::Cell> old_total_balance_extra;
-  if (!(accounts_extra.write().advance(5) && block::tlb::t_CurrencyCollection.unpack_special(
-                                                 accounts_extra.write(), old_total_balance, old_total_balance_extra))) {
+  CurrencyCollection old_total_balance;
+  if (!(accounts_extra.write().advance(5) && old_total_balance.fetch(accounts_extra.write()))) {
     return td::Status::Error(
         -666,
         "cannot extract total account balance from ShardAccounts contained in previous ShardState of "s + id_.to_str());
   }
-  if (td::cmp(old_total_balance, total_balance_) != 0 ||
-      old_total_balance_extra.not_null() != total_balance_extra_.not_null() ||
-      (total_balance_extra_.not_null() && total_balance_extra_->get_hash() != old_total_balance_extra->get_hash())) {
-    return td::Status::Error(-666,
-                             "invalid previous ShardState for "s + id_.to_str() +
-                                 ": declared total balance differs from one obtained by summing over all Accounts");
+  if (old_total_balance != total_balance_) {
+    return td::Status::Error(-666, "invalid previous ShardState for "s + id_.to_str() + ": declared total balance " +
+                                       total_balance_.to_str() + " differs from " + old_total_balance.to_str() +
+                                       " obtained by summing over all Accounts");
   }
-  Ref<vm::Cell> total_fees_extra;
-  if (!block::tlb::t_CurrencyCollection.unpack_special(state.r1.total_validator_fees.write(), total_validator_fees_,
-                                                       total_fees_extra) ||
-      total_fees_extra.not_null()) {
+  if (!(total_validator_fees_.validate_unpack(state.r1.total_validator_fees) && !total_validator_fees_.has_extra())) {
     return td::Status::Error(
         -666, "cannot unpack total_validator_fees:CurrencyCollection from previous ShardState of "s + id_.to_str());
+  }
+  if (is_masterchain()) {
+    if (mc_state_extra_.is_null()) {
+      return td::Status::Error(-666, "ShardState of "s + id_.to_str() + " does not contain McStateExtra");
+    }
+    block::gen::McStateExtra::Record extra;
+    if (!tlb::unpack_cell(mc_state_extra_, extra)) {
+      return td::Status::Error(-666, "cannot unpack McStateExtra in ShardState of "s + id_.to_str());
+    }
+    if (!global_balance_.validate_unpack(extra.global_balance)) {
+      return td::Status::Error(-666, "ShardState of "s + id_.to_str() + " does not contain a valid global_balance");
+    }
   }
   return unpack_out_msg_queue_info(std::move(state.out_msg_queue_info));
 }
@@ -778,13 +807,13 @@ td::Status ShardState::check_mc_blk_seqno(ton::BlockSeqno last_mc_block_seqno) c
 }
 
 td::Status ShardState::unpack_state_ext(ton::BlockIdExt id, Ref<vm::Cell> state_root, int global_id,
-                                        ton::BlockSeqno prev_mc_block_seqno, bool after_split, bool after_merge,
+                                        ton::BlockSeqno prev_mc_block_seqno, bool after_split, bool clear_history,
                                         std::function<bool(ton::BlockSeqno)> for_each_mcseqno_func) {
   TRY_STATUS(unpack_state(id, std::move(state_root)));
   TRY_STATUS(check_global_id(global_id));
   TRY_STATUS(check_mc_blk_seqno(prev_mc_block_seqno));
   TRY_STATUS(check_before_split(after_split));
-  clear_load_history_if(after_split || after_merge);
+  clear_load_history_if(clear_history);
   if (!for_each_mcseqno(std::move(for_each_mcseqno_func))) {
     return td::Status::Error(
         -666, "cannot perform necessary actions for each mc_seqno mentioned in ProcessedUpto of "s + id_.to_str());
@@ -803,8 +832,7 @@ td::Status ShardState::merge_with(ShardState& sib) {
   ton::ShardIdFull shard = ton::shard_parent(id_.shard_full());
   // 2. compute total_balance and total_validator_fees
   total_balance_ += std::move(sib.total_balance_);
-  if (!block::add_extra_currency(std::move(total_balance_extra_), std::move(sib.total_balance_extra_),
-                                 total_balance_extra_)) {
+  if (!total_balance_.is_valid()) {
     return td::Status::Error(-667, "cannot add total_balance_extra of the two states being merged");
   }
   total_validator_fees_ += std::move(sib.total_validator_fees_);
@@ -823,15 +851,11 @@ td::Status ShardState::merge_with(ShardState& sib) {
   }
   // 3.2. check total balance of the new account_dict
   auto accounts_extra = account_dict_->get_root_extra();
-  td::RefInt256 old_total_balance;
-  Ref<vm::Cell> old_total_balance_extra;
-  if (!(accounts_extra.write().advance(5) && block::tlb::t_CurrencyCollection.unpack_special(
-                                                 accounts_extra.write(), old_total_balance, old_total_balance_extra))) {
+  CurrencyCollection old_total_balance;
+  if (!(accounts_extra.write().advance(5) && old_total_balance.fetch(accounts_extra.write()))) {
     return td::Status::Error(-666, "cannot extract total account balance from merged accounts dictionary");
   }
-  if (td::cmp(old_total_balance, total_balance_) != 0 ||
-      old_total_balance_extra.not_null() != total_balance_extra_.not_null() ||
-      (total_balance_extra_.not_null() && total_balance_extra_->get_hash() != old_total_balance_extra->get_hash())) {
+  if (old_total_balance != total_balance_) {
     return td::Status::Error(
         -666,
         "invalid merged account dictionary: declared total balance differs from one obtained by summing over all "
@@ -950,17 +974,17 @@ td::Status ShardState::split(ton::ShardIdFull subshard) {
   LOG(DEBUG) << "splitting total_balance";
   auto old_total_balance = total_balance_;
   auto accounts_extra = account_dict_->get_root_extra();
-  if (!(accounts_extra.write().advance(5) && block::tlb::t_CurrencyCollection.unpack_special(
-                                                 accounts_extra.write(), total_balance_, total_balance_extra_))) {
+  if (!(accounts_extra.write().advance(5) && total_balance_.validate_unpack(accounts_extra))) {
     LOG(ERROR) << "cannot unpack CurrencyCollection from the root of newly-split accounts dictionary";
     return td::Status::Error(
         -666, "error splitting total balance in account dictionary of shardchain state "s + id_.to_str());
   }
-  LOG(DEBUG) << "split total balance from " << old_total_balance << " to our share of " << total_balance_;
+  LOG(DEBUG) << "split total balance from " << old_total_balance.to_str() << " to our share of "
+             << total_balance_.to_str();
   // 6. adjust total_fees
-  LOG(DEBUG) << "split total validator fees (current value is " << total_validator_fees_ << ")";
-  total_validator_fees_ = (total_validator_fees_ + is_right_child(subshard)) >> 1;
-  LOG(DEBUG) << "new total_validator_fees is " << total_validator_fees_;
+  LOG(DEBUG) << "split total validator fees (current value is " << total_validator_fees_.to_str() << ")";
+  total_validator_fees_.grams = (total_validator_fees_.grams + is_right_child(subshard)) >> 1;
+  LOG(DEBUG) << "new total_validator_fees is " << total_validator_fees_.to_str();
   // NB: if total_fees_extra will be allowed to be non-empty, split it here too
   // 7. reset overload/underload history
   overload_history_ = underload_history_ = 0;
@@ -1113,6 +1137,16 @@ CurrencyCollection& CurrencyCollection::operator-=(CurrencyCollection&& other) {
   return *this;
 }
 
+CurrencyCollection& CurrencyCollection::operator-=(td::RefInt256 other_grams) {
+  if (!is_valid()) {
+    return *this;
+  }
+  if (!(other_grams.not_null() && (grams -= other_grams).not_null() && td::sgn(grams) >= 0)) {
+    invalidate();
+  }
+  return *this;
+}
+
 CurrencyCollection CurrencyCollection::operator-(const CurrencyCollection& other) const {
   CurrencyCollection res;
   sub(*this, other, res);
@@ -1123,6 +1157,18 @@ CurrencyCollection CurrencyCollection::operator-(CurrencyCollection&& other) con
   CurrencyCollection res;
   sub(*this, std::move(other), res);
   return res;
+}
+
+CurrencyCollection CurrencyCollection::operator-(td::RefInt256 other_grams) const {
+  if (!(is_valid() && other_grams.not_null())) {
+    return {};
+  }
+  auto x = grams - other_grams;
+  if (td::sgn(x) >= 0) {
+    return CurrencyCollection{std::move(x), extra};
+  } else {
+    return {};
+  }
 }
 
 bool CurrencyCollection::operator==(const CurrencyCollection& other) const {
@@ -1141,8 +1187,16 @@ bool CurrencyCollection::store(vm::CellBuilder& cb) const {
   return is_valid() && store_CurrencyCollection(cb, grams, extra);
 }
 
+bool CurrencyCollection::store_or_zero(vm::CellBuilder& cb) const {
+  return is_valid() ? store(cb) : cb.store_long_bool(0, 5);
+}
+
 bool CurrencyCollection::fetch(vm::CellSlice& cs) {
-  return fetch_CurrencyCollection(cs, grams, extra) || invalidate();
+  return block::tlb::t_CurrencyCollection.unpack_special(cs, *this, true) || invalidate();
+}
+
+bool CurrencyCollection::fetch_exact(vm::CellSlice& cs) {
+  return block::tlb::t_CurrencyCollection.unpack_special(cs, *this, false) || invalidate();
 }
 
 bool CurrencyCollection::unpack(Ref<vm::CellSlice> csr) {
@@ -1153,6 +1207,15 @@ bool CurrencyCollection::validate_unpack(Ref<vm::CellSlice> csr) {
   return (csr.not_null() && block::tlb::t_CurrencyCollection.validate(*csr) &&
           unpack_CurrencyCollection(std::move(csr), grams, extra)) ||
          invalidate();
+}
+
+Ref<vm::CellSlice> CurrencyCollection::pack() const {
+  vm::CellBuilder cb;
+  if (store(cb)) {
+    return vm::load_cell_slice_ref(cb.finalize());
+  } else {
+    return {};
+  }
 }
 
 bool CurrencyCollection::show(std::ostream& os) const {
@@ -1195,9 +1258,15 @@ std::ostream& operator<<(std::ostream& os, const CurrencyCollection& cc) {
   return os;
 }
 
+bool ValueFlow::set_zero() {
+  return from_prev_blk.set_zero() && to_next_blk.set_zero() && imported.set_zero() && exported.set_zero() &&
+         fees_collected.set_zero() && fees_imported.set_zero() && recovered.set_zero() && created.set_zero() &&
+         minted.set_zero();
+}
+
 bool ValueFlow::validate() const {
-  return is_valid() &&
-         from_prev_blk + imported + fees_imported + created + minted == to_next_blk + exported + fees_collected;
+  return is_valid() && from_prev_blk + imported + fees_imported + created + minted + recovered ==
+                           to_next_blk + exported + fees_collected;
 }
 
 bool ValueFlow::store(vm::CellBuilder& cb) const {
@@ -1210,6 +1279,7 @@ bool ValueFlow::store(vm::CellBuilder& cb) const {
          && cb.store_ref_bool(cb2.finalize())                        // ]
          && fees_collected.store(cb)                                 // fees_collected:CurrencyCollection
          && fees_imported.store(cb2)                                 // ^[ fees_imported:CurrencyCollection
+         && recovered.store(cb2)                                     //    recovered:CurrencyCollection
          && created.store(cb2)                                       //    created:CurrencyCollection
          && minted.store(cb2)                                        //    minted:CurrencyCollection
          && cb.store_ref_bool(cb2.finalize());                       // ] = ValueFlow;
@@ -1222,7 +1292,8 @@ bool ValueFlow::fetch(vm::CellSlice& cs) {
         imported.validate_unpack(std::move(f.r1.imported)) && exported.validate_unpack(std::move(f.r1.exported)) &&
         fees_collected.validate_unpack(std::move(f.fees_collected)) &&
         fees_imported.validate_unpack(std::move(f.r2.fees_imported)) &&
-        created.validate_unpack(std::move(f.r2.created)) && minted.validate_unpack(std::move(f.r2.minted)))) {
+        recovered.validate_unpack(std::move(f.r2.recovered)) && created.validate_unpack(std::move(f.r2.created)) &&
+        minted.validate_unpack(std::move(f.r2.minted)))) {
     return invalidate();
   }
   return true;
@@ -1249,8 +1320,8 @@ bool ValueFlow::show(std::ostream& os) const {
   return (say(os, "(value-flow ") && show_one(os, "from_prev_blk:", from_prev_blk) &&
           show_one(os, " to_next_blk:", to_next_blk) && show_one(os, " imported:", imported) &&
           show_one(os, " exported:", exported) && show_one(os, " fees_collected:", fees_collected) &&
-          show_one(os, " fees_imported:", fees_imported) && show_one(os, " created:", created) &&
-          show_one(os, " minted:", minted) && say(os, ")")) ||
+          show_one(os, " fees_imported:", fees_imported) && show_one(os, " recovered:", recovered) &&
+          show_one(os, " created:", created) && show_one(os, " minted:", minted) && say(os, ")")) ||
          (say(os, "...<invalid-value-flow>)") && false);
 }
 
@@ -1299,8 +1370,8 @@ bool store_CurrencyCollection(vm::CellBuilder& cb, td::RefInt256 value, Ref<vm::
   return block::tlb::t_CurrencyCollection.pack_special(cb, std::move(value), std::move(extra));
 }
 
-bool fetch_CurrencyCollection(vm::CellSlice& cs, td::RefInt256& value, Ref<vm::Cell>& extra) {
-  return block::tlb::t_CurrencyCollection.unpack_special(cs, value, extra);
+bool fetch_CurrencyCollection(vm::CellSlice& cs, td::RefInt256& value, Ref<vm::Cell>& extra, bool inexact) {
+  return block::tlb::t_CurrencyCollection.unpack_special(cs, value, extra, inexact);
 }
 
 bool unpack_CurrencyCollection(Ref<vm::CellSlice> csr, td::RefInt256& value, Ref<vm::Cell>& extra) {
@@ -1625,7 +1696,7 @@ td::Result<Ref<vm::Cell>> get_block_transaction(Ref<vm::Cell> block_root, ton::W
     if (!(tlb::unpack_cell(block.extra, extra))) {
       return td::Status::Error("cannot unpack block extra information");
     }
-    vm::AugmentedDictionary account_blocks_dict{extra.account_blocks->prefetch_ref(), 256,
+    vm::AugmentedDictionary account_blocks_dict{vm::load_cell_slice_ref(extra.account_blocks), 256,
                                                 block::tlb::aug_ShardAccountBlocks};
     auto ab_csr = account_blocks_dict.lookup(addr);
     if (ab_csr.not_null()) {
@@ -1658,7 +1729,7 @@ bool get_transaction_in_msg(Ref<vm::Cell> trans_ref, Ref<vm::Cell>& in_msg) {
   if (!tlb::unpack_cell(std::move(trans_ref), trans)) {
     return false;
   } else {
-    in_msg = trans.in_msg->prefetch_ref();
+    in_msg = trans.r1.in_msg->prefetch_ref();
     return true;
   }
 }
@@ -1682,20 +1753,20 @@ bool is_transaction_out_msg(Ref<vm::Cell> trans_ref, Ref<vm::Cell> msg) {
   }
   try {
     auto o_msg =
-        vm::Dictionary{trans.out_msgs, 15}.lookup_ref(td::BitArray<15>{(long long)(created_lt - trans.lt - 1)});
+        vm::Dictionary{trans.r1.out_msgs, 15}.lookup_ref(td::BitArray<15>{(long long)(created_lt - trans.lt - 1)});
     return o_msg.not_null() && o_msg->get_hash() == msg->get_hash();
-  } catch (vm::VmError& err) {
+  } catch (vm::VmError&) {
     return false;
   }
 }
 
-// transaction$0110 account_addr:bits256 lt:uint64
+// transaction$0111 account_addr:bits256 lt:uint64 ...
 bool get_transaction_id(Ref<vm::Cell> trans_ref, ton::StdSmcAddress& account_addr, ton::LogicalTime& lt) {
   if (trans_ref.is_null()) {
     return false;
   }
   vm::CellSlice cs{vm::NoVmOrd(), trans_ref};
-  return cs.fetch_ulong(4) == 6             // transaction$0110
+  return cs.fetch_ulong(4) == 7             // transaction$0111
          && cs.fetch_bits_to(account_addr)  // account_addr:bits256
          && cs.fetch_uint_to(64, lt);       // lt:uint64
 }
@@ -1703,6 +1774,150 @@ bool get_transaction_id(Ref<vm::Cell> trans_ref, ton::StdSmcAddress& account_add
 bool get_transaction_owner(Ref<vm::Cell> trans_ref, ton::StdSmcAddress& addr) {
   ton::LogicalTime lt;
   return get_transaction_id(std::move(trans_ref), addr, lt);
+}
+
+td::uint32 compute_validator_set_hash(ton::CatchainSeqno cc_seqno, ton::ShardIdFull from,
+                                      const std::vector<ton::ValidatorDescr>& nodes) {
+  /*
+  std::vector<tl_object_ptr<ton_api::test0_validatorSetItem>> s_vec;
+
+  for (auto& n : nodes) {
+    auto id = ValidatorFullId{n.key}.short_id();
+    s_vec.emplace_back(create_tl_object<ton_api::test0_validatorSetItem>(id, n.weight));
+  }
+
+  auto obj = create_tl_object<ton_api::test0_validatorSet>(cc_seqno, std::move(s_vec));
+  auto B = serialize_tl_object(obj, true);
+  return td::crc32c(B.as_slice());
+  */
+  CHECK(nodes.size() <= 0xffffffff);
+  auto tot_size = 1 + 1 + 1 + nodes.size() * (8 + 2 + 8);
+  auto buff = std::make_unique<td::uint32[]>(tot_size);
+  td::TlStorerUnsafe storer(reinterpret_cast<unsigned char*>(buff.get()));
+  auto* begin = storer.get_buf();
+  storer.store_int(-1877581587);  // magic inherited from test0.validatorSet
+  storer.store_int(cc_seqno);
+  storer.store_binary((td::uint32)nodes.size());
+  for (auto& n : nodes) {
+    storer.store_binary(n.key.as_bits256());
+    storer.store_long(n.weight);
+    storer.store_binary(n.addr);
+  }
+  auto* end = storer.get_buf();
+  CHECK(static_cast<size_t>(end - begin) == 4 * tot_size);
+  return td::crc32c(td::Slice(begin, end));
+}
+
+td::Result<Ref<vm::Cell>> get_config_data_from_smc(Ref<vm::Cell> acc_root) {
+  if (acc_root.is_null()) {
+    return td::Status::Error("configuration smart contract not found or it has no state, cannot extract configuration");
+  }
+  block::gen::Account::Record_account acc;
+  block::gen::AccountStorage::Record storage;
+  block::gen::StateInit::Record state;
+  if (!(tlb::unpack_cell(acc_root, acc) && tlb::csr_unpack(acc.storage, storage) &&
+        storage.state.write().fetch_ulong(1) == 1 && tlb::csr_unpack(storage.state, state) &&
+        state.data->have_refs(1))) {
+    return td::Status::Error("cannot extract persistent data from configuration smart contract state");
+  }
+  Ref<vm::Cell> data_cell = state.data->prefetch_ref();
+  auto res = vm::load_cell_slice(data_cell).prefetch_ref();
+  if (res.is_null()) {
+    return td::Status::Error(
+        "configuration smart contract does not contain a valid configuration in the first reference of its persistent "
+        "data");
+  }
+  return std::move(res);
+}
+
+td::Result<Ref<vm::Cell>> get_config_data_from_smc(Ref<vm::CellSlice> acc_csr) {
+  if (acc_csr.is_null()) {
+    return td::Status::Error("configuration smart contract not found, cannot extract configuration");
+  }
+  if (acc_csr->size_ext() != 0x10140) {
+    return td::Status::Error("configuration smart contract does not have a valid non-empty state");
+  }
+  return get_config_data_from_smc(acc_csr->prefetch_ref());
+}
+
+// when these parameters change, the block must be marked as a key block
+bool important_config_parameters_changed(Ref<vm::Cell> old_cfg_root, Ref<vm::Cell> new_cfg_root, bool coarse) {
+  if (old_cfg_root->get_hash() == new_cfg_root->get_hash()) {
+    return false;
+  }
+  if (coarse) {
+    return true;
+  }
+  // for now, all parameters are "important"
+  // at least the parameters affecting the computations of validator sets must be considered important
+  // ...
+  return true;
+}
+
+bool is_public_library(td::ConstBitPtr key, Ref<vm::CellSlice> val) {
+  return val.not_null() && val->prefetch_ulong(1) == 1 && val->have_refs() &&
+         !key.compare(val->prefetch_ref()->get_hash().bits(), 256);
+}
+
+bool parse_hex_hash(const char* str, const char* end, td::Bits256& hash) {
+  if (end - str != 64) {
+    return false;
+  }
+  int y = 0;
+  for (int i = 0; i < 64; i++) {
+    int c = *str++, x = c - '0';
+    if (x < 0) {
+      return false;
+    } else if (x > 10) {
+      x = (c | 0x20) - ('a' - 10);
+      if (x < 10 || x > 16) {
+        return false;
+      }
+    }
+    y = (y << 4) | x;
+    if (i & 1) {
+      hash.data()[i >> 1] = (unsigned char)y;
+      y = 0;
+    }
+  }
+  return true;
+}
+
+bool parse_hex_hash(td::Slice str, td::Bits256& hash) {
+  return parse_hex_hash(str.begin(), str.end(), hash);
+}
+
+bool parse_block_id_ext(const char* str, const char* end, ton::BlockIdExt& blkid) {
+  blkid.invalidate();
+  if (!str || !end || str >= end || end - str > 255) {
+    return false;
+  }
+  if (*str != '(') {
+    return false;
+  }
+  if (!std::memchr(str, ')', end - str)) {
+    return false;
+  }
+  int wc, pos = 0;
+  unsigned seqno;
+  unsigned long long shard;
+  if (std::sscanf(str, "(%d,%llx,%u):%n", &wc, &shard, &seqno, &pos) < 3 || pos <= 0 || pos >= end - str) {
+    return false;
+  }
+  if (!shard || wc == ton::workchainInvalid) {
+    return false;
+  }
+  str += pos;
+  if (end - str != 64 * 2 + 1 || str[64] != ':') {
+    return false;
+  }
+  blkid.id = ton::BlockId{wc, shard, seqno};
+  return (parse_hex_hash(str, str + 64, blkid.root_hash) && parse_hex_hash(str + 65, end, blkid.file_hash)) ||
+         blkid.invalidate();
+}
+
+bool parse_block_id_ext(td::Slice str, ton::BlockIdExt& blkid) {
+  return parse_block_id_ext(str.begin(), str.end(), blkid);
 }
 
 }  // namespace block

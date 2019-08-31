@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include "tl/tl_object_parse.h"
 #include "td/utils/tl_parsers.h"
@@ -32,9 +50,9 @@ td::Bits256 get_tl_object_sha_bits256(const tl_object_ptr<Tp> &T) {
 }
 
 template <typename T>
-td::Result<tl_object_ptr<std::enable_if_t<std::is_constructible<T>::value, T>>> fetch_tl_object(td::BufferSlice data,
-                                                                                                bool boxed) {
-  td::TlParser p(data.as_slice());
+td::Result<tl_object_ptr<std::enable_if_t<std::is_constructible<T>::value, T>>> fetch_tl_object(
+    const td::BufferSlice &data, bool boxed) {
+  td::TlBufferParser p(&data);
   tl_object_ptr<T> R;
   if (boxed) {
     R = TlFetchBoxed<TlFetchObject<T>, T::ID>::parse(p);
@@ -50,10 +68,10 @@ td::Result<tl_object_ptr<std::enable_if_t<std::is_constructible<T>::value, T>>> 
 }
 
 template <typename T>
-td::Result<tl_object_ptr<std::enable_if_t<!std::is_constructible<T>::value, T>>> fetch_tl_object(td::BufferSlice data,
-                                                                                                 bool boxed) {
+td::Result<tl_object_ptr<std::enable_if_t<!std::is_constructible<T>::value, T>>> fetch_tl_object(
+    const td::BufferSlice &data, bool boxed) {
   CHECK(boxed);
-  td::TlParser p(data.as_slice());
+  td::TlBufferParser p(&data);
   tl_object_ptr<T> R;
   R = move_tl_object_as<T>(T::fetch(p));
   p.fetch_end();
@@ -100,7 +118,7 @@ td::Result<tl_object_ptr<std::enable_if_t<!std::is_constructible<T>::value, T>>>
 template <typename T>
 td::Result<tl_object_ptr<std::enable_if_t<std::is_constructible<T>::value, T>>> fetch_tl_prefix(td::BufferSlice &data,
                                                                                                 bool boxed) {
-  td::TlParser p(data.as_slice());
+  td::TlBufferParser p(&data);
   tl_object_ptr<T> R;
   if (boxed) {
     R = TlFetchBoxed<TlFetchObject<T>, T::ID>::parse(p);
@@ -119,7 +137,7 @@ template <typename T>
 td::Result<tl_object_ptr<std::enable_if_t<!std::is_constructible<T>::value, T>>> fetch_tl_prefix(td::BufferSlice &data,
                                                                                                  bool boxed) {
   CHECK(boxed);
-  td::TlParser p(data.as_slice());
+  td::TlBufferParser p(&data);
   tl_object_ptr<T> R;
   R = move_tl_object_as<T>(T::fetch(p));
   if (p.get_status().is_ok()) {
@@ -131,10 +149,10 @@ td::Result<tl_object_ptr<std::enable_if_t<!std::is_constructible<T>::value, T>>>
 }
 
 template <class T>
-tl_object_ptr<T> clone_tl_object(const tl_object_ptr<T> &obj) {
+[[deprecated]] tl_object_ptr<T> clone_tl_object(const tl_object_ptr<T> &obj) {
   auto B = serialize_tl_object(obj, true);
   auto R = fetch_tl_object<T>(std::move(B), true);
-  CHECK(R.is_ok());
+  R.ensure();
   return R.move_as_ok();
 }
 
@@ -170,6 +188,21 @@ td::Result<typename T::ReturnType> fetch_result(const td::BufferSlice &message, 
   }
 
   return std::move(result);
+}
+
+template <class Type, class... Args>
+td::BufferSlice create_serialize_tl_object(Args &&... args) {
+  return serialize_tl_object(create_tl_object<Type>(std::forward<Args>(args)...), true);
+}
+
+template <class Type, class... Args>
+td::BufferSlice create_serialize_tl_object_suffix(td::Slice suffix, Args &&... args) {
+  return serialize_tl_object(create_tl_object<Type>(std::forward<Args>(args)...), true, suffix);
+}
+
+template <class Type, class... Args>
+auto create_hash_tl_object(Args &&... args) {
+  return get_tl_object_sha_bits256(create_tl_object<Type>(std::forward<Args>(args)...));
 }
 
 }  // namespace ton

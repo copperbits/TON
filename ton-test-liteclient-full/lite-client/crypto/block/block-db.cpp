@@ -1,15 +1,36 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "block-db.h"
 #include "block-db-impl.h"
 #include "block-binlog.h"
 #include "td/utils/common.h"
 #include "td/utils/crypto.h"
 #include "td/utils/format.h"
+#include "td/utils/misc.h"
 #include "td/utils/port/FileFd.h"
 #include "td/utils/port/path.h"
 #include "td/utils/filesystem.h"
 #include "vm/cellslice.h"
 #include "vm/boc.h"
 #include "vm/db/StaticBagOfCellsDb.h"
+
+#include <limits>
 
 namespace block {
 
@@ -56,10 +77,10 @@ td::Result<td::BufferSlice> load_binary_file(std::string filename, td::int64 max
     if (!size) {
       return td::Status::Error("file is empty");
     }
-    if (max_size && size > max_size) {
+    if ((max_size && size > max_size) || static_cast<td::uint64>(size) > std::numeric_limits<std::size_t>::max()) {
       return td::Status::Error("file is too long");
     }
-    td::BufferSlice res(size);
+    td::BufferSlice res(td::narrow_cast<std::size_t>(size));
     TRY_RESULT(r, fd.read(res.as_slice()));
     if (r != static_cast<td::uint64>(size)) {
       return td::Status::Error(PSLICE() << "read " << r << " bytes out of " << size);
@@ -739,9 +760,9 @@ void BlockDbImpl::save_new_block(ton::BlockIdExt id, td::BufferSlice data, int a
   auto sz = data.size();
   auto lev = bb.alloc<log::NewBlock>(id.id, id.root_hash, id.file_hash, data.size(), authority & 0xff);
   if (sz <= 8) {
-    memcpy(lev->last_bytes, data.data(), sz);
+    std::memcpy(lev->last_bytes, data.data(), sz);
   } else {
-    memcpy(lev->last_bytes, data.data() + sz - 8, 8);
+    std::memcpy(lev->last_bytes, data.data() + sz - 8, 8);
   }
   lev.commit();
   bb.flush();
@@ -761,9 +782,9 @@ void BlockDbImpl::save_new_state(ton::BlockIdExt id, td::BufferSlice data, int a
   auto sz = data.size();
   auto lev = bb.alloc<log::NewState>(id.id, id.root_hash, id.file_hash, data.size(), authority & 0xff);
   if (sz <= 8) {
-    memcpy(lev->last_bytes, data.data(), sz);
+    std::memcpy(lev->last_bytes, data.data(), sz);
   } else {
-    memcpy(lev->last_bytes, data.data() + sz - 8, 8);
+    std::memcpy(lev->last_bytes, data.data() + sz - 8, 8);
   }
   lev.commit();
   bb.flush();

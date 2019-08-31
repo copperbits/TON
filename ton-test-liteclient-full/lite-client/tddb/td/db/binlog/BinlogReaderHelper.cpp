@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "BinlogReaderHelper.h"
 #include "BinlogReaderInterface.h"
 
@@ -15,7 +33,7 @@ td::Status BinlogReaderHelper::parse(BinlogReaderInterface& reader, td::Slice da
         if (expected_prefix_size_ > td::narrow_cast<size_t>(-size)) {
           return td::Status::Error("BinlogReader decreased logevent size estimation (1)");
         }
-        expected_prefix_size_ = -size;
+        expected_prefix_size_ = static_cast<size_t>(-size);
       } else {
         if (expected_prefix_size_ != td::narrow_cast<size_t>(size)) {
           return td::Status::Error("BinlogReader changed logevent");
@@ -66,7 +84,7 @@ td::Status BinlogReaderHelper::parse(BinlogReaderInterface& reader, td::Slice da
     if (td::narrow_cast<size_t>(size) > data.size()) {
       return td::Status::Error("BinlogReader parseed more than was given");
     }
-    data = data.substr(size);
+    data = data.substr(static_cast<size_t>(size));
   }
   return td::Status::OK();
 }

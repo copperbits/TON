@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "vm/dict.h"
 #include "vm/cells.h"
 #include "vm/cellslice.h"
@@ -161,7 +179,7 @@ bool DictionaryBase::append_dict_to_bool(CellBuilder& cb) && {
   return cb.store_maybe_ref(std::move(root_cell));
 }
 
-bool DictionaryBase::append_dict_to_bool(CellBuilder& cb) const & {
+bool DictionaryBase::append_dict_to_bool(CellBuilder& cb) const& {
   return is_valid() && cb.store_maybe_ref(root_cell);
 }
 
@@ -537,10 +555,10 @@ void append_dict_label_same(CellBuilder& cb, bool same, int len, int max_len) {
     cb.store_long(6 + same, 3).store_long(len, k);
   } else if (k < len) {
     // mode '10'
-    cb.store_long(2, 2).store_long(len, k).store_long(-same, len);
+    cb.store_long(2, 2).store_long(len, k).store_long(-static_cast<int>(same), len);
   } else {
     // mode '0'
-    cb.store_long(0, 1).store_long(-2, len + 1).store_long(-same, len);
+    cb.store_long(0, 1).store_long(-2, len + 1).store_long(-static_cast<int>(same), len);
   }
 }
 
@@ -1218,7 +1236,7 @@ Ref<CellSlice> DictionaryFixed::dict_lookup_nearest(Ref<Cell> dict, td::BitPtr k
   int pfx_len = label.common_prefix_len(key_buffer, n);
   assert(pfx_len >= 0 && pfx_len <= label.l_bits && label.l_bits <= n);
   if (pfx_len < label.l_bits) {
-    if (key_buffer[pfx_len] == ((mode >> (pfx_len != 0)) & 1)) {
+    if (key_buffer[pfx_len] == ((mode >> static_cast<int>(pfx_len != 0)) & 1)) {
       return {};
     } else {
       return dict_lookup_minmax(std::move(dict), key_buffer, n, ~mode);
@@ -1254,7 +1272,8 @@ Ref<CellSlice> DictionaryFixed::lookup_nearest_key(td::BitPtr key_buffer, int ke
   if (key_len != get_key_bits()) {
     return {};
   }
-  return dict_lookup_nearest(get_root_cell(), key_buffer, key_len, allow_eq, -fetch_next ^ invert_first);
+  return dict_lookup_nearest(get_root_cell(), key_buffer, key_len, allow_eq,
+                             (-static_cast<int>(fetch_next)) ^ static_cast<int>(invert_first));
 }
 
 Ref<CellSlice> DictionaryFixed::get_minmax_key(td::BitPtr key_buffer, int key_len, bool fetch_max, bool invert_first) {
@@ -1262,7 +1281,8 @@ Ref<CellSlice> DictionaryFixed::get_minmax_key(td::BitPtr key_buffer, int key_le
   if (key_len != get_key_bits()) {
     return {};
   }
-  return dict_lookup_minmax(get_root_cell(), key_buffer, key_len, -fetch_max ^ invert_first);
+  return dict_lookup_minmax(get_root_cell(), key_buffer, key_len,
+                            (-static_cast<int>(fetch_max)) ^ static_cast<int>(invert_first));
 }
 
 Ref<Cell> Dictionary::get_minmax_key_ref(td::BitPtr key_buffer, int key_len, bool fetch_max, bool invert_first) {
@@ -2221,7 +2241,7 @@ Ref<CellSlice> AugmentedDictionary::extract_root() && {
   return std::move(root);
 }
 
-bool AugmentedDictionary::append_dict_to_bool(CellBuilder& cb) const & {
+bool AugmentedDictionary::append_dict_to_bool(CellBuilder& cb) const& {
   if (!is_valid()) {
     return false;
   }

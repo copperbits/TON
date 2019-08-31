@@ -1,4 +1,24 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "util.h"
+
+#include <limits>
 
 namespace td {
 
@@ -90,19 +110,22 @@ bool is_valid_base64(td::Slice encoded, bool allow_base64_url) {
   return ptr == end;
 }
 
-long decoded_base64_size(std::string encoded, bool allow_base64_url) {
+td::int32 decoded_base64_size(std::string encoded, bool allow_base64_url) {
   return decoded_base64_size(td::Slice{encoded}, allow_base64_url);
 }
 
-long decoded_base64_size(td::Slice encoded, bool allow_base64_url) {
+td::int32 decoded_base64_size(td::Slice encoded, bool allow_base64_url) {
   const unsigned char *ptr = (const unsigned char *)encoded.data(), *end = ptr + encoded.size();
   if (encoded.size() & 3) {
+    return -1;
+  }
+  if (encoded.size() > static_cast<size_t>(std::numeric_limits<td::int32>::max())) {
     return -1;
   }
   if (end == ptr) {
     return 0;
   }
-  long s = (long)(encoded.size() >> 2) * 3;
+  auto s = static_cast<td::int32>((encoded.size() >> 2) * 3);
   if (end[-1] == '=') {
     s--;
     if (end[-2] == '=') {
@@ -154,16 +177,16 @@ td::BufferSlice base64_decode(std::string encoded, bool allow_base64_url) {
 }
 
 td::BufferSlice base64_decode(td::Slice encoded, bool allow_base64_url) {
-  long s = decoded_base64_size(encoded, allow_base64_url);
+  auto s = decoded_base64_size(encoded, allow_base64_url);
   if (s <= 0) {
     return td::BufferSlice{};
   }
-  td::BufferSlice res{std::size_t(s)};
+  td::BufferSlice res{static_cast<std::size_t>(s)};
   auto r = buff_base64_decode(res.as_slice(), encoded, allow_base64_url);
   if (!r) {
     return td::BufferSlice{};
   }
-  CHECK(r == std::size_t(s));
+  CHECK(r == static_cast<std::size_t>(s));
   return res;
 }
 
@@ -172,17 +195,17 @@ std::string str_base64_decode(std::string encoded, bool allow_base64_url) {
 }
 
 std::string str_base64_decode(td::Slice encoded, bool allow_base64_url) {
-  long s = decoded_base64_size(encoded, allow_base64_url);
+  auto s = decoded_base64_size(encoded, allow_base64_url);
   if (s <= 0) {
     return std::string{};
   }
   std::string res;
-  res.resize(s);
+  res.resize(static_cast<std::size_t>(s));
   auto r = buff_base64_decode(td::MutableSlice{const_cast<char *>(res.data()), res.size()}, encoded, allow_base64_url);
   if (!r) {
     return std::string{};
   }
-  CHECK(r == std::size_t(s));
+  CHECK(r == static_cast<std::size_t>(s));
   return res;
 }
 

@@ -1,9 +1,28 @@
+/* 
+    This file is part of TON Blockchain source code.
+
+    TON Blockchain is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation; either version 2
+    of the License, or (at your option) any later version.
+
+    TON Blockchain is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with TON Blockchain.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include "adnl/adnl-ext-client.h"
 #include "tl-utils/tl-utils.hpp"
 #include "ton/ton-types.h"
 #include "terminal/terminal.h"
 #include "vm/cells.h"
+#include "td/utils/filesystem.h"
 
 using td::Ref;
 
@@ -35,6 +54,9 @@ class TestNode : public td::actor::Actor {
   const char *parse_ptr_, *parse_end_;
   td::Status error_;
 
+  td::IPAddress remote_addr_;
+  ton::PublicKey remote_public_key_;
+
   std::vector<ton::BlockIdExt> known_blk_ids_;
   std::size_t shown_blk_ids_ = 0;
 
@@ -57,7 +79,6 @@ class TestNode : public td::actor::Actor {
   bool request_state(ton::BlockIdExt blkid);
   void got_mc_block(ton::BlockIdExt blkid, td::BufferSlice data);
   void got_mc_state(ton::BlockIdExt blkid, ton::RootHash root_hash, ton::FileHash file_hash, td::BufferSlice data);
-  td::Status send_set_verbosity(std::string verbosity);
   td::Status send_ext_msg_from_filename(std::string filename);
   td::Status save_db_file(ton::FileHash file_hash, td::BufferSlice data);
   bool get_account_state(ton::WorkchainId workchain, ton::StdSmcAddress addr, ton::BlockIdExt ref_blkid);
@@ -143,6 +164,20 @@ class TestNode : public td::actor::Actor {
   }
   void set_liteserver_idx(td::int32 idx) {
     liteserver_idx_ = idx;
+  }
+  void set_remote_addr(td::IPAddress addr) {
+    remote_addr_ = addr;
+  }
+  void set_public_key(td::BufferSlice file_name) {
+    auto R = [&]() -> td::Result<ton::PublicKey> {
+      TRY_RESULT_PREFIX(conf_data, td::read_file(file_name.as_slice().str()), "failed to read: ");
+      return ton::PublicKey::import(conf_data.as_slice());
+    }();
+
+    if (R.is_error()) {
+      LOG(FATAL) << "bad server public key: " << R.move_as_error();
+    }
+    remote_public_key_ = R.move_as_ok();
   }
 
   void start_up() override {

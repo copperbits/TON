@@ -37,7 +37,7 @@ dup <s csr. cr
 dup idx is-valid-config? not abort"not a valid value for chosen configuration parameter"
 
 // create a message
-<b seqno 32 u, now interval + 32 u, idx 32 i, swap ref, b>
+<b x{43665021} s, seqno 32 u, now interval + 32 u, idx 32 i, swap ref, b>
 dup ."signing message: " <s csr. cr
 dup hash config_pk ed25519_sign_uint
 <b b{1000100} s, config_addr addr, 0 Gram, b{00} s,

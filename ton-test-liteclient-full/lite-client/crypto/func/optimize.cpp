@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "func.h"
 
 namespace funC {
@@ -132,6 +150,92 @@ bool Optimizer::rewrite_const_push_swap() {
   return true;
 }
 
+bool Optimizer::is_const_push_xchgs() {
+  if (!(pb_ >= 2 && pb_ <= l2_ && op_[0]->is_gconst())) {
+    return false;
+  }
+  StackTransform t;
+  int pos = 0, i;
+  for (i = 1; i < pb_; i++) {
+    int a, b;
+    if (op_[i]->is_xchg(&a, &b)) {
+      if (pos == a) {
+        pos = b;
+      } else if (pos == b) {
+        pos = a;
+      } else {
+        t.apply_xchg(a - (a > pos), b - (b > pos));
+      }
+    } else if (op_[i]->is_push(&a)) {
+      if (pos == a) {
+        return false;
+      }
+      t.apply_push(a - (a > pos));
+      ++pos;
+    } else {
+      return false;
+    }
+  }
+  if (pos) {
+    return false;
+  }
+  t.apply_push_newconst();
+  if (t <= tr_[i - 1]) {
+    p_ = i;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool Optimizer::rewrite_const_push_xchgs() {
+  if (!p_) {
+    return false;
+  }
+  show_left();
+  auto c_op = std::move(op_[0]);
+  assert(c_op->is_gconst());
+  StackTransform t;
+  q_ = 0;
+  int pos = 0;
+  for (int i = 1; i < p_; i++) {
+    int a, b;
+    if (op_[i]->is_xchg(&a, &b)) {
+      if (a == pos) {
+        pos = b;
+      } else if (b == pos) {
+        pos = a;
+      } else {
+        oq_[q_] = std::move(op_[i]);
+        if (a > pos) {
+          oq_[q_]->a = a - 1;
+        }
+        if (b > pos) {
+          oq_[q_]->b = b - 1;
+        }
+        assert(apply_op(t, *oq_[q_]));
+        ++q_;
+      }
+    } else {
+      assert(op_[i]->is_push(&a));
+      assert(a != pos);
+      oq_[q_] = std::move(op_[i]);
+      if (a > pos) {
+        oq_[q_]->a = a - 1;
+      }
+      assert(apply_op(t, *oq_[q_]));
+      ++q_;
+      ++pos;
+    }
+  }
+  assert(!pos);
+  t.apply_push_newconst();
+  assert(t <= tr_[p_ - 1]);
+  oq_[q_++] = std::move(c_op);
+  show_right();
+  return true;
+}
+
 bool Optimizer::simple_rewrite(int p, AsmOp&& new_op) {
   assert(p > 0 && p <= l_);
   p_ = p;
@@ -139,6 +243,19 @@ bool Optimizer::simple_rewrite(int p, AsmOp&& new_op) {
   show_left();
   oq_[0] = std::move(op_[0]);
   *oq_[0] = new_op;
+  show_right();
+  return true;
+}
+
+bool Optimizer::simple_rewrite(int p, AsmOp&& new_op1, AsmOp&& new_op2) {
+  assert(p > 1 && p <= l_);
+  p_ = p;
+  q_ = 2;
+  show_left();
+  oq_[0] = std::move(op_[0]);
+  *oq_[0] = new_op1;
+  oq_[1] = std::move(op_[1]);
+  *oq_[1] = new_op2;
   show_right();
   return true;
 }
@@ -281,6 +398,10 @@ bool Optimizer::is_reverse(int* i, int* j) {
   return is_pred([i, j](const auto& t) { return t.is_reverse(i, j) && *i >= 2 && *i <= 17 && *j < 16; });
 }
 
+bool Optimizer::is_nip_seq(int* i, int* j) {
+  return is_pred([i, j](const auto& t) { return t.is_nip_seq(i, j) && *i >= 3 && *i <= 15; });
+}
+
 bool Optimizer::compute_stack_transforms() {
   StackTransform trans;
   for (int i = 0; i < l_; i++) {
@@ -329,6 +450,7 @@ bool Optimizer::find_at_least(int pb) {
   // show_stack_transforms();
   int i = -100, j = -100, k = -100;
   return (is_const_push_swap() && 3 >= pb && rewrite_const_push_swap()) || (is_nop() && simple_rewrite_nop()) ||
+         (is_const_push_xchgs() && rewrite_const_push_xchgs()) ||
          (is_xchg(&i, &j) && simple_rewrite(AsmOp::Xchg(i, j))) || (is_push(&i) && simple_rewrite(AsmOp::Push(i))) ||
          (is_pop(&i) && simple_rewrite(AsmOp::Pop(i))) || (is_rot() && simple_rewrite(AsmOp::Custom("ROT", 3, 3))) ||
          (is_rotrev() && simple_rewrite(AsmOp::Custom("-ROT", 3, 3))) ||
@@ -345,6 +467,7 @@ bool Optimizer::find_at_least(int pb) {
          (is_blkpush(&i, &j) && simple_rewrite(AsmOp::BlkPush(i, j))) ||
          (is_blkdrop(&i) && simple_rewrite(AsmOp::BlkDrop(i))) ||
          (is_reverse(&i, &j) && simple_rewrite(AsmOp::BlkReverse(i, j))) ||
+         (is_nip_seq(&i, &j) && simple_rewrite(AsmOp::Xchg(i, j), AsmOp::BlkDrop(i))) ||
          (is_xchg3(&i, &j, &k) && simple_rewrite(AsmOp::Xchg3(i, j, k))) ||
          (is_xc2pu(&i, &j, &k) && simple_rewrite(AsmOp::Xc2Pu(i, j, k))) ||
          (is_xcpuxc(&i, &j, &k) && simple_rewrite(AsmOp::XcPuXc(i, j, k))) ||
@@ -378,7 +501,7 @@ bool Optimizer::optimize() {
 }
 
 AsmOpConsList optimize_code_head(AsmOpConsList op_list) {
-  Optimizer opt(std::move(op_list), true /* debug */);
+  Optimizer opt(std::move(op_list), op_rewrite_comments);
   opt.optimize();
   return opt.extract_code();
 }

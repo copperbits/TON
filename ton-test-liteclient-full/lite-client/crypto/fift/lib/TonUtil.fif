@@ -1,4 +1,5 @@
 library TonUtil // TON Blockchain Fift Library
+"Lists.fif" include
 
 -1 constant Masterchain
 0 constant Basechain
@@ -56,6 +57,12 @@ library TonUtil // TON Blockchain Fift Library
   { nip load-address rot } { drop nip parse-smc-addr } cond
 } : parse-load-address
 
+// ( hex-str -- addr )  Parses ADNL address
+{ dup $len 64 <> abort"ADNL address must consist of exactly 64 hexadecimal characters"
+  (hex-number) 1 <> abort"ADNL address must consist of 64 hexadecimal characters"
+  dup 256 ufits not abort"invalid ADNL address"
+} : parse-adnl-address
+
 // ( b wc addr -- b' )  Serializes address into Builder b
 { -rot 8 i, swap 256 u, } : addr, 
 
@@ -75,7 +82,30 @@ nip -trailing0 } : (.GR)
 
 // b x --> b'  ( serializes a Gram amount )
 { -1 { 1+ 2dup 8 * ufits } until
-  rot over 4 u, -rot 8 * u, } : Gram, 
+  rot over 4 u, -rot 8 * u, } : Gram,
+  
+// currency collections
+// b x --> b'  ( serializes a VarUInteger32 )
+{ -1 { 1+ 2dup 8 * ufits } until
+  rot over 5 u, -rot 8 * u, } : VarUInt32,
+// s --> x  ( deserializes a VarUInteger32 )
+{ 5 u@+ swap 8 * u@ } : VarUInt32@
+32 constant cc-key-bits
+' VarUInt32, : val,
+' VarUInt32@ : val@
+// d k v -- d'
+{ <b swap val, b> <s swap rot cc-key-bits idict! not abort"cannot add key-value to CurrencyCollection" } : +ccpair
+dictnew constant cc0   // zero currency collection
+// ( v k -- d )  Creates currency collection representing v units of currency k
+{ cc0 swap rot +ccpair } : of-cc
+{ dictnew { over null? not } { swap uncons -rot unpair +ccpair } while nip } : list>cc
+{ dup null? { ."(null) " drop } { val@ . } cond } dup : .maybeVarUInt32 : .val
+{ cc-key-bits { swap 32 1<< rmod . ."-> " .val ."; " true } dictforeach drop cr } : .cc
+{ cc-key-bits { rot . ."-> " swap .val .val ."; " true } dictdiff drop cr } : show-cc-diff
+{ cc-key-bits { val@ swap val@ + val, true } dictmerge } : cc+
+{ null swap cc-key-bits { val@ pair swap cons true } dictforeach drop } : cc>list-rev
+{ cc>list-rev list-reverse } : cc>list
+forget val,  forget val@  forget .val
 
 // Libraries
 // ( -- D )  New empty library collection

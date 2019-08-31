@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "ellcurve/TwEdwards.h"
 #include <assert.h>
 #include <cstring>
@@ -182,7 +200,7 @@ TwEdwardsCurve::SegrePoint TwEdwardsCurve::power_gen(const Bignum& n, bool unifo
 bool TwEdwardsCurve::SegrePoint::export_point(unsigned char buffer[32], bool need_x) const {
   if (!is_normalized()) {
     if (Z.is_zero()) {
-      memset(buffer, 0xff, 32);
+      std::memset(buffer, 0xff, 32);
       return false;
     }
     Residue f(inverse(Z));
@@ -205,7 +223,7 @@ bool TwEdwardsCurve::SegrePoint::export_point(unsigned char buffer[32], bool nee
 
 bool TwEdwardsCurve::SegrePoint::export_point_u(unsigned char buffer[32]) const {
   if (Z == Y) {
-    memset(buffer, 0xff, 32);
+    std::memset(buffer, 0xff, 32);
     return false;
   }
   Residue f(inverse(Z - Y));

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "func.h"
 
 namespace funC {
@@ -59,8 +77,8 @@ bool Expr::deduce_type(const Lexem& lem) {
       }
       TypeExpr* fun_type = TypeExpr::new_map(TypeExpr::new_tensor(arg_types), TypeExpr::new_hole());
       try {
-        uniformize(fun_type, sym_val->sym_type);
-      } catch (UniformizeError& ue) {
+        unify(fun_type, sym_val->sym_type);
+      } catch (UnifyError& ue) {
         std::ostringstream os;
         os << "cannot apply function " << sym->name() << " : " << sym_val->get_type() << " to arguments of type "
            << fun_type->args[0] << ": " << ue;
@@ -74,8 +92,8 @@ bool Expr::deduce_type(const Lexem& lem) {
       assert(args.size() == 2);
       TypeExpr* fun_type = TypeExpr::new_map(args[1]->e_type, TypeExpr::new_hole());
       try {
-        uniformize(fun_type, args[0]->e_type);
-      } catch (UniformizeError& ue) {
+        unify(fun_type, args[0]->e_type);
+      } catch (UnifyError& ue) {
         std::ostringstream os;
         os << "cannot apply expression of type " << args[0]->e_type << " to an expression of type " << args[1]->e_type
            << ": " << ue;
@@ -89,8 +107,8 @@ bool Expr::deduce_type(const Lexem& lem) {
       assert(args.size() == 2);
       try {
         // std::cerr << "in assignment: " << args[0]->e_type << " from " << args[1]->e_type << std::endl;
-        uniformize(args[0]->e_type, args[1]->e_type);
-      } catch (UniformizeError& ue) {
+        unify(args[0]->e_type, args[1]->e_type);
+      } catch (UnifyError& ue) {
         std::ostringstream os;
         os << "cannot assign an expression of type " << args[1]->e_type << " to a variable or pattern of type "
            << args[0]->e_type << ": " << ue;
@@ -105,8 +123,8 @@ bool Expr::deduce_type(const Lexem& lem) {
       TypeExpr* rhs_type = TypeExpr::new_tensor({args[0]->e_type, TypeExpr::new_hole()});
       try {
         // std::cerr << "in implicit assignment of a modifying method: " << rhs_type << " and " << args[1]->e_type << std::endl;
-        uniformize(rhs_type, args[1]->e_type);
-      } catch (UniformizeError& ue) {
+        unify(rhs_type, args[1]->e_type);
+      } catch (UnifyError& ue) {
         std::ostringstream os;
         os << "cannot implicitly assign an expression of type " << args[1]->e_type
            << " to a variable or pattern of type " << rhs_type << " in modifying method `" << sym::symbols.get_name(val)
@@ -122,15 +140,15 @@ bool Expr::deduce_type(const Lexem& lem) {
       assert(args.size() == 3);
       auto flag_type = TypeExpr::new_atomic(_Int);
       try {
-        uniformize(args[0]->e_type, flag_type);
-      } catch (UniformizeError& ue) {
+        unify(args[0]->e_type, flag_type);
+      } catch (UnifyError& ue) {
         std::ostringstream os;
         os << "condition in a conditional expression has non-integer type " << args[0]->e_type << ": " << ue;
         lem.error(os.str());
       }
       try {
-        uniformize(args[1]->e_type, args[2]->e_type);
-      } catch (UniformizeError& ue) {
+        unify(args[1]->e_type, args[2]->e_type);
+      } catch (UnifyError& ue) {
         std::ostringstream os;
         os << "the two variants in a conditional expression have different types " << args[1]->e_type << " and "
            << args[2]->e_type << " : " << ue;

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/base64.h"
 
 #include "td/utils/common.h"
@@ -44,7 +62,7 @@ string base64_encode(Slice input) {
 
 static unsigned char char_to_value[256];
 static void init_base64_table() {
-  static bool is_inited = []() {
+  static bool is_inited = [] {
     std::fill(std::begin(char_to_value), std::end(char_to_value), static_cast<unsigned char>(64));
     for (unsigned char i = 0; i < 64; i++) {
       char_to_value[static_cast<size_t>(symbols64[i])] = i;
@@ -157,7 +175,7 @@ string base64url_encode(Slice input) {
 
 static unsigned char url_char_to_value[256];
 static void init_base64url_table() {
-  static bool is_inited = []() {
+  static bool is_inited = [] {
     std::fill(std::begin(url_char_to_value), std::end(url_char_to_value), static_cast<unsigned char>(64));
     for (unsigned char i = 0; i < 64; i++) {
       url_char_to_value[static_cast<size_t>(url_symbols64[i])] = i;

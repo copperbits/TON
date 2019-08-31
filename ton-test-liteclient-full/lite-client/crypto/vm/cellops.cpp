@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <functional>
 #include "vm/cellops.h"
 #include "vm/log.h"
@@ -18,7 +36,8 @@ int exec_push_ref(VmState* st, CellSlice& cs, int mode, int pfx_bits) {
   cs.advance(pfx_bits);
   auto cell = cs.fetch_ref();
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute PUSHREF " << mode << " (" << cell->get_hash().to_hex() << ")";
+  VM_LOG(st) << "execute PUSHREF" << (mode == 2 ? "CONT" : (mode == 1 ? "SLICE" : "")) << " ("
+             << cell->get_hash().to_hex() << ")";
   switch (mode) {
     default:
     case 0:
@@ -298,16 +317,25 @@ void register_cell_cmp_ops(OpcodeTable& cp0) {
 
 int exec_new_builder(VmState* st) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute NEWC\n";
+  VM_LOG(st) << "execute NEWC";
   stack.push_builder(Ref<CellBuilder>{true});
   return 0;
 }
 
 int exec_builder_to_cell(VmState* st) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute ENDC\n";
+  VM_LOG(st) << "execute ENDC";
   stack.check_underflow(1);
   stack.push_cell(stack.pop_builder()->finalize_copy());
+  return 0;
+}
+
+int exec_builder_to_special_cell(VmState* st) {
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute ENDXC";
+  stack.check_underflow(2);
+  bool special = stack.pop_bool();
+  stack.push_cell(stack.pop_builder()->finalize_copy(special));
   return 0;
 }
 
@@ -784,6 +812,7 @@ void register_cell_serialize_ops(OpcodeTable& cp0) {
       .insert(OpcodeInstr::mksimple(0xcf1f, 16, "STBRQ", std::bind(exec_store_builder_rev, _1, true)))
       .insert(OpcodeInstr::mkextrange(0xcf20, 0xcf22, 16, 1, dump_store_const_ref, exec_store_const_ref,
                                       compute_len_store_const_ref))
+      .insert(OpcodeInstr::mksimple(0xcf23, 16, "ENDXC", exec_builder_to_special_cell))
       .insert(OpcodeInstr::mkfixed(0xcf28 >> 2, 14, 2, dump_store_le_int, exec_store_le_int))
       .insert(OpcodeInstr::mksimple(
           0xcf31, 16, "BBITS",
@@ -824,7 +853,7 @@ void register_cell_serialize_ops(OpcodeTable& cp0) {
 
 int exec_cell_to_slice(VmState* st) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute CTOS\n";
+  VM_LOG(st) << "execute CTOS";
   auto cell = stack.pop_cell();
   stack.push_cellslice(load_cell_slice_ref(std::move(cell)));
   return 0;
@@ -832,17 +861,28 @@ int exec_cell_to_slice(VmState* st) {
 
 int exec_cell_to_slice_maybe_special(VmState* st) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute XCTOS\n";
+  VM_LOG(st) << "execute XCTOS";
   bool is_special;
   auto cell = stack.pop_cell();
-  stack.push_cellslice(load_cell_slice_ref(std::move(cell), &is_special));
+  stack.push_cellslice(load_cell_slice_ref_special(std::move(cell), is_special));
   stack.push_bool(is_special);
+  return 0;
+}
+
+int exec_load_special_cell(VmState* st, bool quiet) {
+  Stack& stack = st->get_stack();
+  VM_LOG(st) << "execute XLOAD" << (quiet ? "Q" : "");
+  auto cell = stack.pop_cell();
+  stack.push_cell(cell);
+  if (quiet) {
+    stack.push_bool(true);
+  }
   return 0;
 }
 
 int exec_slice_chk_empty(VmState* st) {
   Stack& stack = st->get_stack();
-  VM_LOG(st) << "execute ENDS\n";
+  VM_LOG(st) << "execute ENDS";
   auto cs = stack.pop_cellslice();
   if (cs->size() || cs->size_refs()) {
     throw VmError{Excno::cell_und, "extra data remaining in deserialized cell"};
@@ -1337,6 +1377,8 @@ void register_cell_deserialize_ops(OpcodeTable& cp0) {
       .insert(OpcodeInstr::mksimple(0xd736, 16, "SPLIT", std::bind(exec_split, _1, false)))
       .insert(OpcodeInstr::mksimple(0xd737, 16, "SPLITQ", std::bind(exec_split, _1, true)))
       .insert(OpcodeInstr::mksimple(0xd739, 16, "XCTOS", exec_cell_to_slice_maybe_special))
+      .insert(OpcodeInstr::mksimple(0xd73a, 16, "XLOAD", std::bind(exec_load_special_cell, _1, false)))
+      .insert(OpcodeInstr::mksimple(0xd73b, 16, "XLOADQ", std::bind(exec_load_special_cell, _1, true)))
       .insert(OpcodeInstr::mksimple(0xd741, 16, "SCHKBITS",
                                     std::bind(exec_slice_chk_op_args, _1, "SCHKBITS", 1023, false,
                                               [](auto cs, unsigned bits) { return cs.have(bits); })))

@@ -1,5 +1,24 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/crypto.h"
 
+#include "td/utils/as.h"
 #include "td/utils/BigNum.h"
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
@@ -29,7 +48,6 @@
 #endif
 
 #include <algorithm>
-#include <cstring>
 #include <mutex>
 #include <utility>
 
@@ -137,20 +155,16 @@ void init_crypto() {
 
 template <class FromT>
 static string as_big_endian_string(const FromT &from) {
-  size_t size = sizeof(from);
-  string res(size, '\0');
+  char res[sizeof(FromT)];
+  as<FromT>(res) = from;
 
-  auto ptr = reinterpret_cast<const unsigned char *>(&from);
-  std::memcpy(&res[0], ptr, size);
-
-  size_t i = size;
+  size_t i = sizeof(FromT);
   while (i && res[i - 1] == 0) {
     i--;
   }
 
-  res.resize(i);
-  std::reverse(res.begin(), res.end());
-  return res;
+  std::reverse(res, res + i);
+  return string(res, res + i);
 }
 
 static int pq_factorize_big(Slice pq_str, string *p_str, string *q_str) {
@@ -380,36 +394,61 @@ string sha512(Slice data) {
   return result;
 }
 
-struct Sha256StateImpl {
-  SHA256_CTX ctx;
+class Sha256State::Impl {
+ public:
+  SHA256_CTX ctx_;
 };
 
 Sha256State::Sha256State() = default;
-Sha256State::Sha256State(Sha256State &&from) = default;
-Sha256State &Sha256State::operator=(Sha256State &&from) = default;
-Sha256State::~Sha256State() = default;
 
-void sha256_init(Sha256State *state) {
-  if (!state->impl) {
-    state->impl = make_unique<Sha256StateImpl>();
+Sha256State::Sha256State(Sha256State &&other) {
+  impl_ = std::move(other.impl_);
+  is_inited_ = other.is_inited_;
+  other.is_inited_ = false;
+}
+
+Sha256State &Sha256State::operator=(Sha256State &&other) {
+  Sha256State copy(std::move(other));
+  using std::swap;
+  swap(impl_, copy.impl_);
+  swap(is_inited_, copy.is_inited_);
+  return *this;
+}
+
+Sha256State::~Sha256State() {
+  if (is_inited_) {
+    char result[32];
+    extract(MutableSlice{result, 32});
+    CHECK(!is_inited_);
   }
-  int err = SHA256_Init(&state->impl->ctx);
+}
+
+void Sha256State::init() {
+  if (!impl_) {
+    impl_ = make_unique<Sha256State::Impl>();
+  }
+  CHECK(!is_inited_);
+  int err = SHA256_Init(&impl_->ctx_);
+  LOG_IF(FATAL, err != 1);
+  is_inited_ = true;
+}
+
+void Sha256State::feed(Slice data) {
+  CHECK(impl_);
+  CHECK(is_inited_);
+  int err = SHA256_Update(&impl_->ctx_, data.ubegin(), data.size());
   LOG_IF(FATAL, err != 1);
 }
 
-void sha256_update(Slice data, Sha256State *state) {
-  CHECK(state->impl);
-  int err = SHA256_Update(&state->impl->ctx, data.ubegin(), data.size());
-  LOG_IF(FATAL, err != 1);
-}
-
-void sha256_final(Sha256State *state, MutableSlice output, bool destroy) {
+void Sha256State::extract(MutableSlice output, bool destroy) {
   CHECK(output.size() >= 32);
-  CHECK(state->impl);
-  int err = SHA256_Final(output.ubegin(), &state->impl->ctx);
+  CHECK(impl_);
+  CHECK(is_inited_);
+  int err = SHA256_Final(output.ubegin(), &impl_->ctx_);
   LOG_IF(FATAL, err != 1);
+  is_inited_ = false;
   if (destroy) {
-    state->impl.reset();
+    impl_.reset();
   }
 }
 
@@ -472,6 +511,7 @@ void hmac_sha256(Slice key, Slice message, MutableSlice dest) {
   CHECK(result == dest.ubegin());
   CHECK(len == dest.size());
 }
+
 void hmac_sha512(Slice key, Slice message, MutableSlice dest) {
   CHECK(dest.size() == 512 / 8);
   unsigned int len = 0;
@@ -660,8 +700,9 @@ uint32 crc32c_extend(uint32 old_crc, Slice data) {
 }
 
 namespace {
-unsigned gf32_matrix_times(uint32 *matrix, uint32 vector) {
-  unsigned sum = 0;
+
+uint32 gf32_matrix_times(const uint32 *matrix, uint32 vector) {
+  uint32 sum = 0;
   while (vector) {
     if (vector & 1) {
       sum ^= *matrix;
@@ -672,36 +713,36 @@ unsigned gf32_matrix_times(uint32 *matrix, uint32 vector) {
   return sum;
 }
 
-void gf32_matrix_square(uint32 *square, uint32 *matrix) {
-  int n = 0;
-  do {
+void gf32_matrix_square(uint32 *square, const uint32 *matrix) {
+  for (int n = 0; n < 32; n++) {
     square[n] = gf32_matrix_times(matrix, matrix[n]);
-  } while (++n < 32);
+  }
 }
 
 }  // namespace
-static uint32 power_buf_raw[1024];
+
 uint32 crc32c_extend(uint32 old_crc, uint32 data_crc, size_t data_size) {
-  static uint32 *power_buf = [&] {
+  static uint32 power_buf_raw[1024];
+  static const uint32 *power_buf = [&] {
     auto *buf = power_buf_raw;
-    buf[0] = 0x82F63B78UL;
+    buf[0] = 0x82F63B78u;
     for (int n = 0; n < 31; n++) {
-      buf[n + 1] = 1U << n;
+      buf[n + 1] = 1u << n;
     }
     for (int n = 1; n < 32; n++) {
       gf32_matrix_square(buf + (n << 5), buf + ((n - 1) << 5));
     }
     return buf;
   }();
-  /* degenerate case (also disallow negative lengths) */
+
   if (data_size == 0) {
     return old_crc;
   }
 
-  unsigned int *p = power_buf + 64;
+  const uint32 *p = power_buf + 64;
   do {
     p += 32;
-    if (data_size % 2 != 0) {
+    if (data_size & 1) {
       old_crc = gf32_matrix_times(p, old_crc);
     }
     data_size >>= 1;
@@ -777,7 +818,7 @@ uint64 crc64(Slice data) {
   return crc64_partial(data, static_cast<uint64>(-1)) ^ static_cast<uint64>(-1);
 }
 
-static unsigned short crc16_table[256] = {
+static const uint16 crc16_table[256] = {
     0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7, 0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad,
     0xe1ce, 0xf1ef, 0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6, 0x9339, 0x8318, 0xb37b, 0xa35a,
     0xd3bd, 0xc39c, 0xf3ff, 0xe3de, 0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485, 0xa56a, 0xb54b,
@@ -798,13 +839,13 @@ static unsigned short crc16_table[256] = {
     0x1ce0, 0x0cc1, 0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8, 0x6e17, 0x7e36, 0x4e55, 0x5e74,
     0x2e93, 0x3eb2, 0x0ed1, 0x1ef0};
 
-td::uint16 crc16(td::Slice data) {
-  unsigned crc = 0;
-  for (std::size_t i = 0; i < data.size(); i++) {
-    unsigned t = ((unsigned char)data[i] ^ (crc >> 8)) & 0xff;
+uint16 crc16(Slice data) {
+  uint32 crc = 0;
+  for (auto c : data) {
+    auto t = (static_cast<unsigned char>(c) ^ (crc >> 8)) & 0xff;
     crc = crc16_table[t] ^ (crc << 8);
   }
-  return (td::uint16)crc;
+  return static_cast<uint16>(crc);
 }
 
 }  // namespace td

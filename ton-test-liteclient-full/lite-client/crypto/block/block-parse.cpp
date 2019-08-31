@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/bits.h"
 #include "block/block-parse.h"
 #include "block/block-auto.h"
@@ -11,11 +29,13 @@ using namespace std::literals::string_literals;
 using CombineError = vm::CombineError;
 
 namespace {
+bool debug(const char* str) TD_UNUSED;
 bool debug(const char* str) {
   std::cerr << str;
   return true;
 }
 
+bool debug(int x) TD_UNUSED;
 bool debug(int x) {
   if (x < 100) {
     std::cerr << '[' << (char)(64 + x) << ']';
@@ -60,7 +80,7 @@ bool Maybe_Anycast::skip_get_depth(vm::CellSlice& cs, int& depth) const {
 
 const Maybe_Anycast t_Maybe_Anycast;
 
-bool MsgAddressInt::validate_skip(vm::CellSlice& cs) const {
+bool MsgAddressInt::validate_skip(vm::CellSlice& cs, bool weak) const {
   if (!cs.have(3)) {
     return false;
   }
@@ -223,14 +243,14 @@ bool MsgAddressInt::extract_std_address(vm::CellSlice& cs, ton::WorkchainId& wor
 
 const MsgAddressInt t_MsgAddressInt;
 
-bool MsgAddress::validate_skip(vm::CellSlice& cs) const {
+bool MsgAddress::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case addr_none:
     case addr_ext:
-      return t_MsgAddressExt.validate_skip(cs);
+      return t_MsgAddressExt.validate_skip(cs, weak);
     case addr_std:
     case addr_var:
-      return t_MsgAddressInt.validate_skip(cs);
+      return t_MsgAddressInt.validate_skip(cs, weak);
   }
   return false;
 }
@@ -242,7 +262,7 @@ bool VarUInteger::skip(vm::CellSlice& cs) const {
   return len >= 0 && len < n && cs.advance(len * 8);
 }
 
-bool VarUInteger::validate_skip(vm::CellSlice& cs) const {
+bool VarUInteger::validate_skip(vm::CellSlice& cs, bool weak) const {
   int len = (int)cs.fetch_ulong(ln);
   return len >= 0 && len < n && (!len || cs.prefetch_ulong(8)) && cs.advance(len * 8);
 }
@@ -283,7 +303,7 @@ bool VarUIntegerPos::skip(vm::CellSlice& cs) const {
   return len > 0 && len < n && cs.advance(len * 8);
 }
 
-bool VarUIntegerPos::validate_skip(vm::CellSlice& cs) const {
+bool VarUIntegerPos::validate_skip(vm::CellSlice& cs, bool weak) const {
   int len = (int)cs.fetch_ulong(ln);
   return len > 0 && len < n && cs.prefetch_ulong(8) && cs.advance(len * 8);
 }
@@ -318,7 +338,7 @@ bool VarInteger::skip(vm::CellSlice& cs) const {
   return len >= 0 && len < n && cs.advance(len * 8);
 }
 
-bool VarInteger::validate_skip(vm::CellSlice& cs) const {
+bool VarInteger::validate_skip(vm::CellSlice& cs, bool weak) const {
   int len = (int)cs.fetch_ulong(ln);
   return len >= 0 && len < n && (!len || !redundant_int(cs)) && cs.advance(len * 8);
 }
@@ -344,7 +364,7 @@ bool VarIntegerNz::skip(vm::CellSlice& cs) const {
   return len > 0 && len < n && cs.advance(len * 8);
 }
 
-bool VarIntegerNz::validate_skip(vm::CellSlice& cs) const {
+bool VarIntegerNz::validate_skip(vm::CellSlice& cs, bool weak) const {
   int len = (int)cs.fetch_ulong(ln);
   return len > 0 && len < n && !redundant_int(cs) && cs.advance(len * 8);
 }
@@ -367,8 +387,8 @@ bool VarIntegerNz::store_integer_value(vm::CellBuilder& cb, const td::BigInt256&
          cb.store_int256_bool(value, (k + 7) & -8, true);
 }
 
-bool Grams::validate_skip(vm::CellSlice& cs) const {
-  return t_VarUInteger_16.validate_skip(cs);
+bool Grams::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_VarUInteger_16.validate_skip(cs, weak);
 }
 
 td::RefInt256 Grams::as_integer_skip(vm::CellSlice& cs) const {
@@ -395,7 +415,7 @@ const Grams t_Grams;
 
 const Unary t_Unary;
 
-bool HmLabel::validate_skip(vm::CellSlice& cs, int& n) const {
+bool HmLabel::validate_skip(vm::CellSlice& cs, bool weak, int& n) const {
   switch (get_tag(cs)) {
     case hml_short:
       return cs.advance(1) && (n = cs.count_leading(1)) <= m && cs.advance(2 * n + 1);
@@ -422,15 +442,15 @@ bool HashmapNode::skip(vm::CellSlice& cs) const {
   return n ? cs.advance_refs(2) : value_type.skip(cs);
 }
 
-bool HashmapNode::validate_skip(vm::CellSlice& cs) const {
+bool HashmapNode::validate_skip(vm::CellSlice& cs, bool weak) const {
   assert(n >= 0);
   if (!n) {
     // hmn_leaf
-    return value_type.validate_skip(cs);
+    return value_type.validate_skip(cs, weak);
   } else {
     // hmn_fork
     Hashmap branch_type{n - 1, value_type};
-    return branch_type.validate_ref(cs.fetch_ref()) && branch_type.validate_ref(cs.fetch_ref());
+    return branch_type.validate_ref(cs.fetch_ref(), weak) && branch_type.validate_ref(cs.fetch_ref(), weak);
   }
 }
 
@@ -439,9 +459,9 @@ bool Hashmap::skip(vm::CellSlice& cs) const {
   return HmLabel{n}.skip(cs, l) && HashmapNode{n - l, value_type}.skip(cs);
 }
 
-bool Hashmap::validate_skip(vm::CellSlice& cs) const {
+bool Hashmap::validate_skip(vm::CellSlice& cs, bool weak) const {
   int l;
-  return HmLabel{n}.skip(cs, l) && HashmapNode{n - l, value_type}.skip(cs);
+  return HmLabel{n}.validate_skip(cs, weak, l) && HashmapNode{n - l, value_type}.validate_skip(cs, weak);
 }
 
 int HashmapE::get_size(const vm::CellSlice& cs) const {
@@ -449,9 +469,9 @@ int HashmapE::get_size(const vm::CellSlice& cs) const {
   return (tag >= 0 ? (tag > 0 ? 0x10001 : 1) : -1);
 }
 
-bool HashmapE::validate(const vm::CellSlice& cs) const {
+bool HashmapE::validate(const vm::CellSlice& cs, bool weak) const {
   int tag = get_tag(cs);
-  return tag <= 0 ? !tag : root_type.validate_ref(cs.prefetch_ref());
+  return tag <= 0 ? !tag : root_type.validate_ref(cs.prefetch_ref(), weak);
 }
 
 bool HashmapE::add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const {
@@ -541,8 +561,8 @@ bool HashmapE::store_ref(vm::CellBuilder& cb, Ref<vm::Cell> arg) const {
 
 const ExtraCurrencyCollection t_ExtraCurrencyCollection;
 
-bool CurrencyCollection::validate_skip(vm::CellSlice& cs) const {
-  return t_Grams.validate_skip(cs) && t_ExtraCurrencyCollection.validate_skip(cs);
+bool CurrencyCollection::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_Grams.validate_skip(cs, weak) && t_ExtraCurrencyCollection.validate_skip(cs, weak);
 }
 
 bool CurrencyCollection::skip(vm::CellSlice& cs) const {
@@ -562,18 +582,31 @@ bool CurrencyCollection::add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm:
   return t_Grams.add_values(cb, cs1, cs2) && t_ExtraCurrencyCollection.add_values(cb, cs1, cs2);
 }
 
-bool CurrencyCollection::unpack_special(vm::CellSlice& cs, td::RefInt256& balance, Ref<vm::Cell>& extra) const {
+bool CurrencyCollection::unpack_special(vm::CellSlice& cs, td::RefInt256& balance, Ref<vm::Cell>& extra,
+                                        bool inexact) const {
   balance = t_Grams.as_integer_skip(cs);
   if (cs.fetch_ulong(1) == 1) {
-    return balance.not_null() && cs.fetch_ref_to(extra) && cs.empty_ext();
+    return balance.not_null() && cs.fetch_ref_to(extra) && (inexact || cs.empty_ext());
   } else {
     extra.clear();
-    return balance.not_null() && cs.empty_ext();
+    return balance.not_null() && (inexact || cs.empty_ext());
   }
+}
+
+bool CurrencyCollection::unpack_special(vm::CellSlice& cs, block::CurrencyCollection& value, bool inexact) const {
+  return unpack_special(cs, value.grams, value.extra, inexact);
 }
 
 bool CurrencyCollection::pack_special(vm::CellBuilder& cb, td::RefInt256 balance, Ref<vm::Cell> extra) const {
   return t_Grams.store_integer_ref(cb, std::move(balance)) && t_ExtraCurrencyCollection.store_ref(cb, std::move(extra));
+}
+
+bool CurrencyCollection::pack_special(vm::CellBuilder& cb, const block::CurrencyCollection& value) const {
+  return value.is_valid() && pack_special(cb, value.grams, value.extra);
+}
+
+bool CurrencyCollection::pack_special(vm::CellBuilder& cb, block::CurrencyCollection&& value) const {
+  return value.is_valid() && pack_special(cb, std::move(value.grams), std::move(value.extra));
 }
 
 bool CurrencyCollection::unpack(vm::CellSlice& cs, block::CurrencyCollection& res) const {
@@ -586,25 +619,25 @@ bool CurrencyCollection::pack(vm::CellBuilder& cb, const block::CurrencyCollecti
 
 const CurrencyCollection t_CurrencyCollection;
 
-bool CommonMsgInfo::validate_skip(vm::CellSlice& cs) const {
+bool CommonMsgInfo::validate_skip(vm::CellSlice& cs, bool weak) const {
   int tag = get_tag(cs);
   switch (tag) {
     case int_msg_info:
-      return cs.advance(4)                              // int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
-             && t_MsgAddressInt.validate_skip(cs)       // src
-             && t_MsgAddressInt.validate_skip(cs)       // dest
-             && t_CurrencyCollection.validate_skip(cs)  // value
-             && t_Grams.validate_skip(cs)               // ihr_fee
-             && t_Grams.validate_skip(cs)               // fwd_fee
-             && cs.advance(64 + 32);                    // created_lt:uint64 created_at:uint32
+      return cs.advance(4)                               // int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+             && t_MsgAddressInt.validate_skip(cs, weak)  // src
+             && t_MsgAddressInt.validate_skip(cs, weak)  // dest
+             && t_CurrencyCollection.validate_skip(cs, weak)  // value
+             && t_Grams.validate_skip(cs, weak)               // ihr_fee
+             && t_Grams.validate_skip(cs, weak)               // fwd_fee
+             && cs.advance(64 + 32);                          // created_lt:uint64 created_at:uint32
     case ext_in_msg_info:
-      return cs.advance(2) && t_MsgAddressExt.validate_skip(cs)  // src
-             && t_MsgAddressInt.validate_skip(cs)                // dest
-             && t_Grams.validate_skip(cs);                       // import_fee
+      return cs.advance(2) && t_MsgAddressExt.validate_skip(cs, weak)  // src
+             && t_MsgAddressInt.validate_skip(cs, weak)                // dest
+             && t_Grams.validate_skip(cs, weak);                       // import_fee
     case ext_out_msg_info:
-      return cs.advance(2) && t_MsgAddressInt.validate_skip(cs)  // src
-             && t_MsgAddressExt.validate_skip(cs)                // dest
-             && cs.advance(64 + 32);                             // created_lt:uint64 created_at:uint32
+      return cs.advance(2) && t_MsgAddressInt.validate_skip(cs, weak)  // src
+             && t_MsgAddressExt.validate_skip(cs, weak)                // dest
+             && cs.advance(64 + 32);                                   // created_lt:uint64 created_at:uint32
   }
   return false;
 }
@@ -666,12 +699,12 @@ const CommonMsgInfo t_CommonMsgInfo;
 const TickTock t_TickTock;
 const RefAnything t_RefCell;
 
-bool StateInit::validate_skip(vm::CellSlice& cs) const {
-  return Maybe<UInt>{5}.validate_skip(cs)            // split_depth:(Maybe (## 5))
-         && Maybe<TickTock>{}.validate_skip(cs)      // special:(Maybe TickTock)
-         && Maybe<RefAnything>{}.validate_skip(cs)   // code:(Maybe ^Cell)
-         && Maybe<RefAnything>{}.validate_skip(cs)   // data:(Maybe ^Cell)
-         && Maybe<RefAnything>{}.validate_skip(cs);  // library:(Maybe ^Cell)
+bool StateInit::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return Maybe<UInt>{5}.validate_skip(cs, weak)            // split_depth:(Maybe (## 5))
+         && Maybe<TickTock>{}.validate_skip(cs, weak)      // special:(Maybe TickTock)
+         && Maybe<RefAnything>{}.validate_skip(cs, weak)   // code:(Maybe ^Cell)
+         && Maybe<RefAnything>{}.validate_skip(cs, weak)   // data:(Maybe ^Cell)
+         && Maybe<RefAnything>{}.validate_skip(cs, weak);  // library:(Maybe ^Cell)
 }
 
 bool StateInit::get_ticktock(vm::CellSlice& cs, int& ticktock) const {
@@ -682,12 +715,12 @@ bool StateInit::get_ticktock(vm::CellSlice& cs, int& ticktock) const {
 
 const StateInit t_StateInit;
 
-bool Message::validate_skip(vm::CellSlice& cs) const {
+bool Message::validate_skip(vm::CellSlice& cs, bool weak) const {
   static const Maybe<Either<StateInit, RefTo<StateInit>>> init_type;
   static const Either<Anything, RefAnything> body_type;
-  return t_CommonMsgInfo.validate_skip(cs)  // info:CommonMsgInfo
-         && init_type.validate_skip(cs)     // init:(Maybe (Either StateInit ^StateInit))
-         && body_type.validate_skip(cs);    // body:(Either X ^X)
+  return t_CommonMsgInfo.validate_skip(cs, weak)  // info:CommonMsgInfo
+         && init_type.validate_skip(cs, weak)     // init:(Maybe (Either StateInit ^StateInit))
+         && body_type.validate_skip(cs, weak);    // body:(Either X ^X)
 }
 
 bool Message::extract_info(vm::CellSlice& cs) const {
@@ -705,7 +738,7 @@ bool Message::is_internal(Ref<vm::Cell> ref) const {
 const Message t_Message;
 const RefTo<Message> t_Ref_Message;
 
-bool IntermediateAddress::validate_skip(vm::CellSlice& cs) const {
+bool IntermediateAddress::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case interm_addr_regular:
       return cs.advance(1) && cs.fetch_ulong(7) <= 96U;
@@ -740,12 +773,12 @@ int IntermediateAddress::get_size(const vm::CellSlice& cs) const {
 
 const IntermediateAddress t_IntermediateAddress;
 
-bool MsgEnvelope::validate_skip(vm::CellSlice& cs) const {
-  return cs.fetch_ulong(4) == 4                      // msg_envelope#4
-         && t_IntermediateAddress.validate_skip(cs)  // cur_addr:IntermediateAddress
-         && t_IntermediateAddress.validate_skip(cs)  // next_addr:IntermediateAddress
-         && t_Grams.validate_skip(cs)                // fwd_fee_remaining:Grams
-         && t_Ref_Message.validate_skip(cs);         // msg:^Message
+bool MsgEnvelope::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return cs.fetch_ulong(4) == 4                            // msg_envelope#4
+         && t_IntermediateAddress.validate_skip(cs, weak)  // cur_addr:IntermediateAddress
+         && t_IntermediateAddress.validate_skip(cs, weak)  // next_addr:IntermediateAddress
+         && t_Grams.validate_skip(cs, weak)                // fwd_fee_remaining:Grams
+         && t_Ref_Message.validate_skip(cs, weak);         // msg:^Message
 }
 
 bool MsgEnvelope::skip(vm::CellSlice& cs) const {
@@ -794,10 +827,10 @@ bool MsgEnvelope::get_created_lt(const vm::CellSlice& cs, unsigned long long& cr
 const MsgEnvelope t_MsgEnvelope;
 const RefTo<MsgEnvelope> t_Ref_MsgEnvelope;
 
-bool StorageUsed::validate_skip(vm::CellSlice& cs) const {
-  return t_VarUInteger_7.validate_skip(cs)      // cells:(VarUInteger 7)
-         && t_VarUInteger_7.validate_skip(cs)   // bits:(VarUInteger 7)
-         && t_VarUInteger_7.validate_skip(cs);  // public_cells:(VarUInteger 7)
+bool StorageUsed::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_VarUInteger_7.validate_skip(cs, weak)      // cells:(VarUInteger 7)
+         && t_VarUInteger_7.validate_skip(cs, weak)   // bits:(VarUInteger 7)
+         && t_VarUInteger_7.validate_skip(cs, weak);  // public_cells:(VarUInteger 7)
 }
 
 bool StorageUsed::skip(vm::CellSlice& cs) const {
@@ -808,9 +841,9 @@ bool StorageUsed::skip(vm::CellSlice& cs) const {
 
 const StorageUsed t_StorageUsed;
 
-bool StorageUsedShort::validate_skip(vm::CellSlice& cs) const {
-  return t_VarUInteger_7.validate_skip(cs)      // cells:(VarUInteger 7)
-         && t_VarUInteger_7.validate_skip(cs);  // bits:(VarUInteger 7)
+bool StorageUsedShort::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_VarUInteger_7.validate_skip(cs, weak)      // cells:(VarUInteger 7)
+         && t_VarUInteger_7.validate_skip(cs, weak);  // bits:(VarUInteger 7)
 }
 
 bool StorageUsedShort::skip(vm::CellSlice& cs) const {
@@ -828,22 +861,22 @@ bool StorageInfo::skip(vm::CellSlice& cs) const {
          && t_Maybe_Grams.skip(cs);  // due_payment:(Maybe Grams)
 }
 
-bool StorageInfo::validate_skip(vm::CellSlice& cs) const {
-  return t_StorageUsed.validate_skip(cs)      // used:StorageUsed
-         && cs.advance(32)                    // last_paid:uint32
-         && t_Maybe_Grams.validate_skip(cs);  // due_payment:(Maybe Grams)
+bool StorageInfo::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_StorageUsed.validate_skip(cs, weak)      // used:StorageUsed
+         && cs.advance(32)                          // last_paid:uint32
+         && t_Maybe_Grams.validate_skip(cs, weak);  // due_payment:(Maybe Grams)
 }
 
 const StorageInfo t_StorageInfo;
 
-bool AccountState::validate_skip(vm::CellSlice& cs) const {
+bool AccountState::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case account_uninit:
       return cs.advance(2);
     case account_frozen:
       return cs.advance(2 + 256);
     case account_active:
-      return cs.advance(1) && t_StateInit.validate_skip(cs);
+      return cs.advance(1) && t_StateInit.validate_skip(cs, weak);
   }
   return false;
 }
@@ -866,8 +899,8 @@ bool AccountStorage::skip_copy_balance(vm::CellBuilder& cb, vm::CellSlice& cs) c
   return cs.advance(64) && t_CurrencyCollection.skip_copy(cb, cs) && t_AccountState.skip(cs);
 }
 
-bool AccountStorage::validate_skip(vm::CellSlice& cs) const {
-  return cs.advance(64) && t_CurrencyCollection.validate_skip(cs) && t_AccountState.validate_skip(cs);
+bool AccountStorage::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return cs.advance(64) && t_CurrencyCollection.validate_skip(cs, weak) && t_AccountState.validate_skip(cs, weak);
 }
 
 const AccountStorage t_AccountStorage;
@@ -885,15 +918,15 @@ bool Account::skip(vm::CellSlice& cs) const {
   return false;
 }
 
-bool Account::validate_skip(vm::CellSlice& cs) const {
+bool Account::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case account_none:
       return allow_empty && cs.advance(1);
     case account:
-      return cs.advance(1)                           // account$1
-             && t_MsgAddressInt.validate_skip(cs)    // addr:MsgAddressInt
-             && t_StorageInfo.validate_skip(cs)      // storage_stat:StorageInfo
-             && t_AccountStorage.validate_skip(cs);  // storage:AccountStorage
+      return cs.advance(1)                                 // account$1
+             && t_MsgAddressInt.validate_skip(cs, weak)    // addr:MsgAddressInt
+             && t_StorageInfo.validate_skip(cs, weak)      // storage_stat:StorageInfo
+             && t_AccountStorage.validate_skip(cs, weak);  // storage:AccountStorage
   }
   return false;
 }
@@ -977,19 +1010,19 @@ bool HashmapAugNode::skip(vm::CellSlice& cs) const {
   }
 }
 
-bool HashmapAugNode::validate_skip(vm::CellSlice& cs) const {
+bool HashmapAugNode::validate_skip(vm::CellSlice& cs, bool weak) const {
   if (n < 0) {
     return false;
   }
   if (!n) {
     // ahmn_leaf
     vm::CellSlice cs_extra{cs};
-    if (!aug.extra_type.validate_skip(cs)) {
+    if (!aug.extra_type.validate_skip(cs, weak)) {
       return false;
     }
     cs_extra.cut_tail(cs);
     vm::CellSlice cs_value{cs};
-    if (!aug.value_type.validate_skip(cs)) {
+    if (!aug.value_type.validate_skip(cs, weak)) {
       return false;
     }
     cs_value.cut_tail(cs);
@@ -1000,13 +1033,13 @@ bool HashmapAugNode::validate_skip(vm::CellSlice& cs) const {
     return false;
   }
   HashmapAug branch_type{n - 1, aug};
-  if (!branch_type.validate_ref(cs.prefetch_ref(0)) || !branch_type.validate_ref(cs.prefetch_ref(1))) {
+  if (!branch_type.validate_ref(cs.prefetch_ref(0), weak) || !branch_type.validate_ref(cs.prefetch_ref(1), weak)) {
     return false;
   }
   auto cs_left = load_cell_slice(cs.fetch_ref());
   auto cs_right = load_cell_slice(cs.fetch_ref());
   vm::CellSlice cs_extra{cs};
-  if (!aug.extra_type.validate_skip(cs)) {
+  if (!aug.extra_type.validate_skip(cs, weak)) {
     return false;
   }
   cs_extra.cut_tail(cs);
@@ -1019,9 +1052,9 @@ bool HashmapAug::skip(vm::CellSlice& cs) const {
   return HmLabel{n}.skip(cs, l) && HashmapAugNode{n - l, aug}.skip(cs);
 }
 
-bool HashmapAug::validate_skip(vm::CellSlice& cs) const {
+bool HashmapAug::validate_skip(vm::CellSlice& cs, bool weak) const {
   int l;
-  return HmLabel{n}.validate_skip(cs, l) && HashmapAugNode{n - l, aug}.validate_skip(cs);
+  return HmLabel{n}.validate_skip(cs, weak, l) && HashmapAugNode{n - l, aug}.validate_skip(cs, weak);
 }
 
 bool HashmapAug::extract_extra(vm::CellSlice& cs) const {
@@ -1029,17 +1062,21 @@ bool HashmapAug::extract_extra(vm::CellSlice& cs) const {
   return HmLabel{n}.skip(cs, l) && (l == n || cs.advance_refs(2)) && aug.extra_type.extract(cs);
 }
 
-bool HashmapAugE::validate_skip(vm::CellSlice& cs) const {
+bool HashmapAugE::validate_skip(vm::CellSlice& cs, bool weak) const {
   Ref<vm::CellSlice> extra;
   switch (get_tag(cs)) {
     case ahme_empty:
-      return cs.advance(1) && (extra = root_type.aug.extra_type.validate_fetch(cs)).not_null() &&
+      return cs.advance(1) && (extra = root_type.aug.extra_type.validate_fetch(cs, weak)).not_null() &&
              root_type.aug.check_empty(extra.unique_write());
     case ahme_root:
-      if (cs.advance(1) && root_type.validate_ref(cs.prefetch_ref())) {
-        auto cs_root = load_cell_slice(cs.fetch_ref());
-        return (extra = root_type.aug.extra_type.validate_fetch(cs)).not_null() && root_type.extract_extra(cs_root) &&
-               extra->contents_equal(cs_root);
+      if (cs.advance(1) && root_type.validate_ref(cs.prefetch_ref(), weak)) {
+        bool special;
+        auto cs_root = load_cell_slice_special(cs.fetch_ref(), special);
+        if (special) {
+          return weak;
+        }
+        return (extra = root_type.aug.extra_type.validate_fetch(cs, weak)).not_null() &&
+               root_type.extract_extra(cs_root) && extra->contents_equal(cs_root);
       }
       break;
   }
@@ -1062,9 +1099,9 @@ bool DepthBalanceInfo::skip(vm::CellSlice& cs) const {
              cs);  // depth_balance$_ split_depth:(#<= 30) balance:CurrencyCollection = DepthBalanceInfo;
 }
 
-bool DepthBalanceInfo::validate_skip(vm::CellSlice& cs) const {
-  return cs.fetch_ulong(5) <= 30 &&
-         t_CurrencyCollection.validate_skip(cs);  // depth_balance$_ split_depth:(#<= 30) balance:CurrencyCollection
+bool DepthBalanceInfo::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return cs.fetch_ulong(5) <= 30 && t_CurrencyCollection.validate_skip(
+                                        cs, weak);  // depth_balance$_ split_depth:(#<= 30) balance:CurrencyCollection
 }
 
 bool DepthBalanceInfo::null_value(vm::CellBuilder& cb) const {
@@ -1100,10 +1137,10 @@ bool TrStoragePhase::skip(vm::CellSlice& cs) const {
          && t_AccStatusChange.skip(cs);  // status_change:AccStatusChange
 }
 
-bool TrStoragePhase::validate_skip(vm::CellSlice& cs) const {
-  return t_Grams.validate_skip(cs)                // storage_fees_collected:Grams
-         && t_Maybe_Grams.validate_skip(cs)       // storage_fees_due:Grams
-         && t_AccStatusChange.validate_skip(cs);  // status_change:AccStatusChange
+bool TrStoragePhase::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_Grams.validate_skip(cs, weak)                // storage_fees_collected:Grams
+         && t_Maybe_Grams.validate_skip(cs, weak)       // storage_fees_due:Grams
+         && t_AccStatusChange.validate_skip(cs, weak);  // status_change:AccStatusChange
 }
 
 const TrStoragePhase t_TrStoragePhase;
@@ -1113,9 +1150,9 @@ bool TrCreditPhase::skip(vm::CellSlice& cs) const {
          && t_CurrencyCollection.skip(cs);  // credit:CurrencyCollection
 }
 
-bool TrCreditPhase::validate_skip(vm::CellSlice& cs) const {
-  return t_Maybe_Grams.validate_skip(cs)             // due_fees_collected:(Maybe Grams)
-         && t_CurrencyCollection.validate_skip(cs);  // credit:CurrencyCollection
+bool TrCreditPhase::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_Maybe_Grams.validate_skip(cs, weak)             // due_fees_collected:(Maybe Grams)
+         && t_CurrencyCollection.validate_skip(cs, weak);  // credit:CurrencyCollection
 }
 
 const TrCreditPhase t_TrCreditPhase;
@@ -1131,15 +1168,15 @@ bool TrComputeInternal1::skip(vm::CellSlice& cs) const {
                                             // vm_final_state_hash:uint256
 }
 
-bool TrComputeInternal1::validate_skip(vm::CellSlice& cs) const {
-  return t_VarUInteger_7.validate_skip(cs)           // gas_used:(VarUInteger 7)
-         && t_VarUInteger_7.validate_skip(cs)        // gas_limit:(VarUInteger 7)
-         && Maybe<VarUInteger>{3}.validate_skip(cs)  // gas_credit:(Maybe (VarUInteger 3))
-         && cs.advance(8 + 32)                       // mode:int8 exit_code:int32
-         && Maybe<Int>{32}.validate_skip(cs)         // exit_arg:(Maybe int32)
-         && cs.advance(32 + 256 + 256);              // vm_steps:uint32
-                                                     // vm_init_state_hash:uint256
-                                                     // vm_final_state_hash:uint256
+bool TrComputeInternal1::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_VarUInteger_7.validate_skip(cs, weak)           // gas_used:(VarUInteger 7)
+         && t_VarUInteger_7.validate_skip(cs, weak)        // gas_limit:(VarUInteger 7)
+         && Maybe<VarUInteger>{3}.validate_skip(cs, weak)  // gas_credit:(Maybe (VarUInteger 3))
+         && cs.advance(8 + 32)                             // mode:int8 exit_code:int32
+         && Maybe<Int>{32}.validate_skip(cs, weak)         // exit_arg:(Maybe int32)
+         && cs.advance(32 + 256 + 256);                    // vm_steps:uint32
+                                                           // vm_init_state_hash:uint256
+                                                           // vm_final_state_hash:uint256
 }
 
 const TrComputeInternal1 t_TrComputeInternal1;
@@ -1158,14 +1195,14 @@ bool TrComputePhase::skip(vm::CellSlice& cs) const {
   return false;
 }
 
-bool TrComputePhase::validate_skip(vm::CellSlice& cs) const {
+bool TrComputePhase::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case tr_phase_compute_skipped:
-      return cs.advance(1) && t_ComputeSkipReason.validate_skip(cs);
+      return cs.advance(1) && t_ComputeSkipReason.validate_skip(cs, weak);
     case tr_phase_compute_vm:
       return cs.advance(1 + 3)  // tr_phase_compute_vm$1 success:Bool msg_state_used:Bool account_activated:Bool
-             && t_Grams.validate_skip(cs)                    // gas_fees:Grams
-             && t_Ref_TrComputeInternal1.validate_skip(cs);  // ^[ gas_used:(..) .. ]
+             && t_Grams.validate_skip(cs, weak)                    // gas_fees:Grams
+             && t_Ref_TrComputeInternal1.validate_skip(cs, weak);  // ^[ gas_used:(..) .. ]
   }
   return false;
 }
@@ -1185,17 +1222,17 @@ bool TrActionPhase::skip(vm::CellSlice& cs) const {
          && t_StorageUsedShort.skip(cs);  // tot_msg_size:StorageUsedShort
 }
 
-bool TrActionPhase::validate_skip(vm::CellSlice& cs) const {
-  return cs.advance(3)                             // success:Bool valid:Bool no_funds:Bool
-         && t_AccStatusChange.validate_skip(cs)    // status_change:AccStatusChange
-         && t_Maybe_Grams.validate_skip(cs)        // total_fwd_fees:(Maybe Grams)
-         && t_Maybe_Grams.validate_skip(cs)        // total_action_fees:(Maybe Grams)
-         && cs.advance(32)                         // result_code:int32
-         && Maybe<Int>{32}.validate_skip(cs)       // result_arg:(Maybe int32)
-         && cs.advance(16 * 4 + 256)               // tot_actions:uint16 spec_actions:uint16
-                                                   // skipped_actions:uint16 msgs_created:uint16
-                                                   // action_list_hash:uint256
-         && t_StorageUsedShort.validate_skip(cs);  // tot_msg_size:StorageUsed
+bool TrActionPhase::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return cs.advance(3)                                   // success:Bool valid:Bool no_funds:Bool
+         && t_AccStatusChange.validate_skip(cs, weak)    // status_change:AccStatusChange
+         && t_Maybe_Grams.validate_skip(cs, weak)        // total_fwd_fees:(Maybe Grams)
+         && t_Maybe_Grams.validate_skip(cs, weak)        // total_action_fees:(Maybe Grams)
+         && cs.advance(32)                               // result_code:int32
+         && Maybe<Int>{32}.validate_skip(cs, weak)       // result_arg:(Maybe int32)
+         && cs.advance(16 * 4 + 256)                     // tot_actions:uint16 spec_actions:uint16
+                                                         // skipped_actions:uint16 msgs_created:uint16
+                                                         // action_list_hash:uint256
+         && t_StorageUsedShort.validate_skip(cs, weak);  // tot_msg_size:StorageUsed
 }
 
 const TrActionPhase t_TrActionPhase;
@@ -1217,19 +1254,19 @@ bool TrBouncePhase::skip(vm::CellSlice& cs) const {
   return false;
 }
 
-bool TrBouncePhase::validate_skip(vm::CellSlice& cs) const {
+bool TrBouncePhase::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case tr_phase_bounce_negfunds:
       return cs.advance(2);  // tr_phase_bounce_negfunds$00
     case tr_phase_bounce_nofunds:
-      return cs.advance(2)                            // tr_phase_bounce_nofunds$01
-             && t_StorageUsedShort.validate_skip(cs)  // msg_size:StorageUsedShort
-             && t_Grams.validate_skip(cs);            // req_fwd_fees:Grams
+      return cs.advance(2)                                  // tr_phase_bounce_nofunds$01
+             && t_StorageUsedShort.validate_skip(cs, weak)  // msg_size:StorageUsedShort
+             && t_Grams.validate_skip(cs, weak);            // req_fwd_fees:Grams
     case tr_phase_bounce_ok:
-      return cs.advance(1)                            // tr_phase_bounce_ok$1
-             && t_StorageUsedShort.validate_skip(cs)  // msg_size:StorageUsedShort
-             && t_Grams.validate_skip(cs)             // msg_fees:Grams
-             && t_Grams.validate_skip(cs);            // fwd_fees:Grams
+      return cs.advance(1)                                  // tr_phase_bounce_ok$1
+             && t_StorageUsedShort.validate_skip(cs, weak)  // msg_size:StorageUsedShort
+             && t_Grams.validate_skip(cs, weak)             // msg_fees:Grams
+             && t_Grams.validate_skip(cs, weak);            // fwd_fees:Grams
   }
   return false;
 }
@@ -1249,7 +1286,7 @@ bool SplitMergeInfo::skip(vm::CellSlice& cs) const {
   return cs.advance(6 + 6 + 256 + 256);
 }
 
-bool SplitMergeInfo::validate_skip(vm::CellSlice& cs) const {
+bool SplitMergeInfo::validate_skip(vm::CellSlice& cs, bool weak) const {
   if (!cs.have(6 + 6 + 256 + 256)) {
     return false;
   }
@@ -1264,7 +1301,7 @@ bool SplitMergeInfo::validate_skip(vm::CellSlice& cs) const {
     return false;
   }
   sibling_addr[cur_pfx_len >> 3] ^= (unsigned char)(0x80 >> (cur_pfx_len & 7));
-  return !memcmp(this_addr, sibling_addr, 32);
+  return !std::memcmp(this_addr, sibling_addr, 32);
 }
 
 const SplitMergeInfo t_SplitMergeInfo;
@@ -1317,50 +1354,50 @@ bool TransactionDescr::skip(vm::CellSlice& cs) const {
   return false;
 }
 
-bool TransactionDescr::validate_skip(vm::CellSlice& cs) const {
+bool TransactionDescr::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case trans_ord:
-      return cs.advance(4 + 1)                                   // trans_ord$0000 credit_first:Bool
-             && Maybe<TrStoragePhase>{}.validate_skip(cs)        // storage_ph:(Maybe TrStoragePhase)
-             && Maybe<TrCreditPhase>{}.validate_skip(cs)         // credit_ph:(Maybe TrCreditPhase)
-             && t_TrComputePhase.validate_skip(cs)               // compute_ph:TrComputePhase
-             && Maybe<RefTo<TrActionPhase>>{}.validate_skip(cs)  // action:(Maybe ^TrActionPhase)
-             && cs.advance(1)                                    // aborted:Bool
-             && Maybe<TrBouncePhase>{}.validate_skip(cs)         // bounce:(Maybe TrBouncePhase)
-             && cs.advance(1);                                   // destroyed:Bool
+      return cs.advance(4 + 1)                                         // trans_ord$0000 credit_first:Bool
+             && Maybe<TrStoragePhase>{}.validate_skip(cs, weak)        // storage_ph:(Maybe TrStoragePhase)
+             && Maybe<TrCreditPhase>{}.validate_skip(cs, weak)         // credit_ph:(Maybe TrCreditPhase)
+             && t_TrComputePhase.validate_skip(cs, weak)               // compute_ph:TrComputePhase
+             && Maybe<RefTo<TrActionPhase>>{}.validate_skip(cs, weak)  // action:(Maybe ^TrActionPhase)
+             && cs.advance(1)                                          // aborted:Bool
+             && Maybe<TrBouncePhase>{}.validate_skip(cs, weak)         // bounce:(Maybe TrBouncePhase)
+             && cs.advance(1);                                         // destroyed:Bool
     case trans_storage:
-      return cs.advance(4)                           // trans_storage$0001
-             && t_TrStoragePhase.validate_skip(cs);  // storage_ph:TrStoragePhase
+      return cs.advance(4)                                 // trans_storage$0001
+             && t_TrStoragePhase.validate_skip(cs, weak);  // storage_ph:TrStoragePhase
     case trans_tick_tock:
-      return cs.advance(4)                                       // trans_tick_tock$001 is_tock:Bool
-             && t_TrStoragePhase.validate_skip(cs)               // storage:TrStoragePhase
-             && t_TrComputePhase.validate_skip(cs)               // compute_ph:TrComputePhase
-             && Maybe<RefTo<TrActionPhase>>{}.validate_skip(cs)  // action:(Maybe ^TrActionPhase)
-             && cs.advance(2);                                   // aborted:Bool destroyed:Bool
+      return cs.advance(4)                                             // trans_tick_tock$001 is_tock:Bool
+             && t_TrStoragePhase.validate_skip(cs, weak)               // storage:TrStoragePhase
+             && t_TrComputePhase.validate_skip(cs, weak)               // compute_ph:TrComputePhase
+             && Maybe<RefTo<TrActionPhase>>{}.validate_skip(cs, weak)  // action:(Maybe ^TrActionPhase)
+             && cs.advance(2);                                         // aborted:Bool destroyed:Bool
     case trans_split_prepare:
-      return cs.advance(4)                                       // trans_split_prepare$0100
-             && t_SplitMergeInfo.validate_skip(cs)               // split_info:SplitMergeInfo
-             && t_TrComputePhase.validate_skip(cs)               // compute_ph:TrComputePhase
-             && Maybe<RefTo<TrActionPhase>>{}.validate_skip(cs)  // action:(Maybe ^TrActionPhase)
-             && cs.advance(2);                                   // aborted:Bool destroyed:Bool
+      return cs.advance(4)                                             // trans_split_prepare$0100
+             && t_SplitMergeInfo.validate_skip(cs, weak)               // split_info:SplitMergeInfo
+             && t_TrComputePhase.validate_skip(cs, weak)               // compute_ph:TrComputePhase
+             && Maybe<RefTo<TrActionPhase>>{}.validate_skip(cs, weak)  // action:(Maybe ^TrActionPhase)
+             && cs.advance(2);                                         // aborted:Bool destroyed:Bool
     case trans_split_install:
-      return cs.advance(4)                           // trans_split_install$0101
-             && t_SplitMergeInfo.validate_skip(cs)   // split_info:SplitMergeInfo
-             && t_Ref_Transaction.validate_skip(cs)  // prepare_transaction:^Transaction
-             && cs.advance(1);                       // installed:Bool
+      return cs.advance(4)                                 // trans_split_install$0101
+             && t_SplitMergeInfo.validate_skip(cs, weak)   // split_info:SplitMergeInfo
+             && t_Ref_Transaction.validate_skip(cs, weak)  // prepare_transaction:^Transaction
+             && cs.advance(1);                             // installed:Bool
     case trans_merge_prepare:
-      return cs.advance(4)                          // trans_merge_prepare$0110
-             && t_SplitMergeInfo.validate_skip(cs)  // split_info:SplitMergeInfo
-             && t_TrStoragePhase.validate_skip(cs)  // storage_ph:TrStoragePhase
-             && cs.advance(1);                      // aborted:Bool
+      return cs.advance(4)                                // trans_merge_prepare$0110
+             && t_SplitMergeInfo.validate_skip(cs, weak)  // split_info:SplitMergeInfo
+             && t_TrStoragePhase.validate_skip(cs, weak)  // storage_ph:TrStoragePhase
+             && cs.advance(1);                            // aborted:Bool
     case trans_merge_install:
-      return cs.advance(4)                                       // trans_merge_install$0111
-             && t_SplitMergeInfo.validate_skip(cs)               // split_info:SplitMergeInfo
-             && t_Ref_Transaction.validate_skip(cs)              // prepare_transaction:^Transaction
-             && Maybe<TrCreditPhase>{}.validate_skip(cs)         // credit_ph:(Maybe TrCreditPhase)
-             && Maybe<TrComputePhase>{}.validate_skip(cs)        // compute_ph:TrComputePhase
-             && Maybe<RefTo<TrActionPhase>>{}.validate_skip(cs)  // action:(Maybe ^TrActionPhase)
-             && cs.advance(2);                                   // aborted:Bool destroyed:Bool
+      return cs.advance(4)                                             // trans_merge_install$0111
+             && t_SplitMergeInfo.validate_skip(cs, weak)               // split_info:SplitMergeInfo
+             && t_Ref_Transaction.validate_skip(cs, weak)              // prepare_transaction:^Transaction
+             && Maybe<TrCreditPhase>{}.validate_skip(cs, weak)         // credit_ph:(Maybe TrCreditPhase)
+             && Maybe<TrComputePhase>{}.validate_skip(cs, weak)        // compute_ph:TrComputePhase
+             && Maybe<RefTo<TrActionPhase>>{}.validate_skip(cs, weak)  // action:(Maybe ^TrActionPhase)
+             && cs.advance(2);                                         // aborted:Bool destroyed:Bool
   }
   return false;
 }
@@ -1372,56 +1409,65 @@ int TransactionDescr::get_tag(const vm::CellSlice& cs) const {
 
 const TransactionDescr t_TransactionDescr;
 
+bool Transaction_aux::skip(vm::CellSlice& cs) const {
+  return Maybe<RefTo<Message>>{}.skip(cs)          // in_msg:(Maybe ^Message)
+         && HashmapE{15, t_Ref_Message}.skip(cs);  // out_msgs:(HashmapE 15 ^Message)
+}
+
+bool Transaction_aux::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return Maybe<RefTo<Message>>{}.validate_skip(cs, weak)          // in_msg:(Maybe ^Message)
+         && HashmapE{15, t_Ref_Message}.validate_skip(cs, weak);  // out_msgs:(HashmapE 15 ^Message)
+}
+
+const Transaction_aux t_Transaction_aux;
+
 bool Transaction::skip(vm::CellSlice& cs) const {
   return cs.advance(
              4 + 256 + 64 + 256 + 64 + 32 +
-             15)  // transaction$0110 account_addr:uint256 lt:uint64 prev_trans_hash:bits256 prev_trans_lt:uint64 now:uint32 outmsg_cnt:uint15
-         && t_AccountStatus.skip(cs)              // orig_status:AccountStatus
-         && t_AccountStatus.skip(cs)              // end_status:AccountStatus
-         && Maybe<RefTo<Message>>{}.skip(cs)      // in_msg:(Maybe ^Message)
-         && HashmapE{15, t_Ref_Message}.skip(cs)  // out_msgs:(HashmapE 15 ^Message)
-         && t_Grams.skip(cs)                      // total_fees:Grams
-         && t_RefCell.skip(cs)                    // state_update:^(MERKLE_UPDATE Account)
-         && RefTo<TransactionDescr>{}.skip(cs);   // description:^TransactionDescr
+             15)  // transaction$0111 account_addr:uint256 lt:uint64 prev_trans_hash:bits256 prev_trans_lt:uint64 now:uint32 outmsg_cnt:uint15
+         && t_AccountStatus.skip(cs)             // orig_status:AccountStatus
+         && t_AccountStatus.skip(cs)             // end_status:AccountStatus
+         && cs.advance_refs(1)                   // ^[ in_msg:(Maybe ^Message) out_msgs:(HashmapE 15 ^Message) ]
+         && t_CurrencyCollection.skip(cs)        // total_fees:CurrencyCollection
+         && cs.advance_refs(1)                   // state_update:^(MERKLE_UPDATE Account)
+         && RefTo<TransactionDescr>{}.skip(cs);  // description:^TransactionDescr
 }
 
-bool Transaction::validate_skip(vm::CellSlice& cs) const {
-  return cs.fetch_ulong(4) == 6  // transaction$0110
+bool Transaction::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return cs.fetch_ulong(4) == 7  // transaction$0111
          &&
          cs.advance(
              256 + 64 + 256 + 64 + 32 +
              15)  // account_addr:uint256 lt:uint64 prev_trans_hash:bits256 prev_trans_lt:uint64 now:uint32 outmsg_cnt:uint15
-         && t_AccountStatus.validate_skip(cs)              // orig_status:AccountStatus
-         && t_AccountStatus.validate_skip(cs)              // end_status:AccountStatus
-         && Maybe<RefTo<Message>>{}.validate_skip(cs)      // in_msg:(Maybe ^Message)
-         && HashmapE{15, t_Ref_Message}.validate_skip(cs)  // out_msgs:(HashmapE 15 ^Message)
-         && t_Grams.validate_skip(cs)                      // total_fees:Grams
-         && t_RefCell.validate_skip(cs)                    // FIXME state_update:^(MERKLE_UPDATE Account)
-         && RefTo<TransactionDescr>{}.validate_skip(cs);   // description:^TransactionDescr
+         && t_AccountStatus.validate_skip(cs, weak)             // orig_status:AccountStatus
+         && t_AccountStatus.validate_skip(cs, weak)             // end_status:AccountStatus
+         && RefTo<Transaction_aux>{}.validate_skip(cs, weak)    // ^[ in_msg:... out_msgs:... ]
+         && t_CurrencyCollection.validate_skip(cs, weak)        // total_fees:CurrencyCollection
+         && t_Ref_HashUpdate.validate_skip(cs, weak)            // state_update:^(HASH_UPDATE Account)
+         && RefTo<TransactionDescr>{}.validate_skip(cs, weak);  // description:^TransactionDescr
 }
 
-bool Transaction::get_total_fees(vm::CellSlice&& cs, td::RefInt256& total_fees) const {
-  return cs.fetch_ulong(4) == 6  // transaction$0110
+bool Transaction::get_total_fees(vm::CellSlice&& cs, block::CurrencyCollection& total_fees) const {
+  return cs.is_valid() && cs.fetch_ulong(4) == 7  // transaction$0111
          &&
          cs.advance(
              256 + 64 + 256 + 64 + 32 +
              15)  // account_addr:uint256 lt:uint64 prev_trans_hash:bits256 prev_trans_lt:uint64 now:uint32 outmsg_cnt:uint15
-         && t_AccountStatus.skip(cs)                     // orig_status:AccountStatus
-         && t_AccountStatus.skip(cs)                     // end_status:AccountStatus
-         && Maybe<RefTo<Message>>{}.skip(cs)             // in_msg:(Maybe ^Message)
-         && HashmapE{15, t_Ref_Message}.skip(cs)         // out_msgs:(HashmapE 15 ^Message)
-         && t_Grams.as_integer_skip_to(cs, total_fees);  // total_fees:Grams
+         && t_AccountStatus.skip(cs)  // orig_status:AccountStatus
+         && t_AccountStatus.skip(cs)  // end_status:AccountStatus
+         && cs.advance_refs(1)        // ^[ in_msg:... out_msg:... ]
+         && total_fees.fetch(cs);     // total_fees:CurrencyCollection
 }
 
 const Transaction t_Transaction;
 const RefTo<Transaction> t_Ref_Transaction;
 
-// leaf evaluation for (HashmapAug 64 ^Transaction Grams)
+// leaf evaluation for (HashmapAug 64 ^Transaction CurrencyCollection)
 bool Aug_AccountTransactions::eval_leaf(vm::CellBuilder& cb, vm::CellSlice& cs) const {
   auto cell_ref = cs.prefetch_ref();
-  td::RefInt256 total_fees;
+  block::CurrencyCollection total_fees;
   return cell_ref.not_null() && t_Transaction.get_total_fees(vm::load_cell_slice(std::move(cell_ref)), total_fees) &&
-         t_Grams.store_integer_ref(cb, std::move(total_fees));
+         total_fees.store(cb);
 }
 
 const Aug_AccountTransactions aug_AccountTransactions;
@@ -1431,37 +1477,38 @@ const HashUpdate t_HashUpdate;
 const RefTo<HashUpdate> t_Ref_HashUpdate;
 
 bool AccountBlock::skip(vm::CellSlice& cs) const {
-  return cs.advance(4 + 256)                // acc_trans#4 account_addr:bits256
-         && t_AccountTransactions.skip(cs)  // transactions:(HashmapAug 64 ^Transaction Grams)
+  return cs.advance(4 + 256)                // acc_trans#5 account_addr:bits256
+         && t_AccountTransactions.skip(cs)  // transactions:(HashmapAug 64 ^Transaction CurrencyCollection)
          && cs.advance_refs(1);             // state_update:^(HASH_UPDATE Account)
 }
 
-bool AccountBlock::validate_skip(vm::CellSlice& cs) const {
-  return cs.fetch_ulong(4) == 4                      // acc_trans#4
-         && cs.advance(256)                          // account_addr:bits256
-         && t_AccountTransactions.validate_skip(cs)  // transactions:(HashmapAug 64 ^Transaction Grams)
-         && t_Ref_HashUpdate.validate_skip(cs);      // state_update:^(HASH_UPDATE Account)
+bool AccountBlock::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return cs.fetch_ulong(4) == 5  // acc_trans#5
+         && cs.advance(256)      // account_addr:bits256
+         &&
+         t_AccountTransactions.validate_skip(cs, weak)  // transactions:(HashmapAug 64 ^Transaction CurrencyCollection)
+         && t_Ref_HashUpdate.validate_skip(cs, weak);   // state_update:^(HASH_UPDATE Account)
 }
 
-bool AccountBlock::get_total_fees(vm::CellSlice&& cs, td::RefInt256& total_fees) const {
-  return cs.advance(4 + 256)                         // acc_trans#4 account_addr:bits256
+bool AccountBlock::get_total_fees(vm::CellSlice&& cs, block::CurrencyCollection& total_fees) const {
+  return cs.advance(4 + 256)                         // acc_trans#5 account_addr:bits256
          && t_AccountTransactions.extract_extra(cs)  // transactions:(HashmapAug 64 ^Transaction Grams)
-         && t_Grams.as_integer_skip_to(cs, total_fees);
+         && total_fees.fetch(cs);
 }
 
 const AccountBlock t_AccountBlock;
 
 bool Aug_ShardAccountBlocks::eval_leaf(vm::CellBuilder& cb, vm::CellSlice& cs) const {
-  td::RefInt256 total_fees;
-  return t_AccountBlock.get_total_fees(std::move(cs), total_fees) &&
-         t_Grams.store_integer_ref(cb, std::move(total_fees));
+  block::CurrencyCollection total_fees;
+  return t_AccountBlock.get_total_fees(std::move(cs), total_fees) && total_fees.store(cb);
 }
 
 const Aug_ShardAccountBlocks aug_ShardAccountBlocks;
-const HashmapAugE t_ShardAccountBlocks{256, aug_ShardAccountBlocks};  // (HashmapAugE 256 AccountBlock Grams)
+const HashmapAugE t_ShardAccountBlocks{256,
+                                       aug_ShardAccountBlocks};  // (HashmapAugE 256 AccountBlock CurrencyCollection)
 
-bool ImportFees::validate_skip(vm::CellSlice& cs) const {
-  return t_Grams.validate_skip(cs) && t_CurrencyCollection.validate_skip(cs);
+bool ImportFees::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_Grams.validate_skip(cs, weak) && t_CurrencyCollection.validate_skip(cs, weak);
 }
 
 bool ImportFees::skip(vm::CellSlice& cs) const {
@@ -1516,44 +1563,44 @@ bool InMsg::skip(vm::CellSlice& cs) const {
   return false;
 }
 
-bool InMsg::validate_skip(vm::CellSlice& cs) const {
+bool InMsg::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case msg_import_ext:
-      return cs.advance(3)                            // msg_import_ext$000
-             && t_Ref_Message.validate_skip(cs)       // msg:^Message
-             && t_Ref_Transaction.validate_skip(cs);  // transaction:^Transaction
+      return cs.advance(3)                                  // msg_import_ext$000
+             && t_Ref_Message.validate_skip(cs, weak)       // msg:^Message
+             && t_Ref_Transaction.validate_skip(cs, weak);  // transaction:^Transaction
     case msg_import_ihr:
-      return cs.advance(3)                           // msg_import_ihr$010
-             && t_Ref_Message.validate_skip(cs)      // msg:^Message
-             && t_Ref_Transaction.validate_skip(cs)  // transaction:^Transaction
-             && t_Grams.validate_skip(cs)            // ihr_fee:Grams
-             && t_RefCell.validate_skip(cs);         // proof_created:^Cell
+      return cs.advance(3)                                 // msg_import_ihr$010
+             && t_Ref_Message.validate_skip(cs, weak)      // msg:^Message
+             && t_Ref_Transaction.validate_skip(cs, weak)  // transaction:^Transaction
+             && t_Grams.validate_skip(cs, weak)            // ihr_fee:Grams
+             && t_RefCell.validate_skip(cs, weak);         // proof_created:^Cell
     case msg_import_imm:
-      return cs.advance(3)                           // msg_import_imm$011
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // in_msg:^MsgEnvelope
-             && t_Ref_Transaction.validate_skip(cs)  // transaction:^Transaction
-             && t_Grams.validate_skip(cs);           // fwd_fee:Grams
+      return cs.advance(3)                                 // msg_import_imm$011
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // in_msg:^MsgEnvelope
+             && t_Ref_Transaction.validate_skip(cs, weak)  // transaction:^Transaction
+             && t_Grams.validate_skip(cs, weak);           // fwd_fee:Grams
     case msg_import_fin:
-      return cs.advance(3)                           // msg_import_fin$100
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // in_msg:^MsgEnvelope
-             && t_Ref_Transaction.validate_skip(cs)  // transaction:^Transaction
-             && t_Grams.validate_skip(cs);           // fwd_fee:Grams
+      return cs.advance(3)                                 // msg_import_fin$100
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // in_msg:^MsgEnvelope
+             && t_Ref_Transaction.validate_skip(cs, weak)  // transaction:^Transaction
+             && t_Grams.validate_skip(cs, weak);           // fwd_fee:Grams
     case msg_import_tr:
-      return cs.advance(3)                           // msg_import_tr$101
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // in_msg:^MsgEnvelope
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // out_msg:^MsgEnvelope
-             && t_Grams.validate_skip(cs);           // transit_fee:Grams
+      return cs.advance(3)                                 // msg_import_tr$101
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // in_msg:^MsgEnvelope
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // out_msg:^MsgEnvelope
+             && t_Grams.validate_skip(cs, weak);           // transit_fee:Grams
     case msg_discard_fin:
-      return cs.advance(3)                           // msg_discard_fin$110
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // in_msg:^MsgEnvelope
-             && cs.advance(64)                       // transaction_id:uint64
-             && t_Grams.validate_skip(cs);           // fwd_fee:Grams
+      return cs.advance(3)                                 // msg_discard_fin$110
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // in_msg:^MsgEnvelope
+             && cs.advance(64)                             // transaction_id:uint64
+             && t_Grams.validate_skip(cs, weak);           // fwd_fee:Grams
     case msg_discard_tr:
-      return cs.advance(3)                           // msg_discard_tr$111
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // in_msg:^MsgEnvelope
-             && cs.advance(64)                       // transaction_id:uint64
-             && t_Grams.validate_skip(cs)            // fwd_fee:Grams
-             && t_RefCell.validate_skip(cs);         // proof_delivered:^Cell
+      return cs.advance(3)                                 // msg_discard_tr$111
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // in_msg:^MsgEnvelope
+             && cs.advance(64)                             // transaction_id:uint64
+             && t_Grams.validate_skip(cs, weak)            // fwd_fee:Grams
+             && t_RefCell.validate_skip(cs, weak);         // proof_delivered:^Cell
   }
   return false;
 }
@@ -1691,37 +1738,37 @@ bool OutMsg::skip(vm::CellSlice& cs) const {
   return false;
 }
 
-bool OutMsg::validate_skip(vm::CellSlice& cs) const {
+bool OutMsg::validate_skip(vm::CellSlice& cs, bool weak) const {
   switch (get_tag(cs)) {
     case msg_export_ext:
-      return cs.advance(3)                            // msg_export_ext$000
-             && t_Ref_Message.validate_skip(cs)       // msg:^Message
-             && t_Ref_Transaction.validate_skip(cs);  // transaction:^Transaction
+      return cs.advance(3)                                  // msg_export_ext$000
+             && t_Ref_Message.validate_skip(cs, weak)       // msg:^Message
+             && t_Ref_Transaction.validate_skip(cs, weak);  // transaction:^Transaction
     case msg_export_imm:
-      return cs.advance(3)                           // msg_export_imm$010
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // out_msg:^MsgEnvelope
-             && t_Ref_Transaction.validate_skip(cs)  // transaction:^Transaction
-             && RefTo<InMsg>{}.validate_skip(cs);    // reimport:^InMsg
+      return cs.advance(3)                                 // msg_export_imm$010
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // out_msg:^MsgEnvelope
+             && t_Ref_Transaction.validate_skip(cs, weak)  // transaction:^Transaction
+             && RefTo<InMsg>{}.validate_skip(cs, weak);    // reimport:^InMsg
     case msg_export_new:
-      return cs.advance(3)                            // msg_export_new$001
-             && t_Ref_MsgEnvelope.validate_skip(cs)   // out_msg:^MsgEnvelope
-             && t_Ref_Transaction.validate_skip(cs);  // transaction:^Transaction
+      return cs.advance(3)                                  // msg_export_new$001
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)   // out_msg:^MsgEnvelope
+             && t_Ref_Transaction.validate_skip(cs, weak);  // transaction:^Transaction
     case msg_export_tr:
-      return cs.advance(3)                           // msg_export_tr$011
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // out_msg:^MsgEnvelope
-             && RefTo<InMsg>{}.validate_skip(cs);    // imported:^InMsg
+      return cs.advance(3)                                 // msg_export_tr$011
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // out_msg:^MsgEnvelope
+             && RefTo<InMsg>{}.validate_skip(cs, weak);    // imported:^InMsg
     case msg_export_deq_imm:
-      return cs.advance(3)                           // msg_export_deq_imm$100
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // out_msg:^MsgEnvelope
-             && RefTo<InMsg>{}.validate_skip(cs);    // reimport:^InMsg
+      return cs.advance(3)                                 // msg_export_deq_imm$100
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // out_msg:^MsgEnvelope
+             && RefTo<InMsg>{}.validate_skip(cs, weak);    // reimport:^InMsg
     case msg_export_deq:
-      return cs.advance(3)                           // msg_export_deq$110
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // out_msg:^MsgEnvelope
-             && cs.advance(64);                      // import_block_lt:uint64
+      return cs.advance(3)                                 // msg_export_deq$110
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // out_msg:^MsgEnvelope
+             && cs.advance(64);                            // import_block_lt:uint64
     case msg_export_tr_req:
-      return cs.advance(3)                           // msg_export_tr_req$111
-             && t_Ref_MsgEnvelope.validate_skip(cs)  // out_msg:^MsgEnvelope
-             && RefTo<InMsg>{}.validate_skip(cs);    // imported:^InMsg
+      return cs.advance(3)                                 // msg_export_tr_req$111
+             && t_Ref_MsgEnvelope.validate_skip(cs, weak)  // out_msg:^MsgEnvelope
+             && RefTo<InMsg>{}.validate_skip(cs, weak);    // imported:^InMsg
   }
   return false;
 }
@@ -1794,8 +1841,8 @@ const OutMsg t_OutMsg;
 const Aug_OutMsgDescr aug_OutMsgDescr;
 const OutMsgDescr t_OutMsgDescr;
 
-bool EnqueuedMsg::validate_skip(vm::CellSlice& cs) const {
-  return cs.advance(64) && t_Ref_MsgEnvelope.validate_skip(cs);
+bool EnqueuedMsg::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return cs.advance(64) && t_Ref_MsgEnvelope.validate_skip(cs, weak);
 }
 
 const EnqueuedMsg t_EnqueuedMsg;
@@ -1829,8 +1876,9 @@ bool OutMsgQueueInfo::skip(vm::CellSlice& cs) const {
   return t_OutMsgQueue.skip(cs) && t_ProcessedInfo.skip(cs) && t_IhrPendingInfo.skip(cs);
 }
 
-bool OutMsgQueueInfo::validate_skip(vm::CellSlice& cs) const {
-  return t_OutMsgQueue.validate_skip(cs) && t_ProcessedInfo.validate_skip(cs) && t_IhrPendingInfo.validate_skip(cs);
+bool OutMsgQueueInfo::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_OutMsgQueue.validate_skip(cs, weak) && t_ProcessedInfo.validate_skip(cs, weak) &&
+         t_IhrPendingInfo.validate_skip(cs, weak);
 }
 
 const OutMsgQueueInfo t_OutMsgQueueInfo;
@@ -1869,7 +1917,7 @@ bool ExtBlkRef::unpack(Ref<vm::CellSlice> cs_ref, ton::BlockIdExt& blkid, ton::L
 const ExtBlkRef t_ExtBlkRef;
 const BlkMasterInfo t_BlkMasterInfo;
 
-bool ShardIdent::validate_skip(vm::CellSlice& cs) const {
+bool ShardIdent::validate_skip(vm::CellSlice& cs, bool weak) const {
   int shard_pfx_len, workchain_id;
   unsigned long long shard_pfx;
   if (cs.fetch_ulong(2) == 0 && cs.fetch_uint_to(6, shard_pfx_len) && cs.fetch_int_to(32, workchain_id) &&
@@ -1934,8 +1982,8 @@ bool ShardIdent::pack(vm::CellBuilder& cb, ton::ShardIdFull data) const {
 
 const ShardIdent t_ShardIdent;
 
-bool BlockIdExt::validate_skip(vm::CellSlice& cs) const {
-  return t_ShardIdent.validate_skip(cs) && cs.advance(32 + 256 * 2);
+bool BlockIdExt::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_ShardIdent.validate_skip(cs, weak) && cs.advance(32 + 256 * 2);
 }
 
 bool BlockIdExt::unpack(vm::CellSlice& cs, ton::BlockIdExt& data) const {
@@ -1955,33 +2003,34 @@ bool BlockIdExt::pack(vm::CellBuilder& cb, const ton::BlockIdExt& data) const {
 const BlockIdExt t_BlockIdExt;
 
 bool ShardState::skip(vm::CellSlice& cs) const {
-  return get_tag(cs) == shard_state && cs.advance(64)  // shard_state#9023afe1 blockchain_id:int32
+  return get_tag(cs) == shard_state && cs.advance(64)  // shard_state#9023afe2 blockchain_id:int32
          && t_ShardIdent.skip(cs)                      // shard_id:ShardIdent
          && cs.advance(32 + 32 + 32 + 64 +
                        32)  // seq_no:int32 vert_seq_no:# gen_utime:uint32 gen_lt:uint64 min_ref_mc_seqno:uint32
          && t_Ref_OutMsgQueueInfo.skip(cs)  // out_msg_queue_info:^OutMsgQueueInfo
          && cs.advance(1)                   // before_split:Bool
-         && t_ShardAccounts.skip(cs)        // accounts:ShardAccounts
+         && cs.advance_refs(1)              // accounts:^ShardAccounts
          &&
          cs.advance_refs(
              1)  // ^[ total_balance:CurrencyCollection total_validator_fees:CurrencyCollection libraries:(HashmapE 256 LibDescr) master_ref:(Maybe BlkMasterInfo) ]
          && Maybe<RefTo<McStateExtra>>{}.skip(cs);  // custom:(Maybe ^McStateExtra)
 }
 
-bool ShardState::validate_skip(vm::CellSlice& cs) const {
+bool ShardState::validate_skip(vm::CellSlice& cs, bool weak) const {
   int seq_no;
-  return get_tag(cs) == shard_state && cs.advance(64)  // shard_state#9023afde blockchain_id:int32
-         && t_ShardIdent.validate_skip(cs)             // shard_id:ShardIdent
+  return get_tag(cs) == shard_state && cs.advance(64)  // shard_state#9023afe2 blockchain_id:int32
+         && t_ShardIdent.validate_skip(cs, weak)       // shard_id:ShardIdent
          && cs.fetch_int_to(32, seq_no)                // seq_no:int32
          && seq_no >= -1                               // { seq_no >= -1 }
          && cs.advance(32 + 32 + 64 + 32)  // vert_seq_no:# gen_utime:uint32 gen_lt:uint64 min_ref_mc_seqno:uint32
-         && t_Ref_OutMsgQueueInfo.validate_skip(cs)  // out_msg_queue_info:^OutMsgQueueInfo
-         && cs.advance(1)                            // before_split:Bool
-         && t_ShardAccounts.validate_skip(cs)        // accounts:ShardAccounts
+         && t_Ref_OutMsgQueueInfo.validate_skip(cs, weak)  // out_msg_queue_info:^OutMsgQueueInfo
+         && cs.advance(1)                                  // before_split:Bool
+         && t_ShardAccounts.validate_skip_ref(cs, weak)    // accounts:^ShardAccounts
          &&
          t_ShardState_aux.validate_skip_ref(
-             cs)  // ^[ total_balance:CurrencyCollection total_validator_fees:CurrencyCollection libraries:(HashmapE 256 LibDescr) master_ref:(Maybe BlkMasterInfo) ]
-         && Maybe<RefTo<McStateExtra>>{}.validate_skip(cs);  // custom:(Maybe ^McStateExtra)
+             cs,
+             weak)  // ^[ total_balance:CurrencyCollection total_validator_fees:CurrencyCollection libraries:(HashmapE 256 LibDescr) master_ref:(Maybe BlkMasterInfo) ]
+         && Maybe<RefTo<McStateExtra>>{}.validate_skip(cs, weak);  // custom:(Maybe ^McStateExtra)
 }
 
 const ShardState t_ShardState;
@@ -1994,12 +2043,12 @@ bool ShardState_aux::skip(vm::CellSlice& cs) const {
          && Maybe<BlkMasterInfo>{}.skip(cs);    // master_ref:(Maybe BlkMasterInfo)
 }
 
-bool ShardState_aux::validate_skip(vm::CellSlice& cs) const {
-  return cs.advance(128)                                 // overload_history:uint64 underload_history:uint64
-         && t_CurrencyCollection.validate_skip(cs)       // total_balance:CurrencyCollection
-         && t_CurrencyCollection.validate_skip(cs)       // total_validator_fees:CurrencyCollection
-         && HashmapE{256, t_LibDescr}.validate_skip(cs)  // libraries:(HashmapE 256 LibDescr)
-         && Maybe<BlkMasterInfo>{}.validate_skip(cs);    // master_ref:(Maybe BlkMasterInfo)
+bool ShardState_aux::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return cs.advance(128)                                       // overload_history:uint64 underload_history:uint64
+         && t_CurrencyCollection.validate_skip(cs, weak)       // total_balance:CurrencyCollection
+         && t_CurrencyCollection.validate_skip(cs, weak)       // total_validator_fees:CurrencyCollection
+         && HashmapE{256, t_LibDescr}.validate_skip(cs, weak)  // libraries:(HashmapE 256 LibDescr)
+         && Maybe<BlkMasterInfo>{}.validate_skip(cs, weak);    // master_ref:(Maybe BlkMasterInfo)
 }
 
 const ShardState_aux t_ShardState_aux;
@@ -2010,10 +2059,10 @@ bool LibDescr::skip(vm::CellSlice& cs) const {
          && Hashmap{256, t_True}.skip(cs);  // publishers:(Hashmap 256 False)
 }
 
-bool LibDescr::validate_skip(vm::CellSlice& cs) const {
+bool LibDescr::validate_skip(vm::CellSlice& cs, bool weak) const {
   return get_tag(cs) == shared_lib_descr && cs.advance(2)  // shared_lib_descr$00
          && cs.fetch_ref().not_null()                      // lib:^Cell
-         && Hashmap{256, t_True}.validate_skip(cs);        // publishers:(Hashmap 256 False)
+         && Hashmap{256, t_True}.validate_skip(cs, weak);  // publishers:(Hashmap 256 False)
 }
 
 const LibDescr t_LibDescr;
@@ -2023,9 +2072,9 @@ bool BlkPrevInfo::skip(vm::CellSlice& cs) const {
          && (!merged || t_ExtBlkRef.skip(cs));  // prev_alt:merged?ExtBlkRef
 }
 
-bool BlkPrevInfo::validate_skip(vm::CellSlice& cs) const {
-  return t_ExtBlkRef.validate_skip(cs)                   // prev_blk_info$_ {merged:#} prev:ExtBlkRef
-         && (!merged || t_ExtBlkRef.validate_skip(cs));  // prev_alt:merged?ExtBlkRef
+bool BlkPrevInfo::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_ExtBlkRef.validate_skip(cs, weak)                   // prev_blk_info$_ {merged:#} prev:ExtBlkRef
+         && (!merged || t_ExtBlkRef.validate_skip(cs, weak));  // prev_alt:merged?ExtBlkRef
 }
 
 const BlkPrevInfo t_BlkPrevInfo_0{0};
@@ -2034,8 +2083,8 @@ bool McStateExtra::skip(vm::CellSlice& cs) const {
   return block::gen::t_McStateExtra.skip(cs);
 }
 
-bool McStateExtra::validate_skip(vm::CellSlice& cs) const {
-  return block::gen::t_McStateExtra.validate_skip(cs);  // FIXME
+bool McStateExtra::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return block::gen::t_McStateExtra.validate_skip(cs, weak);  // ??
 }
 
 const McStateExtra t_McStateExtra;
@@ -2057,6 +2106,30 @@ bool Aug_OldMcBlocksInfo::eval_leaf(vm::CellBuilder& cb, vm::CellSlice& cs) cons
 };
 
 const Aug_OldMcBlocksInfo aug_OldMcBlocksInfo;
+
+bool ShardFeeCreated::skip(vm::CellSlice& cs) const {
+  return t_CurrencyCollection.skip(cs) && t_CurrencyCollection.skip(cs);
+}
+
+bool ShardFeeCreated::validate_skip(vm::CellSlice& cs, bool weak) const {
+  return t_CurrencyCollection.validate_skip(cs, weak) && t_CurrencyCollection.validate_skip(cs, weak);
+}
+
+bool ShardFeeCreated::null_value(vm::CellBuilder& cb) const {
+  return t_CurrencyCollection.null_value(cb) && t_CurrencyCollection.null_value(cb);
+}
+
+bool ShardFeeCreated::add_values(vm::CellBuilder& cb, vm::CellSlice& cs1, vm::CellSlice& cs2) const {
+  return t_CurrencyCollection.add_values(cb, cs1, cs2) && t_CurrencyCollection.add_values(cb, cs1, cs2);
+}
+
+const ShardFeeCreated t_ShardFeeCreated;
+
+bool Aug_ShardFees::eval_leaf(vm::CellBuilder& cb, vm::CellSlice& cs) const {
+  return cb.append_cellslice_bool(cs) && t_ShardFeeCreated.skip(cs) && cs.empty_ext();
+};
+
+const Aug_ShardFees aug_ShardFees;
 
 }  // namespace tlb
 }  // namespace block

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "func.h"
 
 namespace funC {
@@ -287,7 +305,7 @@ bool Op::generate_code_step(Stack& stack) {
         for (var_idx_t i : left) {
           res.emplace_back(i);
         }
-        stack.o << func->compile(res, args);  // compile res := f (args)
+        func->compile(stack.o, res, args);  // compile res := f (args)
       } else {
         std::string name = sym::symbols.get_name(fun_ref->sym_idx);
         stack.o << AsmOp::Custom(name + " CALLDICT", (int)right.size());
@@ -386,7 +404,7 @@ bool Op::generate_code_step(Stack& stack) {
           for (var_idx_t i : left) {
             res.emplace_back(i);
           }
-          stack.o << func->compile(res, args);  // compile res := f (args)
+          func->compile(stack.o, res, args);  // compile res := f (args)
         } else {
           std::string name = sym::symbols.get_name(fun_ref->sym_idx);
           stack.o << AsmOp::Custom(name + " CALLDICT", (int)right.size());
@@ -657,7 +675,9 @@ void CodeBlob::generate_code(AsmOpList& out, int mode) {
     stack.push_new_var(x);
   }
   ops->generate_code_all(stack);
-  optimize_code(out);
+  if (!(mode & Stack::_DisableOpt)) {
+    optimize_code(out);
+  }
 }
 
 void CodeBlob::generate_code(std::ostream& os, int mode, int indent) {

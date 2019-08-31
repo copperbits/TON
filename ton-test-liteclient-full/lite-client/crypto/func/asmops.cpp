@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "parser/srcread.h"
 #include "func.h"
 #include <iostream>
@@ -22,22 +40,37 @@ int is_neg_pow2(td::RefInt256 x) {
   return sgn(x) < 0 ? is_pos_pow2(-x) : 0;
 }
 
+std::ostream& operator<<(std::ostream& os, AsmOp::SReg stack_reg) {
+  int i = stack_reg.idx;
+  if (i >= 0) {
+    if (i < 16) {
+      return os << 's' << i;
+    } else {
+      return os << i << " s()";
+    }
+  } else if (i >= -2) {
+    return os << "s(" << i << ')';
+  } else {
+    return os << i << " s()";
+  }
+}
+
 AsmOp AsmOp::Const(int arg, std::string push_op) {
   std::ostringstream os;
   os << arg << ' ' << push_op;
-  return AsmOp::Custom(os.str());
+  return AsmOp::Const(os.str());
 }
 
 AsmOp AsmOp::make_stk2(int a, int b, const char* str, int delta) {
   std::ostringstream os;
-  os << "s" << a << " s" << b << " " << str;
+  os << SReg(a) << ' ' << SReg(b) << ' ' << str;
   int c = std::max(a, b) + 1;
   return AsmOp::Custom(os.str(), c, c + delta);
 }
 
 AsmOp AsmOp::make_stk3(int a, int b, int c, const char* str, int delta) {
   std::ostringstream os;
-  os << "s" << a << " s" << b << " s" << c << " " << str;
+  os << SReg(a) << ' ' << SReg(b) << ' ' << SReg(c) << ' ' << str;
   int m = std::max(a, std::max(b, c)) + 1;
   return AsmOp::Custom(os.str(), m, m + delta);
 }
@@ -116,6 +149,33 @@ AsmOp AsmOp::IntConst(td::RefInt256 x) {
   return AsmOp::Const(dec_string(std::move(x)) + " PUSHINT");
 }
 
+AsmOp AsmOp::Parse(std::string custom_op) {
+  if (custom_op == "NOP") {
+    return AsmOp::Nop();
+  } else if (custom_op == "SWAP") {
+    return AsmOp::Xchg(1);
+  } else if (custom_op == "DROP") {
+    return AsmOp::Pop(0);
+  } else if (custom_op == "NIP") {
+    return AsmOp::Pop(1);
+  } else if (custom_op == "DUP") {
+    return AsmOp::Push(0);
+  } else if (custom_op == "OVER") {
+    return AsmOp::Push(1);
+  } else {
+    return AsmOp::Custom(custom_op);
+  }
+}
+
+AsmOp AsmOp::Parse(std::string custom_op, int args, int retv) {
+  auto res = Parse(custom_op);
+  if (res.is_custom()) {
+    res.a = args;
+    res.b = retv;
+  }
+  return res;
+}
+
 void AsmOp::out(std::ostream& os) const {
   if (!op.empty()) {
     os << op;
@@ -168,6 +228,15 @@ std::string AsmOp::to_string() const {
     out(os);
     return os.str();
   }
+}
+
+bool AsmOpList::append(const std::vector<AsmOp>& ops) {
+  for (const auto& op : ops) {
+    if (!append(op)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 const_idx_t AsmOpList::register_const(Const new_const) {

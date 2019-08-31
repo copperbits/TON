@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "lexer.h"
 #include "symtable.h"
 #include <sstream>
@@ -70,6 +88,7 @@ bool is_number(std::string str) {
     if (c < 'a' || c > 'f') {
       return false;
     }
+    ++st;
   }
   return true;
 }
@@ -108,7 +127,7 @@ int Lexem::set(std::string _str, const SrcLocation& _loc, int _tp, int _val) {
 Lexer::Lexer(SourceReader& _src, bool init, std::string active_chars, std::string eol_cmts, std::string open_cmts,
              std::string close_cmts, std::string quote_chars)
     : src(_src), eof(false), lexem("", src.here(), Lexem::Undefined), peek_lexem("", {}, Lexem::Undefined) {
-  memset(char_class, 0, sizeof(char_class));
+  std::memset(char_class, 0, sizeof(char_class));
   unsigned char activity = cc::active;
   for (char c : active_chars) {
     if (c == ' ') {
@@ -228,6 +247,7 @@ const Lexem& Lexer::next() {
     }
     lexem.set(std::string{src.get_ptr() + 1, end}, src.here(), qc == '`' ? Lexem::Unknown : Lexem::String);
     src.set_ptr(end + 1);
+    // std::cerr << lexem.name_str() << ' ' << lexem.str << std::endl;
     return lexem;
   }
   int len = 0, pc = -0x100;
@@ -246,6 +266,7 @@ const Lexem& Lexer::next() {
   }
   lexem.set(std::string{src.get_ptr(), end}, src.here());
   src.set_ptr(end);
+  // std::cerr << lexem.name_str() << ' ' << lexem.str << std::endl;
   return lexem;
 }
 

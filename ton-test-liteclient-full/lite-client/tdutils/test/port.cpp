@@ -1,9 +1,30 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/common.h"
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
 #include "td/utils/port/FileFd.h"
+#include "td/utils/port/IoSlice.h"
 #include "td/utils/port/path.h"
 #include "td/utils/port/signals.h"
+#include "td/utils/port/thread.h"
+#include "td/utils/port/thread_local.h"
 #include "td/utils/Slice.h"
 #include "td/utils/tests.h"
 
@@ -30,38 +51,44 @@ TEST(Port, files) {
   int cnt = 0;
   const int ITER_COUNT = 1000;
   for (int i = 0; i < ITER_COUNT; i++) {
-    walk_path(main_dir, [&](CSlice name, WalkPath::Type type) {
-      if (type == WalkPath::Type::NotDir) {
-        ASSERT_TRUE(name == fd_path || name == fd2_path);
-      }
-      cnt++;
-    }).ensure();
+    walk_path(main_dir,
+              [&](CSlice name, WalkPath::Type type) {
+                if (type == WalkPath::Type::NotDir) {
+                  ASSERT_TRUE(name == fd_path || name == fd2_path);
+                }
+                cnt++;
+              })
+        .ensure();
   }
   ASSERT_EQ((5 * 2 + 2) * ITER_COUNT, cnt);
   bool was_abort = false;
-  walk_path(main_dir, [&](CSlice name, WalkPath::Type type) {
-    CHECK(!was_abort);
-    if (type == WalkPath::Type::EnterDir && ends_with(name, PSLICE() << TD_DIR_SLASH << "B")) {
-      was_abort = true;
-      return WalkPath::Action::Abort;
-    }
-    return WalkPath::Action::Continue;
-  }).ensure();
+  walk_path(main_dir,
+            [&](CSlice name, WalkPath::Type type) {
+              CHECK(!was_abort);
+              if (type == WalkPath::Type::EnterDir && ends_with(name, PSLICE() << TD_DIR_SLASH << "B")) {
+                was_abort = true;
+                return WalkPath::Action::Abort;
+              }
+              return WalkPath::Action::Continue;
+            })
+      .ensure();
   CHECK(was_abort);
 
   cnt = 0;
   bool is_first_dir = true;
-  walk_path(main_dir, [&](CSlice name, WalkPath::Type type) {
-    cnt++;
-    if (type == WalkPath::Type::EnterDir) {
-      if (is_first_dir) {
-        is_first_dir = false;
-      } else {
-        return WalkPath::Action::SkipDir;
-      }
-    }
-    return WalkPath::Action::Continue;
-  }).ensure();
+  walk_path(main_dir,
+            [&](CSlice name, WalkPath::Type type) {
+              cnt++;
+              if (type == WalkPath::Type::EnterDir) {
+                if (is_first_dir) {
+                  is_first_dir = false;
+                } else {
+                  return WalkPath::Action::SkipDir;
+                }
+              }
+              return WalkPath::Action::Continue;
+            })
+      .ensure();
   ASSERT_EQ(6, cnt);
 
   ASSERT_EQ(0u, fd.get_size().move_as_ok());
@@ -107,19 +134,20 @@ TEST(Port, Writev) {
   ASSERT_EQ(expected_content, content);
 }
 
-#if TD_PORT_POSIX
+#if TD_PORT_POSIX && !TD_THREAD_UNSUPPORTED
 #include <signal.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-#include <mutex>
-#include <set>
-#include <algorithm>
 
-std::mutex m;
-std::vector<std::string> ptrs;
-std::vector<int *> addrs;
-TD_THREAD_LOCAL int thread_id;
-void on_user_signal(int sig) {
+#include <algorithm>
+#include <mutex>
+
+static std::mutex m;
+static std::vector<std::string> ptrs;
+static std::vector<int *> addrs;
+static TD_THREAD_LOCAL int thread_id;
+
+static void on_user_signal(int sig) {
   int addr;
   addrs[thread_id] = &addr;
   char ptr[10];
@@ -180,9 +208,9 @@ TEST(Post, SignalsAndThread) {
     }
     std::sort(ptrs.begin(), ptrs.end());
     CHECK(ptrs == ans);
-    ASSERT_EQ(10u, std::set<int *>(addrs.begin(), addrs.end()).size());
+    std::sort(addrs.begin(), addrs.end());
+    ASSERT_TRUE(std::unique(addrs.begin(), addrs.end()) == addrs.end());
     //LOG(ERROR) << addrs;
   }
-  //ASSERT_EQ(10u, ptrs.size());
 }
 #endif

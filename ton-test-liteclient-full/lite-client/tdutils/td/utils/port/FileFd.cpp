@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/port/FileFd.h"
 
 #if TD_PORT_WINDOWS
@@ -131,12 +149,12 @@ Result<FileFd> FileFd::open(CSlice filepath, int32 flags, int32 mode) {
     native_flags |= O_APPEND;
   }
 
-  if (flags & Direct) {
 #if TD_LINUX
-    LOG(ERROR) << "DIRECT";
+  if (flags & Direct) {
     native_flags |= O_DIRECT;
-#endif
   }
+#endif
+
   int native_fd = detail::skip_eintr([&] { return ::open(filepath.c_str(), native_flags, static_cast<mode_t>(mode)); });
   if (native_fd < 0) {
     return OS_ERROR(PSLICE() << "File \"" << filepath << "\" can't be " << PrintFlags{flags});
@@ -191,7 +209,9 @@ Result<FileFd> FileFd::open(CSlice filepath, int32 flags, int32 mode) {
       CreateFile(w_filepath.c_str(), desired_access, share_mode, nullptr, creation_disposition, native_flags, nullptr);
 #else
   CREATEFILE2_EXTENDED_PARAMETERS extended_parameters;
-  memset(&extended_parameters, 0, sizeof(extended_parameters));
+  std::memset(&extended_parameters, 0, sizeof(extended_parameters));
+  extended_parameters.dwSize = sizeof(extended_parameters);
+  extended_parameters.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
   extended_parameters.dwFileFlags = native_flags;
   auto handle = CreateFile2(w_filepath.c_str(), desired_access, share_mode, creation_disposition, &extended_parameters);
 #endif

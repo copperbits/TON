@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "vm/db/StaticBagOfCellsDb.h"
 
 #include "vm/cells/CellWithStorage.h"
@@ -5,10 +23,13 @@
 
 #include "vm/cells/ExtCell.h"
 
-#include "td/utils/format.h"
 #include "td/utils/crypto.h"
+#include "td/utils/format.h"
+#include "td/utils/misc.h"
 #include "td/utils/port/RwMutex.h"
 #include "td/utils/ConcurrentHashTable.h"
+
+#include <limits>
 
 namespace vm {
 //
@@ -301,7 +322,7 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
     }
 
     CHECK(offset_view.size() == (size_t)info_.offset_byte_size);
-    return info_.read_offset(offset_view.ubegin());
+    return td::narrow_cast<std::size_t>(info_.read_offset(offset_view.ubegin()));
   }
 
   td::Result<td::int64> load_root_idx(int root_i) {
@@ -317,8 +338,8 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
   }
 
   struct CellLocation {
-    size_t begin;
-    size_t end;
+    std::size_t begin;
+    std::size_t end;
     bool should_cache;
   };
   td::Result<CellLocation> get_cell_location(int idx) {
@@ -336,8 +357,10 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
       res.should_cache = res.end % 2 == 1;
       res.end /= 2;
     }
-    res.begin += info_.data_offset;
-    res.end += info_.data_offset;
+    CHECK(std::numeric_limits<std::size_t>::max() - res.begin >= info_.data_offset);
+    CHECK(std::numeric_limits<std::size_t>::max() - res.end >= info_.data_offset);
+    res.begin += static_cast<std::size_t>(info_.data_offset);
+    res.end += static_cast<std::size_t>(info_.data_offset);
     return res;
   }
 
@@ -355,7 +378,7 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
       return td::Status::Error("bag-of-cell error: not enough data");
     }
     if (options_.check_crc32c && info_.has_crc32c) {
-      std::string buf(info_.total_size, '\0');
+      std::string buf(td::narrow_cast<std::size_t>(info_.total_size), '\0');
       TRY_RESULT(data, data_->view(td::MutableSlice(buf), 0));
       unsigned crc_computed = td::crc32c(td::Slice{data.ubegin(), data.uend() - 4});
       unsigned crc_stored = td::as<unsigned>(data.uend() - 4);
@@ -383,7 +406,8 @@ class StaticBagOfCellsDbLazyImpl : public StaticBagOfCellsDb {
     std::array<char, 1024> buf;
     auto buf_slice = td::MutableSlice(buf.data(), buf.size());
     for (; index_i_ <= idx; index_i_++) {
-      auto offset = info_.data_offset + index_offset_;
+      auto offset = td::narrow_cast<size_t>(info_.data_offset + index_offset_);
+      CHECK(data_->size() >= offset);
       TRY_RESULT(cell, data_->view(buf_slice.copy().truncate(data_->size() - offset), offset));
       CellSerializationInfo cell_info;
       TRY_STATUS(cell_info.init(cell, info_.ref_byte_size));

@@ -104,7 +104,6 @@ set(TDUTILS_SOURCE
   td/utils/StackAllocator.cpp
   td/utils/Status.cpp
   td/utils/StringBuilder.cpp
-  td/utils/tests.cpp
   td/utils/Time.cpp
   td/utils/Timer.cpp
   td/utils/TsFileLog.cpp
@@ -188,6 +187,9 @@ set(TDUTILS_SOURCE
   td/utils/format.h
   td/utils/Gzip.h
   td/utils/GzipByteFlow.h
+  td/utils/Hash.h
+  td/utils/HashMap.h
+  td/utils/HashSet.h
   td/utils/HazardPointers.h
   td/utils/Heap.h
   td/utils/Hints.h
@@ -228,6 +230,7 @@ set(TDUTILS_SOURCE
   td/utils/StorerBase.h
   td/utils/StringBuilder.h
   td/utils/tests.h
+  td/utils/ThreadSafeCounter.h
   td/utils/Time.h
   td/utils/TimedStat.h
   td/utils/Timer.h
@@ -236,10 +239,9 @@ set(TDUTILS_SOURCE
   td/utils/tl_parsers.h
   td/utils/tl_storers.h
   td/utils/translit.h
-  td/utils/ThreadSafeCounter.h
   td/utils/type_traits.h
-  td/utils/uint128.h
   td/utils/UInt.h
+  td/utils/uint128.h
   td/utils/unicode.h
   td/utils/unique_ptr.h
   td/utils/utf8.h
@@ -249,10 +251,9 @@ set(TDUTILS_SOURCE
 
 set(TDUTILS_TEST_SOURCE
   ${CMAKE_CURRENT_SOURCE_DIR}/test/buffer.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/test/crypto.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/ConcurrentHashMap.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/test/crypto.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/Enumerator.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/test/EpochBasedMemoryReclamation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/filesystem.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/gzip.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test/HazardPointers.cpp
@@ -304,7 +305,6 @@ if (CRC32C_FOUND)
   target_link_libraries(tdutils PRIVATE crc32c)
 endif()
 if (ABSL_FOUND)
-  #target_link_libraries(tdutils PRIVATE absl::base absl::time)
   target_link_libraries_system(tdutils absl::flat_hash_map absl::flat_hash_set absl::hash)
 endif()
 
@@ -314,6 +314,10 @@ endif()
 
 if (ANDROID)
   target_link_libraries(tdutils PRIVATE log)
+endif()
+
+if (CMAKE_HOST_SYSTEM_NAME MATCHES "NetBSD")
+  target_link_libraries(tdutils PUBLIC /usr/pkg/gcc5/i486--netbsdelf/lib/libatomic.so)
 endif()
 
 install(TARGETS tdutils EXPORT TdTargets

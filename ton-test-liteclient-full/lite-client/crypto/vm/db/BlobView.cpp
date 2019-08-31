@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "vm/db/BlobView.h"
 
 #include "td/utils/port/FileFd.h"
@@ -6,6 +24,8 @@
 #include "td/utils/format.h"
 #include "td/utils/port/RwMutex.h"
 #include "td/utils/port/MemoryMapping.h"
+
+#include <limits>
 #include <mutex>
 
 namespace vm {
@@ -23,9 +43,12 @@ class BufferSliceBlobViewImpl : public BlobView {
   }
   td::Result<td::Slice> view_impl(td::MutableSlice slice, td::uint64 offset) override {
     // optimize anyway
-    return slice_.as_slice().substr(offset, slice.size());
+    if (offset > std::numeric_limits<std::size_t>::max()) {
+      return td::Slice();
+    }
+    return slice_.as_slice().substr(static_cast<std::size_t>(offset), slice.size());
   }
-  size_t size() override {
+  td::uint64 size() override {
     return slice_.size();
   }
 
@@ -43,7 +66,7 @@ class FileBlobViewImpl : public BlobView {
   FileBlobViewImpl(td::FileFd fd, td::uint64 file_size) : fd_(std::move(fd)), file_size_(file_size) {
   }
 
-  size_t size() override {
+  td::uint64 size() override {
     return file_size_;
   }
   td::Result<td::Slice> view_impl(td::MutableSlice slice, td::uint64 offset) override {
@@ -133,7 +156,7 @@ class FileMemoryMappingBlobViewImpl : public BlobView {
     // optimize anyway
     return mapping_.as_slice().substr(offset, slice.size());
   }
-  size_t size() override {
+  td::uint64 size() override {
     return mapping_.as_slice().size();
   }
 

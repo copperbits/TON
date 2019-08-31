@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include <string>
 #include <vector>
@@ -134,6 +152,7 @@ struct Constructor {
   bool is_fwd;
   bool is_enum;
   bool is_simple_enum;
+  bool is_special;
   bool has_fixed_size;
   bool any_bits;
   MinMaxSize size;
@@ -158,6 +177,7 @@ struct Constructor {
       , is_fwd(false)
       , is_enum(false)
       , is_simple_enum(false)
+      , is_special(false)
       , has_fixed_size(false)
       , any_bits(false) {
     set_tag(_tag);
@@ -166,7 +186,7 @@ struct Constructor {
   void show(std::ostream& os, int mode = 0) const;
   std::string get_name() const;
   std::string get_qualified_name() const;
-  bool isomorphic_to(const Constructor& cs) const;
+  bool isomorphic_to(const Constructor& cs, bool allow_other_names) const;
   unsigned long long compute_tag() const;
   void check_assign_tag();
   bool compute_is_fwd();
@@ -196,6 +216,7 @@ struct Type {
   bool is_builtin;
   bool is_enum;
   bool is_simple_enum;
+  bool is_special;
   bool is_pfx_determ;
   bool is_param_determ;
   bool is_const_param_determ;
@@ -232,6 +253,7 @@ struct Type {
       , is_builtin(_final)
       , is_enum(!_final)
       , is_simple_enum(!_final)
+      , is_special(false)
       , is_pfx_determ(false)
       , is_param_determ(false)
       , is_const_param_determ(false)
@@ -257,7 +279,7 @@ struct Type {
     }
   }
   void bind_constructor(const src::SrcLocation& loc, Constructor* cs);
-  bool unique_constructor_equals(const Constructor& cs) const;
+  bool unique_constructor_equals(const Constructor& cs, bool allow_other_names = false) const;
   void print_name(std::ostream& os) const;
   std::string get_name() const;
   bool recompute_begins_with();

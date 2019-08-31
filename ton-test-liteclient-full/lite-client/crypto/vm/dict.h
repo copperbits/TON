@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include "common/bitstring.h"
 #include "vm/cells.h"
@@ -212,6 +230,10 @@ class DictionaryFixed : public DictionaryBase {
     return lookup(key.bits(), key.size());
   }
   template <typename T>
+  Ref<CellSlice> lookup_delete(const T& key) {
+    return lookup_delete(key.bits(), key.size());
+  }
+  template <typename T>
   Ref<CellSlice> get_minmax_key(T& key_buffer, bool fetch_max = false, bool invert_first = false) {
     return get_minmax_key(key_buffer.bits(), key_buffer.size(), fetch_max, invert_first);
   }
@@ -294,6 +316,10 @@ class Dictionary final : public DictionaryFixed {
     return lookup_ref(key.bits(), key.size());
   }
   template <typename T>
+  Ref<Cell> lookup_delete_ref(const T& key) {
+    return lookup_delete_ref(key.bits(), key.size());
+  }
+  template <typename T>
   bool set(const T& key, Ref<CellSlice> value, SetMode mode = SetMode::Set) {
     return set(key.bits(), key.size(), std::move(value), mode);
   }
@@ -308,6 +334,22 @@ class Dictionary final : public DictionaryFixed {
   template <typename T>
   bool set_builder(const T& key, Ref<vm::CellBuilder> val_ref, SetMode mode = SetMode::Set) {
     return set_builder(key.bits(), key.size(), std::move(val_ref), mode);
+  }
+  template <typename T>
+  Ref<CellSlice> lookup_set(const T& key, Ref<CellSlice> value, SetMode mode = SetMode::Set) {
+    return lookup_set(key.bits(), key.size(), std::move(value), mode);
+  }
+  template <typename T>
+  Ref<Cell> lookup_set_ref(const T& key, Ref<Cell> val_ref, SetMode mode = SetMode::Set) {
+    return lookup_set_ref(key.bits(), key.size(), std::move(val_ref), mode);
+  }
+  template <typename T>
+  Ref<CellSlice> lookup_set_builder(const T& key, const CellBuilder& val_b, SetMode mode = SetMode::Set) {
+    return lookup_set_builder(key.bits(), key.size(), val_b, mode);
+  }
+  template <typename T>
+  Ref<CellSlice> lookup_set_builder(const T& key, Ref<vm::CellBuilder> val_ref, SetMode mode = SetMode::Set) {
+    return lookup_set_builder(key.bits(), key.size(), std::move(val_ref), mode);
   }
 
  private:
@@ -402,6 +444,10 @@ class AugmentedDictionary final : public DictionaryFixed {
   template <typename T>
   Ref<CellSlice> lookup_delete(const T& key) {
     return lookup_delete(key.bits(), key.size());
+  }
+  template <typename T>
+  Ref<Cell> lookup_delete_ref(const T& key) {
+    return lookup_delete_ref(key.bits(), key.size());
   }
 
   Ref<CellSlice> extract_value(Ref<CellSlice> value_extra) const;

@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -19,14 +37,14 @@
 #include "td/utils/crypto.h"
 #include "td/utils/misc.h"
 
-std::stringstream create_ss() {
+static std::stringstream create_ss() {
   std::stringstream ss;
   ss.imbue(std::locale::classic());
   ss.setf(std::ios_base::fixed, std::ios_base::floatfield);
   ss.precision(6);
   return ss;
 }
-std::stringstream os = create_ss();
+static std::stringstream os = create_ss();
 
 void show_total_cells(std::ostream& stream) {
   stream << "total cells = " << vm::DataCell::get_total_data_cells() << std::endl;
@@ -498,5 +516,56 @@ TEST(base64, main) {
     os << std::hex << ((u[i] >> 4) & 15) << (u[i] & 15);
   }
   os << std::dec << std::endl;
+  REGRESSION_VERIFY(os.str());
+}
+
+void check_bits256_scan(std::ostream& os, td::Bits256 a, td::Bits256 b) {
+  auto c = a ^ b;
+  auto bit = c.count_leading_zeroes();
+  auto bit2 = a.count_matching(b);
+  // os << a.to_hex() << " and " << b.to_hex() << " match in " << bit << " or " << bit2 << " first bits" << std::endl;
+  // std::cerr << a.to_hex() << " and " << b.to_hex() << " match in " << bit << " or " << bit2 << " first bits (a XOR b = " << c.to_hex() << ")" << std::endl;
+  CHECK((int)bit >= 0 && bit <= 256);
+  for (td::uint32 i = 0; i < bit; i++) {
+    CHECK(a[i] == b[i]);
+  }
+  CHECK(bit == 256 || a[bit] != b[bit]);
+  CHECK(bit == bit2);
+}
+
+void check_bits_scan(std::ostream& os, td::ConstBitPtr a, bool value) {
+  auto bit = (unsigned)a.scan(value, 256);
+  CHECK((int)bit >= 0 && bit <= 256);
+  for (td::uint32 i = 0; i < bit; i++) {
+    CHECK(a[i] == value);
+  }
+  CHECK(bit == 256 || a[bit] != value);
+}
+
+TEST(bits256_scan, main) {
+  os = create_ss();
+  td::Bits256 a, b;
+  int k = 0;
+  unsigned char r[1024];
+  for (auto& c : r) {
+    c = (k & 0x80) ? (unsigned char)(k >> 8) : 0;
+    k = 69069 * k + 1;
+  }
+  for (k = 0; k < 32; k++) {
+    a = td::ConstBitPtr{r + 32 * k};
+    for (int j = 0; j < 32; j++) {
+      b = td::ConstBitPtr{r + 32 * j};
+      check_bits256_scan(os, a, b);
+    }
+    b = a;
+    unsigned i = r[7 + k];
+    b[i] = b[i] ^ true;
+    check_bits256_scan(os, a, b);
+  }
+  for (k = 0; k < 256; k++) {
+    check_bits_scan(os, td::ConstBitPtr{r} + k, false);
+    check_bits_scan(os, td::ConstBitPtr{r} + k, true);
+  }
+  os << "bits256_scan test OK";
   REGRESSION_VERIFY(os.str());
 }

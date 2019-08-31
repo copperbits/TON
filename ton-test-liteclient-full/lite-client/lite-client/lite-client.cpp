@@ -1,4 +1,23 @@
+/* 
+    This file is part of TON Blockchain source code.
+
+    TON Blockchain is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation; either version 2
+    of the License, or (at your option) any later version.
+
+    TON Blockchain is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with TON Blockchain.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "lite-client.h"
+
 #include "adnl/adnl-ext-client.h"
 #include "tl-utils/lite-utils.hpp"
 #include "auto/tl/ton_api_json.h"
@@ -70,22 +89,23 @@ void TestNode::run() {
   io_ = td::TerminalIO::create("> ", readline_enabled_, std::make_unique<Cb>(actor_id(this)));
   td::actor::send_closure(io_, &td::TerminalIO::set_log_interface);
 
-  auto G = td::read_file(global_config_).move_as_ok();
-  auto gc_j = td::json_decode(G.as_slice()).move_as_ok();
-  ton::ton_api::liteclient_config_global gc;
-  ton::ton_api::from_json(gc, gc_j.get_object()).ensure();
-
-  CHECK(gc.liteservers_.size() > 0);
-  auto idx =
-      liteserver_idx_ >= 0 ? liteserver_idx_ : td::Random::fast(0, static_cast<td::uint32>(gc.liteservers_.size() - 1));
-  CHECK(idx >= 0 && static_cast<td::uint32>(idx) <= gc.liteservers_.size());
-  auto& cli = gc.liteservers_[idx];
-  td::IPAddress addr;
-  addr.init_host_port(td::IPAddress::ipv4_to_str(cli->ip_), cli->port_).ensure();
-  td::TerminalIO::out() << "using liteserver " << idx << " with addr " << addr << "\n";
+  if (remote_public_key_.empty()) {
+    auto G = td::read_file(global_config_).move_as_ok();
+    auto gc_j = td::json_decode(G.as_slice()).move_as_ok();
+    ton::ton_api::liteclient_config_global gc;
+    ton::ton_api::from_json(gc, gc_j.get_object()).ensure();
+    CHECK(gc.liteservers_.size() > 0);
+    auto idx = liteserver_idx_ >= 0 ? liteserver_idx_
+                                    : td::Random::fast(0, static_cast<td::uint32>(gc.liteservers_.size() - 1));
+    CHECK(idx >= 0 && static_cast<td::uint32>(idx) <= gc.liteservers_.size());
+    auto& cli = gc.liteservers_[idx];
+    remote_addr_.init_host_port(td::IPAddress::ipv4_to_str(cli->ip_), cli->port_).ensure();
+    remote_public_key_ = ton::PublicKey{cli->id_};
+    td::TerminalIO::out() << "using liteserver " << idx << " with addr " << remote_addr_ << "\n";
+  }
 
   client_ =
-      ton::adnl::AdnlExtClient::create(ton::adnl::AdnlNodeIdFull::create(cli->id_).move_as_ok(), addr, make_callback());
+      ton::adnl::AdnlExtClient::create(ton::adnl::AdnlNodeIdFull{remote_public_key_}, remote_addr_, make_callback());
 }
 
 bool TestNode::envelope_send_query(td::BufferSlice query, td::Promise<td::BufferSlice> promise) {
@@ -321,10 +341,10 @@ td::Status TestNode::save_db_file(ton::FileHash file_hash, td::BufferSlice data)
     std::string tmp_fname = block::compute_db_tmp_filename(db_root_ + '/', file_hash, i);
     auto res = block::save_binary_file(tmp_fname, data);
     if (res.is_ok()) {
-      if (rename(tmp_fname.c_str(), fname.c_str()) < 0) {
+      if (std::rename(tmp_fname.c_str(), fname.c_str()) < 0) {
         int err = errno;
-        LOG(ERROR) << "cannot rename " << tmp_fname << " to " << fname << " : " << strerror(err);
-        return td::Status::Error(std::string{"cannot rename file: "} + strerror(err));
+        LOG(ERROR) << "cannot rename " << tmp_fname << " to " << fname << " : " << std::strerror(err);
+        return td::Status::Error(std::string{"cannot rename file: "} + std::strerror(err));
       } else {
         LOG(INFO) << data.size() << " bytes saved into file " << fname;
         return td::Status::OK();
@@ -395,7 +415,7 @@ bool TestNode::convert_uint64(std::string word, td::uint64& val) {
   }
   const char* ptr = word.c_str();
   char* end = nullptr;
-  val = strtoull(ptr, &end, 10);
+  val = std::strtoull(ptr, &end, 10);
   if (end == ptr + word.size()) {
     return true;
   } else {
@@ -411,7 +431,7 @@ bool TestNode::convert_int64(std::string word, td::int64& val) {
   }
   const char* ptr = word.c_str();
   char* end = nullptr;
-  val = strtoll(ptr, &end, 10);
+  val = std::strtoll(ptr, &end, 10);
   if (end == ptr + word.size()) {
     return true;
   } else {
@@ -507,7 +527,7 @@ bool TestNode::parse_block_id_ext(std::string blkid_str, ton::BlockIdExt& blkid,
     return false;
   }
   char buffer[40];
-  memcpy(buffer, blkid_str.c_str(), pos + 1);
+  std::memcpy(buffer, blkid_str.c_str(), pos + 1);
   buffer[pos + 1] = 0;
   unsigned long long shard;
   if (sscanf(buffer, "(%d,%016llx,%u)", &blkid.id.workchain, &shard, &blkid.id.seqno) != 3) {
@@ -635,20 +655,18 @@ bool TestNode::show_help(std::string command) {
 
 bool TestNode::do_parse_line() {
   ton::WorkchainId workchain = ton::masterchainId;  // change to basechain later
-  ton::StdSmcAddress addr;
-  ton::BlockIdExt blkid;
-  ton::LogicalTime lt;
-  ton::Bits256 hash;
-  ton::ShardIdFull shard;
-  ton::BlockSeqno seqno;
-  ton::UnixTime utime;
-  unsigned count;
+  ton::StdSmcAddress addr{};
+  ton::BlockIdExt blkid{};
+  ton::LogicalTime lt{};
+  ton::Bits256 hash{};
+  ton::ShardIdFull shard{};
+  ton::BlockSeqno seqno{};
+  ton::UnixTime utime{};
+  unsigned count{};
   std::string word = get_word();
   skipspc();
   if (word == "time") {
     return eoln() && get_server_time();
-  } else if (word == "setverbosity") {
-    return !eoln() && set_error(send_set_verbosity(get_word())) && eoln();
   } else if (word == "last") {
     return eoln() && get_server_mc_block_id();
   } else if (word == "sendfile") {
@@ -692,7 +710,7 @@ bool TestNode::do_parse_line() {
   } else if (word == "quit" && eoln()) {
     LOG(INFO) << "Exiting";
     stop();
-    // exit(0);
+    // std::exit(0);
     return true;
   } else if (word == "help") {
     return show_help(get_line_tail());
@@ -738,27 +756,6 @@ td::Status TestNode::send_ext_msg_from_filename(std::string filename) {
     });
     auto b =
         ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_sendMessage>(F.move_as_ok()), true);
-    return envelope_send_query(std::move(b), std::move(P)) ? td::Status::OK()
-                                                           : td::Status::Error("cannot send query to server");
-  } else {
-    return td::Status::Error("server connection not ready");
-  }
-}
-
-td::Status TestNode::send_set_verbosity(std::string verbosity_str) {
-  auto value = std::stoi(verbosity_str);
-  if (ready_ && !client_.empty()) {
-    LOG(ERROR) << "sending set verbosity " << value << " query";
-    auto P = td::PromiseCreator::lambda([](td::Result<td::BufferSlice> R) {
-      if (R.is_error()) {
-        LOG(INFO) << "failed to set verbosity: " << R.move_as_error();
-        return;
-      }
-      LOG(INFO) << "success set verbosity";
-    });
-    auto b = ton::serialize_tl_object(ton::create_tl_object<ton::lite_api::liteServer_debug_setVerbosity>(
-                                          ton::create_tl_object<ton::lite_api::liteServer_debug_verbosity>(value)),
-                                      true);
     return envelope_send_query(std::move(b), std::move(P)) ? td::Status::OK()
                                                            : td::Status::Error("cannot send query to server");
   } else {
@@ -991,8 +988,6 @@ bool unpack_message(std::ostream& os, Ref<vm::Cell> msg, int mode) {
     return true;
   }
   vm::CellSlice cs{vm::NoVmOrd(), msg};
-  block::gen::CommonMsgInfo info;
-  Ref<vm::CellSlice> src, dest;
   switch (block::gen::t_CommonMsgInfo.get_tag(cs)) {
     case block::gen::CommonMsgInfo::ext_in_msg_info: {
       block::gen::CommonMsgInfo::Record_ext_in_msg_info info;
@@ -1082,16 +1077,16 @@ void TestNode::got_last_transactions(std::vector<ton::BlockIdExt> blkids, td::Bu
   transaction_list.lt = lt;
   transaction_list.hash = hash;
   transaction_list.transactions_boc = std::move(transactions_boc);
-  auto r_info = transaction_list.validate();
-  if (r_info.is_error()) {
-    LOG(ERROR) << "got_last_transactions: " << r_info.error();
+  auto r_account_state_info = transaction_list.validate();
+  if (r_account_state_info.is_error()) {
+    LOG(ERROR) << "got_last_transactions: " << r_account_state_info.error();
     return;
   }
-  auto info = r_info.move_as_ok();
+  auto account_state_info = r_account_state_info.move_as_ok();
   unsigned c = 0;
   auto out = td::TerminalIO::out();
-  CHECK(!info.transactions.empty());
-  for (auto& info : info.transactions) {
+  CHECK(!account_state_info.transactions.empty());
+  for (auto& info : account_state_info.transactions) {
     const auto& blkid = info.blkid;
     out << "transaction #" << c << " from block " << blkid.to_str() << (dump ? " is " : "\n");
     if (dump) {
@@ -1106,7 +1101,7 @@ void TestNode::got_last_transactions(std::vector<ton::BlockIdExt> blkids, td::Bu
       return;
     }
     out << "  time=" << trans.now << " outmsg_cnt=" << trans.outmsg_cnt << std::endl;
-    auto in_msg = trans.in_msg->prefetch_ref();
+    auto in_msg = trans.r1.in_msg->prefetch_ref();
     if (in_msg.is_null()) {
       out << "  (no inbound message)" << std::endl;
     } else {
@@ -1115,7 +1110,7 @@ void TestNode::got_last_transactions(std::vector<ton::BlockIdExt> blkids, td::Bu
         out << "    " << block::gen::t_Message_Any.as_string_ref(in_msg, 4);  // indentation = 4 spaces
       }
     }
-    vm::Dictionary dict{trans.out_msgs, 15};
+    vm::Dictionary dict{trans.r1.out_msgs, 15};
     for (int x = 0; x < trans.outmsg_cnt && x < 100; x++) {
       auto out_msg = dict.lookup_ref(td::BitArray<15>{x});
       out << "  outbound message #" << x << ": " << message_info_str(out_msg, 1 * 0) << std::endl;
@@ -1125,11 +1120,11 @@ void TestNode::got_last_transactions(std::vector<ton::BlockIdExt> blkids, td::Bu
     }
     register_blkid(blkid);  // unsafe?
   }
-  auto& last = info.transactions.back();
+  auto& last = account_state_info.transactions.back();
   if (last.prev_trans_lt > 0) {
     out << "previous transaction has lt " << last.prev_trans_lt << " hash " << last.prev_trans_hash.to_hex()
         << std::endl;
-    if (info.transactions.size() < count) {
+    if (account_state_info.transactions.size() < count) {
       LOG(WARNING) << "obtained less transactions than required";
     }
   } else {
@@ -1594,6 +1589,16 @@ int main(int argc, char* argv[]) {
   p.add_option('i', "idx", "set liteserver idx", [&](td::Slice arg) {
     auto idx = td::to_integer<int>(arg);
     td::actor::send_closure(x, &TestNode::set_liteserver_idx, idx);
+    return td::Status::OK();
+  });
+  p.add_option('a', "addr", "connect to ip:port", [&](td::Slice arg) {
+    td::IPAddress addr;
+    TRY_STATUS(addr.init_host_port(arg.str()));
+    td::actor::send_closure(x, &TestNode::set_remote_addr, addr);
+    return td::Status::OK();
+  });
+  p.add_option('p', "pub", "remote public key", [&](td::Slice arg) {
+    td::actor::send_closure(x, &TestNode::set_public_key, td::BufferSlice{arg});
     return td::Status::OK();
   });
   p.add_option('d', "daemonize", "set SIGHUP", [&]() {

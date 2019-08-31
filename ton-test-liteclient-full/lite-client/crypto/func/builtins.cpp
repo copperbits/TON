@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "func.h"
 
 namespace funC {
@@ -25,21 +43,34 @@ SymDef* predefine_builtin_func(std::string name, TypeExpr* func_type) {
   return def;
 }
 
-void define_builtin_func(std::string name, TypeExpr* func_type, const AsmOp& macro, bool impure = false) {
-  SymDef* def = predefine_builtin_func(name, func_type);
-  def->value = new SymValAsmFunc{func_type, macro, impure};
-}
-
-void define_builtin_func(std::string name, TypeExpr* func_type, const simple_compile_func_t func, bool impure = false) {
+template <typename T>
+void define_builtin_func(std::string name, TypeExpr* func_type, const T& func, bool impure = false) {
   SymDef* def = predefine_builtin_func(name, func_type);
   def->value = new SymValAsmFunc{func_type, func, impure};
 }
 
-void define_builtin_func(std::string name, TypeExpr* func_type, const simple_compile_func_t func,
+template <typename T>
+void define_builtin_func(std::string name, TypeExpr* func_type, const T& func, std::initializer_list<int> arg_order,
+                         std::initializer_list<int> ret_order = {}, bool impure = false) {
+  SymDef* def = predefine_builtin_func(name, func_type);
+  def->value = new SymValAsmFunc{func_type, func, arg_order, ret_order, impure};
+}
+
+void define_builtin_func(std::string name, TypeExpr* func_type, const AsmOp& macro,
                          std::initializer_list<int> arg_order, std::initializer_list<int> ret_order = {},
                          bool impure = false) {
   SymDef* def = predefine_builtin_func(name, func_type);
-  def->value = new SymValAsmFunc{func_type, func, arg_order, ret_order, impure};
+  def->value = new SymValAsmFunc{func_type, make_simple_compile(macro), arg_order, ret_order, impure};
+}
+
+bool SymValAsmFunc::compile(AsmOpList& dest, std::vector<VarDescr>& in, std::vector<VarDescr>& out) const {
+  if (simple_compile) {
+    return dest.append(simple_compile(in, out));
+  } else if (ext_compile) {
+    return ext_compile(dest, in, out);
+  } else {
+    return false;
+  }
 }
 
 /*
@@ -657,11 +688,11 @@ AsmOp compile_cmp_int(std::vector<VarDescr>& res, std::vector<VarDescr>& args, i
   static const char* cmp_names[] = {"", "GREATER", "EQUAL", "GEQ", "LESS", "NEQ", "LEQ", "CMP"};
   static int cmp_int_delta[] = {0, 0, 0, -1, 0, 0, 1};
   if (mode != 7) {
-    if (y.is_int_const()) {
+    if (y.is_int_const() && y.int_const >= -128 && y.int_const <= 127) {
       y.unused();
       return exec_arg_op(cmp_int_names[mode], y.int_const + cmp_int_delta[mode], 1);
     }
-    if (x.is_int_const()) {
+    if (x.is_int_const() && x.int_const >= -128 && x.int_const <= 127) {
       x.unused();
       mode = ((mode & 4) >> 2) | (mode & 2) | ((mode & 1) << 2);
       return exec_arg_op(cmp_int_names[mode], x.int_const + cmp_int_delta[mode], 1);
@@ -746,22 +777,89 @@ AsmOp compile_store_int(std::vector<VarDescr>& res, std::vector<VarDescr>& args,
   return exec_op("ST"s + (sgnd ? "IX" : "UX"), 3, 1);
 }
 
+AsmOp compile_fetch_slice(std::vector<VarDescr>& res, std::vector<VarDescr>& args, bool fetch) {
+  assert(args.size() == 2 && res.size() == 1 + (unsigned)fetch);
+  auto& y = args[1];
+  int v = -1;
+  if (y.is_int_const() && y.int_const > 0 && y.int_const <= 256) {
+    v = (int)y.int_const->to_long();
+    if (v > 0) {
+      y.unused();
+      return exec_arg_op(fetch ? "LDSLICE" : "PLDSLICE", v, 1, 1 + (unsigned)fetch);
+    }
+  }
+  return exec_op(fetch ? "LDSLICEX" : "PLDSLICEX", 2, 1 + (unsigned)fetch);
+}
+
+// <type> <type>_at(tuple t, int index) asm "INDEXVAR";
+AsmOp compile_tuple_at(std::vector<VarDescr>& res, std::vector<VarDescr>& args) {
+  assert(args.size() == 2 && res.size() == 1);
+  auto& y = args[1];
+  if (y.is_int_const() && y.int_const >= 0 && y.int_const < 16) {
+    y.unused();
+    return exec_arg_op("INDEX", y.int_const, 1, 1);
+  }
+  return exec_op("INDEXVAR", 2, 1);
+}
+
+// int null?(X arg)
+AsmOp compile_is_null(std::vector<VarDescr>& res, std::vector<VarDescr>& args) {
+  assert(args.size() == 1 && res.size() == 1);
+  auto &x = args[0], &r = res[0];
+  if (x.always_null() || x.always_not_null()) {
+    x.unused();
+    r.set_const(x.always_null() ? -1 : 0);
+    return push_const(r.int_const);
+  }
+  res[0].val = VarDescr::ValBool;
+  return exec_op("ISNULL", 1, 1);
+}
+
+bool compile_run_method(AsmOpList& code, std::vector<VarDescr>& res, std::vector<VarDescr>& args, int n,
+                        bool has_value) {
+  assert(args.size() == (unsigned)n + 1 && res.size() == (unsigned)has_value);
+  auto& x = args[0];
+  if (x.is_int_const() && x.int_const->unsigned_fits_bits(14)) {
+    x.unused();
+    code << exec_arg_op("PREPAREDICT", x.int_const, 0, 2);
+  } else {
+    code << exec_op("c3 PUSH", 0, 1);
+  }
+  code << exec_arg_op(has_value ? "1 CALLXARGS" : "0 CALLXARGS", n, n + 2, (unsigned)has_value);
+  return true;
+}
+
 void define_builtins() {
   using namespace std::placeholders;
   auto Unit = TypeExpr::new_unit();
   auto Int = TypeExpr::new_atomic(_Int);
+  auto Cell = TypeExpr::new_atomic(_Cell);
   auto Slice = TypeExpr::new_atomic(_Slice);
   auto Builder = TypeExpr::new_atomic(_Builder);
   // auto Null = TypeExpr::new_atomic(_Null);
+  auto Tuple = TypeExpr::new_atomic(_Tuple);
   auto Int2 = TypeExpr::new_tensor({Int, Int});
   auto Int3 = TypeExpr::new_tensor({Int, Int, Int});
+  auto TupleInt = TypeExpr::new_tensor({Tuple, Int});
+  auto SliceInt = TypeExpr::new_tensor({Slice, Int});
+  auto X = TypeExpr::new_var();
+  auto Y = TypeExpr::new_var();
+  auto Z = TypeExpr::new_var();
+  auto T = TypeExpr::new_var();
+  auto XY = TypeExpr::new_tensor({X, Y});
+  auto XYZ = TypeExpr::new_tensor({X, Y, Z});
+  auto XYZT = TypeExpr::new_tensor({X, Y, Z, T});
   auto arith_bin_op = TypeExpr::new_map(Int2, Int);
   auto arith_un_op = TypeExpr::new_map(Int, Int);
   auto impure_bin_op = TypeExpr::new_map(Int2, Unit);
   auto impure_un_op = TypeExpr::new_map(Int, Unit);
-  auto fetch_int_op = TypeExpr::new_map(TypeExpr::new_tensor({Slice, Int}), TypeExpr::new_tensor({Slice, Int}));
-  auto prefetch_int_op = TypeExpr::new_map(TypeExpr::new_tensor({Slice, Int}), Int);
+  auto fetch_int_op = TypeExpr::new_map(SliceInt, SliceInt);
+  auto prefetch_int_op = TypeExpr::new_map(SliceInt, Int);
   auto store_int_op = TypeExpr::new_map(TypeExpr::new_tensor({Builder, Int, Int}), Builder);
+  auto store_int_method =
+      TypeExpr::new_map(TypeExpr::new_tensor({Builder, Int, Int}), TypeExpr::new_tensor({Builder, Unit}));
+  auto fetch_slice_op = TypeExpr::new_map(SliceInt, TypeExpr::new_tensor({Slice, Slice}));
+  auto prefetch_slice_op = TypeExpr::new_map(SliceInt, Slice);
   //auto arith_null_op = TypeExpr::new_map(TypeExpr::new_unit(), Int);
   define_builtin_func("_+_", arith_bin_op, compile_add);
   define_builtin_func("_-_", arith_bin_op, compile_sub);
@@ -781,6 +879,7 @@ void define_builtins() {
   define_builtin_func("_&_", arith_bin_op, AsmOp::Custom("AND", 2));
   define_builtin_func("_|_", arith_bin_op, AsmOp::Custom("OR", 2));
   define_builtin_func("_^_", arith_bin_op, AsmOp::Custom("XOR", 2));
+  define_builtin_func("~_", arith_un_op, AsmOp::Custom("NOT", 1));
   define_builtin_func("^_+=_", arith_bin_op, compile_add);
   define_builtin_func("^_-=_", arith_bin_op, compile_sub);
   define_builtin_func("^_*=_", arith_bin_op, compile_mul);
@@ -810,6 +909,27 @@ void define_builtins() {
   define_builtin_func("true", Int, /* AsmOp::Const("TRUE") */ std::bind(compile_bool_const, _1, _2, true));
   define_builtin_func("false", Int, /* AsmOp::Const("FALSE") */ std::bind(compile_bool_const, _1, _2, false));
   // define_builtin_func("null", Null, AsmOp::Const("PUSHNULL"));
+  define_builtin_func("nil", Tuple, AsmOp::Const("PUSHNULL"));
+  define_builtin_func("null?", TypeExpr::new_forall({X}, TypeExpr::new_map(X, Int)), compile_is_null);
+  define_builtin_func("cons", TypeExpr::new_forall({X}, TypeExpr::new_map(TypeExpr::new_tensor(X, Tuple), Tuple)),
+                      AsmOp::Custom("CONS", 2, 1));
+  define_builtin_func("uncons", TypeExpr::new_forall({X}, TypeExpr::new_map(Tuple, TypeExpr::new_tensor(X, Tuple))),
+                      AsmOp::Custom("UNCONS", 1, 2));
+  define_builtin_func("list_next", TypeExpr::new_forall({X}, TypeExpr::new_map(Tuple, TypeExpr::new_tensor(Tuple, X))),
+                      AsmOp::Custom("UNCONS", 1, 2), {}, {1, 0});
+  define_builtin_func("car", TypeExpr::new_forall({X}, TypeExpr::new_map(Tuple, X)), AsmOp::Custom("CAR", 1, 1));
+  define_builtin_func("cdr", TypeExpr::new_map(Tuple, Tuple), AsmOp::Custom("CDR", 1, 1));
+  define_builtin_func("pair", TypeExpr::new_forall({X, Y}, TypeExpr::new_map(XY, Tuple)), AsmOp::Custom("PAIR", 2, 1));
+  define_builtin_func("unpair", TypeExpr::new_forall({X, Y}, TypeExpr::new_map(Tuple, XY)),
+                      AsmOp::Custom("UNPAIR", 1, 2));
+  define_builtin_func("triple", TypeExpr::new_forall({X, Y, Z}, TypeExpr::new_map(XYZ, Tuple)),
+                      AsmOp::Custom("TRIPLE", 3, 1));
+  define_builtin_func("untriple", TypeExpr::new_forall({X, Y, Z}, TypeExpr::new_map(Tuple, XYZ)),
+                      AsmOp::Custom("UNTRIPLE", 1, 3));
+  define_builtin_func("tuple4", TypeExpr::new_forall({X, Y, Z, T}, TypeExpr::new_map(XYZT, Tuple)),
+                      AsmOp::Custom("4 TUPLE", 4, 1));
+  define_builtin_func("untuple4", TypeExpr::new_forall({X, Y, Z, T}, TypeExpr::new_map(Tuple, XYZT)),
+                      AsmOp::Custom("4 UNTUPLE", 1, 4));
   define_builtin_func("throw", impure_un_op, compile_throw, true);
   define_builtin_func("throw_if", impure_bin_op, std::bind(compile_cond_throw, _1, _2, true), true);
   define_builtin_func("throw_unless", impure_bin_op, std::bind(compile_cond_throw, _1, _2, false), true);
@@ -819,6 +939,33 @@ void define_builtins() {
   define_builtin_func("preload_uint", prefetch_int_op, std::bind(compile_fetch_int, _1, _2, false, false));
   define_builtin_func("store_int", store_int_op, std::bind(compile_store_int, _1, _2, true), {1, 0, 2});
   define_builtin_func("store_uint", store_int_op, std::bind(compile_store_int, _1, _2, false), {1, 0, 2});
+  define_builtin_func("~store_int", store_int_method, std::bind(compile_store_int, _1, _2, true), {1, 0, 2});
+  define_builtin_func("~store_uint", store_int_method, std::bind(compile_store_int, _1, _2, false), {1, 0, 2});
+  define_builtin_func("load_bits", fetch_slice_op, std::bind(compile_fetch_slice, _1, _2, true), {}, {1, 0});
+  define_builtin_func("preload_bits", prefetch_slice_op, std::bind(compile_fetch_slice, _1, _2, false));
+  define_builtin_func("int_at", TypeExpr::new_map(TupleInt, Int), compile_tuple_at);
+  define_builtin_func("cell_at", TypeExpr::new_map(TupleInt, Cell), compile_tuple_at);
+  define_builtin_func("slice_at", TypeExpr::new_map(TupleInt, Cell), compile_tuple_at);
+  define_builtin_func("tuple_at", TypeExpr::new_map(TupleInt, Tuple), compile_tuple_at);
+  define_builtin_func("at", TypeExpr::new_forall({X}, TypeExpr::new_map(TupleInt, X)), compile_tuple_at);
+  define_builtin_func("touch", TypeExpr::new_forall({X}, TypeExpr::new_map(X, X)), AsmOp::Nop());
+  define_builtin_func("~touch", TypeExpr::new_forall({X}, TypeExpr::new_map(X, TypeExpr::new_tensor({X, Unit}))),
+                      AsmOp::Nop());
+  define_builtin_func("touch2", TypeExpr::new_forall({X, Y}, TypeExpr::new_map(XY, XY)), AsmOp::Nop());
+  define_builtin_func("~touch2", TypeExpr::new_forall({X, Y}, TypeExpr::new_map(XY, TypeExpr::new_tensor({XY, Unit}))),
+                      AsmOp::Nop());
+  define_builtin_func("~dump", TypeExpr::new_forall({X}, TypeExpr::new_map(X, TypeExpr::new_tensor({X, Unit}))),
+                      AsmOp::Custom("s0 DUMP", 1, 1));
+  define_builtin_func("run_method0", TypeExpr::new_map(Int, Unit), std::bind(compile_run_method, _1, _2, _3, 0, false),
+                      true);
+  define_builtin_func("run_method1", TypeExpr::new_forall({X}, TypeExpr::new_map(TypeExpr::new_tensor({Int, X}), Unit)),
+                      std::bind(compile_run_method, _1, _2, _3, 1, false), {1, 0}, {}, true);
+  define_builtin_func("run_method2",
+                      TypeExpr::new_forall({X, Y}, TypeExpr::new_map(TypeExpr::new_tensor({Int, X, Y}), Unit)),
+                      std::bind(compile_run_method, _1, _2, _3, 2, false), {1, 2, 0}, {}, true);
+  define_builtin_func("run_method3",
+                      TypeExpr::new_forall({X, Y, Z}, TypeExpr::new_map(TypeExpr::new_tensor({Int, X, Y, Z}), Unit)),
+                      std::bind(compile_run_method, _1, _2, _3, 3, false), {1, 2, 3, 0}, {}, true);
 }
 
 }  // namespace funC

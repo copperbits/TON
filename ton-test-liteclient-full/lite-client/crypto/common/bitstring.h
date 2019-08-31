@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 #include "common/refcnt.hpp"
 #include <utility>
@@ -285,10 +303,10 @@ class BitSliceGen {
   std::string to_hex() const {
     return bitstring::bits_to_hex(ptr, offs, len);
   }
-  void dump(std::ostream& os, bool nocr = false) const {
-    os << "[" << offs << "," << len << "]";
+  void dump(std::ostream& stream, bool nocr = false) const {
+    stream << "[" << offs << "," << len << "]";
     if (!nocr) {
-      os << std::endl;
+      stream << std::endl;
     }
   }
 
@@ -389,9 +407,14 @@ class BitString : public CntObject {
   }
   explicit BitString(const BitSlice& bs, unsigned reserve_bits = 0);
   explicit BitString(unsigned reserve_bits);
+
+  BitString(const BitString&) = delete;
+  BitString& operator=(const BitString&) = delete;
+  BitString(BitString&&) = delete;
+  BitString& operator=(BitString&&) = delete;
   ~BitString() {
     if (ptr) {
-      free(ptr);
+      std::free(ptr);
     }
   }
   operator BitSlice() const;
@@ -424,8 +447,8 @@ class BitString : public CntObject {
   }
 };
 
-extern std::ostream& operator<<(std::ostream& os, const BitString& bs);
-extern std::ostream& operator<<(std::ostream& os, Ref<BitString> bs_ref);
+extern std::ostream& operator<<(std::ostream& stream, const BitString& bs);
+extern std::ostream& operator<<(std::ostream& stream, Ref<BitString> bs_ref);
 
 extern template class Ref<BitString>;
 typedef Ref<BitString> BitStringRef;
@@ -473,7 +496,7 @@ class BitArray {
   BitArray(const byte_array_t& init_bytes) : bytes(init_bytes) {
   }
   explicit BitArray(const raw_byte_array_t init_bytes) {
-    memcpy(data(), init_bytes, m);
+    std::memcpy(data(), init_bytes, m);
   }
   BitArray(ConstBitPtr from) {
     bitstring::bits_memcpy(bits(), from, n);
@@ -492,7 +515,7 @@ class BitArray {
     return *this;
   }
   BitArray& operator=(const raw_byte_array_t set_byte_array) {
-    memcpy(data(), set_byte_array, m);
+    std::memcpy(data(), set_byte_array, m);
     return *this;
   }
   BitSliceWrite write_bitslice() {
@@ -501,9 +524,9 @@ class BitArray {
   BitSlice as_bitslice() const {
     return BitSlice{data(), n};
   }
-  operator BitString() const {
-    return BitString{as_bitslice()};
-  }
+  //operator BitString() const {
+  //return BitString{as_bitslice()};
+  //}
   Ref<BitString> make_bitstring_ref() const {
     return td::make_ref<BitString>(as_bitslice());
   }
@@ -548,7 +571,7 @@ class BitArray {
     return bitstring::bits_to_binary(cbits(), size());
   }
   int compare(const BitArray& other) const {
-    return (n % 8 == 0) ? memcmp(data(), other.data(), n / 8) : bitstring::bits_memcmp(bits(), other.bits(), n);
+    return (n % 8 == 0) ? std::memcmp(data(), other.data(), n / 8) : bitstring::bits_memcmp(bits(), other.bits(), n);
   }
   bool operator==(const BitArray& other) const {
     return (n % 8 == 0) ? (bytes == other.bytes) : !bitstring::bits_memcmp(bits(), other.bits(), n);
@@ -603,14 +626,22 @@ class BitArray {
   unsigned count_leading_zeroes() const {
     return scan(false);
   }
+  unsigned count_matching(ConstBitPtr other) const {
+    std::size_t cnt;
+    bitstring::bits_memcmp(cbits(), other, n, &cnt);
+    return (unsigned)cnt;
+  }
+  unsigned count_matching(const BitArray& other) const {
+    return count_matching(other.bits());
+  }
 };
 
 using Bits256 = BitArray<256>;
 using Bits128 = BitArray<128>;
 
 template <unsigned n>
-std::ostream& operator<<(std::ostream& os, BitArray<n> bits) {
-  return os << bits.to_hex();
+std::ostream& operator<<(std::ostream& stream, BitArray<n> bits) {
+  return stream << bits.to_hex();
 }
 
 template <unsigned N>

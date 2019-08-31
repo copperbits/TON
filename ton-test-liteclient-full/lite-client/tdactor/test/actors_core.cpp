@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/actor/core/ActorLocker.h"
 #include "td/actor/actor.h"
 #include "td/actor/PromiseFuture.h"
@@ -376,7 +394,7 @@ TEST(Actor2, executor_simple) {
 
 using namespace td::actor;
 using td::uint32;
-static std::atomic<int> cnt;
+static std::atomic<int> global_cnt;
 class Worker : public Actor {
  public:
   void query(uint32 x, core::ActorInfoPtr master);
@@ -401,7 +419,7 @@ class Master : public Actor {
   void loop() override {
     l++;
     if (l == r) {
-      if (!--cnt) {
+      if (!--global_cnt) {
         SchedulerContext::get()->stop();
       }
       detail::send_closure(*worker, &Worker::close);
@@ -426,7 +444,7 @@ TEST(Actor2, scheduler_simple) {
   core::Scheduler scheduler{group_info, SchedulerId{0}, 2};
   scheduler.start();
   scheduler.run_in_context([] {
-    cnt = 10;
+    global_cnt = 10;
     for (int i = 0; i < 10; i++) {
       detail::create_actor<Master>(ActorOptions().with_name("Master"));
     }
@@ -453,7 +471,7 @@ TEST(Actor2, actor_id_simple) {
       }
       ~A() {
         sb << "~A";
-        if (--cnt <= 0) {
+        if (--global_cnt <= 0) {
           SchedulerContext::get()->stop();
         }
       }
@@ -461,7 +479,7 @@ TEST(Actor2, actor_id_simple) {
      private:
       int value_;
     };
-    cnt = 1;
+    global_cnt = 1;
     auto id = create_actor<A>("A", 123);
     CHECK(sb.as_cslice() == "A123");
     sb.clear();
@@ -479,7 +497,7 @@ TEST(Actor2, actor_creation) {
   core::Scheduler scheduler{group_info, SchedulerId{0}, 1};
   scheduler.start();
 
-  scheduler.run_in_context([]() mutable {
+  scheduler.run_in_context([] {
     class B;
     class A : public Actor {
      public:
@@ -501,7 +519,7 @@ TEST(Actor2, actor_creation) {
       }
 
       void tear_down() override {
-        if (--cnt <= 0) {
+        if (--global_cnt <= 0) {
           SchedulerContext::get()->stop();
         }
       }
@@ -520,13 +538,13 @@ TEST(Actor2, actor_creation) {
         stop();
       }
       void tear_down() override {
-        if (--cnt <= 0) {
+        if (--global_cnt <= 0) {
           SchedulerContext::get()->stop();
         }
       }
       ActorId<A> a_;
     };
-    cnt = 2;
+    global_cnt = 2;
     create_actor<A>(ActorOptions().with_name("Poll").with_poll()).release();
   });
   while (scheduler.run(1000)) {
@@ -793,7 +811,7 @@ TEST(Actor2, Schedulers) {
 }
 TEST(Actor2, SchedulerZeroCpuThreads) {
   Scheduler scheduler({0});
-  scheduler.run_in_context([]() {
+  scheduler.run_in_context([] {
     class A : public Actor {
       void start_up() override {
         SchedulerContext::get()->stop();
@@ -805,7 +823,7 @@ TEST(Actor2, SchedulerZeroCpuThreads) {
 }
 TEST(Actor2, SchedulerTwo) {
   Scheduler scheduler({0, 0});
-  scheduler.run_in_context([]() {
+  scheduler.run_in_context([] {
     class B : public Actor {
      public:
       void start_up() override {
@@ -830,7 +848,7 @@ TEST(Actor2, SchedulerTwo) {
 }
 TEST(Actor2, ActorIdDynamicCast) {
   Scheduler scheduler({0});
-  scheduler.run_in_context([]() {
+  scheduler.run_in_context([] {
     class A : public Actor {
      public:
       void close() {

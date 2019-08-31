@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/utils/tests.h"
 
 #include "td/utils/as.h"
@@ -10,6 +28,7 @@
 #include "td/utils/Span.h"
 #include "td/utils/misc.h"
 #include "td/utils/overloaded.h"
+#include "td/utils/optional.h"
 #include "td/utils/port/FileFd.h"
 #include "td/utils/port/path.h"
 #include "td/utils/port/IoSlice.h"
@@ -25,6 +44,8 @@
 #include "td/db/binlog/BinlogReaderHelper.h"
 
 #include "td/db/binlog/Binlog.h"
+
+#include <ctime>
 
 // Toy Binlog Implementation
 using td::int64;
@@ -46,7 +67,7 @@ Result<int64> memcpy_parse(Slice data, T* res) {
   if (data.size() < sizeof(T)) {
     return -static_cast<int64>(sizeof(T));
   }
-  memcpy(res, data.data(), sizeof(T));
+  std::memcpy(res, data.data(), sizeof(T));
   if (res->tag_field != res->tag) {
     return Status::Error("Tag mismatch");
   }
@@ -57,7 +78,7 @@ int64 memcpy_serialize(MutableSlice data, const T& res) {
   if (data.size() < sizeof(T)) {
     return -static_cast<int64>(sizeof(T));
   }
-  memcpy(data.data(), &res, sizeof(T));
+  std::memcpy(data.data(), &res, sizeof(T));
   return sizeof(T);
 }
 
@@ -96,7 +117,7 @@ struct LogEventStart {
   unsigned char zerostate_root_hash[32];
   LogEventStart() = default;
   LogEventStart(const RootHash& hash, unsigned _now = 0)
-      : tag_field(tag), type_field(log_type), created_at(_now ? _now : (unsigned)time(0)) {
+      : tag_field(tag), type_field(log_type), created_at(_now ? _now : (unsigned)std::time(nullptr)) {
     td::as<RootHash>(zerostate_root_hash) = hash;
   }
   static Result<int64> parse(Slice data, LogEventStart* res) {
@@ -272,7 +293,7 @@ struct LogEventString {
     if (static_cast<int64>(data.size()) < length) {
       return -length - 8;
     }
-    res->data = data.substr(0, length).str();
+    res->data = data.substr(0, td::narrow_cast<std::size_t>(length)).str();
     return length + 8;
   }
 };
@@ -385,7 +406,7 @@ class BinlogReader : public td::BinlogReaderInterface {
       } else {
         logevents_.emplace_back(std::move(res));
       }
-      lazy_crc_extend(data.substr(0, size));
+      lazy_crc_extend(data.substr(0, td::narrow_cast<std::size_t>(size)));
     }
     return size;
   }
@@ -445,7 +466,7 @@ class RandomBinlog {
   template <class T>
   void add_logevent(T event) {
     int64 size = -event.serialize({});
-    std::string data(size, '\0');
+    std::string data(td::narrow_cast<std::size_t>(size), '\0');
     int64 new_size = event.serialize(data);
     CHECK(new_size == size);
     data_ += data;
@@ -563,7 +584,7 @@ void test_binlog(td::Slice data, td::optional<td::Span<LogEvent>> events = {}) {
   std::string new_data;
   for (auto& event : reader.logevents()) {
     int64 size = -event.serialize({});
-    std::string event_data(size, '\0');
+    std::string event_data(td::narrow_cast<std::size_t>(size), '\0');
     int64 new_size = event.serialize(event_data);
     CHECK(new_size == size);
     new_data += event_data;

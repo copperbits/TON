@@ -3,6 +3,8 @@ true$_ = True;
 // EMPTY False;
 bool_false$0 = Bool;
 bool_true$1 = Bool;
+bool_false$0 = BoolFalse;
+bool_true$1 = BoolTrue;
 nothing$0 {X:Type} = Maybe X;
 just$1 {X:Type} value:X = Maybe X;
 left$0 {X:Type} {Y:Type} value:X = Either X Y;
@@ -252,12 +254,12 @@ depth_balance$_ split_depth:(#<= 30) balance:CurrencyCollection = DepthBalanceIn
 
 _ (HashmapAugE 256 ShardAccount DepthBalanceInfo) = ShardAccounts;
 
-transaction$0110 account_addr:bits256 lt:uint64 
+transaction$0111 account_addr:bits256 lt:uint64 
   prev_trans_hash:bits256 prev_trans_lt:uint64 now:uint32
   outmsg_cnt:uint15
   orig_status:AccountStatus end_status:AccountStatus
-  in_msg:(Maybe ^(Message Any)) out_msgs:(HashmapE 15 ^(Message Any))
-  total_fees:Grams state_update:^(HASH_UPDATE Account)
+  ^[ in_msg:(Maybe ^(Message Any)) out_msgs:(HashmapE 15 ^(Message Any)) ]
+  total_fees:CurrencyCollection state_update:^(HASH_UPDATE Account)
   description:^TransactionDescr = Transaction;
 
 !merkle_update#02 {X:Type} old_hash:bits256 new_hash:bits256
@@ -265,12 +267,12 @@ transaction$0110 account_addr:bits256 lt:uint64
 update_hashes#72 {X:Type} old_hash:bits256 new_hash:bits256
   = HASH_UPDATE X;
 
-acc_trans#4 account_addr:bits256
-            transactions:(HashmapAug 64 ^Transaction Grams)
+acc_trans#5 account_addr:bits256
+            transactions:(HashmapAug 64 ^Transaction CurrencyCollection)
             state_update:^(HASH_UPDATE Account)
           = AccountBlock;
 
-_ (HashmapAugE 256 AccountBlock Grams) = ShardAccountBlocks;
+_ (HashmapAugE 256 AccountBlock CurrencyCollection) = ShardAccountBlocks;
 //
 tr_phase_storage$_ storage_fees_collected:Grams 
   storage_fees_due:(Maybe Grams)
@@ -378,14 +380,14 @@ block_id_ext$_ shard_id:ShardIdent seq_no:uint32
 
 master_info$_ master:ExtBlkRef = BlkMasterInfo;
 
-shard_state#9023afe1 global_id:int32
+shard_state#9023afe2 global_id:int32
   shard_id:ShardIdent 
   seq_no:uint32 vert_seq_no:#
   gen_utime:uint32 gen_lt:uint64
   min_ref_mc_seqno:uint32
   out_msg_queue_info:^OutMsgQueueInfo
   before_split:(## 1)
-  accounts:ShardAccounts
+  accounts:^ShardAccounts
   ^[ overload_history:uint64 underload_history:uint64
   total_balance:CurrencyCollection
   total_validator_fees:CurrencyCollection
@@ -405,9 +407,9 @@ block_info#9bc7a987 version:uint32
   after_merge:(## 1) before_split:(## 1) 
   after_split:(## 1) 
   want_split:Bool want_merge:Bool
-  key_block:Bool
-  flags:(## 9)
-  seq_no:# vert_seq_no:# 
+  key_block:Bool vert_seqno_incr:(## 1)
+  flags:(## 8)
+  seq_no:# vert_seq_no:# { vert_seq_no >= vert_seqno_incr } 
   { prev_seq_no:# } { ~prev_seq_no + 1 = seq_no } 
   shard:ShardIdent gen_utime:uint32
   start_lt:uint64 end_lt:uint64
@@ -430,7 +432,7 @@ block#11ef55aa global_id:int32
 
 block_extra in_msg_descr:^InMsgDescr
   out_msg_descr:^OutMsgDescr
-  account_blocks:ShardAccountBlocks
+  account_blocks:^ShardAccountBlocks
   rand_seed:bits256
   created_by:bits256
   custom:(Maybe ^McBlockExtra) = BlockExtra;
@@ -442,6 +444,7 @@ value_flow ^[ from_prev_blk:CurrencyCollection
   fees_collected:CurrencyCollection
   ^[
   fees_imported:CurrencyCollection
+  recovered:CurrencyCollection
   created:CurrencyCollection
   minted:CurrencyCollection
   ] = ValueFlow;
@@ -456,23 +459,26 @@ fsm_none$0 = FutureSplitMerge;
 fsm_split$10 split_utime:uint32 interval:uint32 = FutureSplitMerge;
 fsm_merge$11 merge_utime:uint32 interval:uint32 = FutureSplitMerge;
 
-shard_descr$_ seq_no:uint32 start_lt:uint64 end_lt:uint64
+shard_descr#b seq_no:uint32 reg_mc_seqno:uint32
+  start_lt:uint64 end_lt:uint64
   root_hash:bits256 file_hash:bits256 
   before_split:Bool before_merge:Bool
   want_split:Bool want_merge:Bool
   nx_cc_updated:Bool flags:(## 3) { flags = 0 }
   next_catchain_seqno:uint32 next_validator_shard:uint64
   min_ref_mc_seqno:uint32 gen_utime:uint32
-  split_merge_at:FutureSplitMerge = ShardDescr;
+  split_merge_at:FutureSplitMerge
+  fees_collected:CurrencyCollection
+  funds_created:CurrencyCollection = ShardDescr;
 
 _ (HashmapE 32 ^(BinTree ShardDescr)) = ShardHashes;
 
-bta_leaf$0 {X:Type} {Y:Type} leaf:X extra:Y = BinTreeAug X Y;
+bta_leaf$0 {X:Type} {Y:Type} extra:Y leaf:X = BinTreeAug X Y;
 bta_fork$1 {X:Type} {Y:Type} left:^(BinTreeAug X Y) 
            right:^(BinTreeAug X Y) extra:Y = BinTreeAug X Y;
 
-_ (HashmapAugE 32 ^(BinTreeAug True CurrencyCollection)
-  CurrencyCollection) = ShardFees;
+_ fees:CurrencyCollection create:CurrencyCollection = ShardFeeCreated;
+_ (HashmapAugE 96 ShardFeeCreated ShardFeeCreated) = ShardFees;
 
 _ config_addr:bits256 config:^(Hashmap 32 ^Cell) 
   = ConfigParams;
@@ -493,14 +499,14 @@ _ key:Bool blk_ref:ExtBlkRef = KeyExtBlkRef;
 
 _ (HashmapAugE 32 KeyExtBlkRef KeyMaxLt) = OldMcBlocksInfo;
 
-masterchain_state_extra#cc21
+masterchain_state_extra#cc25
   shard_hashes:ShardHashes
-  shard_fees:ShardFees
   config:ConfigParams
   ^[ validator_info:ValidatorInfo
      prev_blocks:OldMcBlocksInfo
      after_key_block:Bool
      last_key_block:(Maybe ExtBlkRef) ]
+  global_balance:CurrencyCollection
 = McStateExtra;
 
 ed25519_pubkey#8e81278a pubkey:bits256 = SigPubKey;  // 288 bits
@@ -517,10 +523,13 @@ chained_signature#f signed_cert:^SignedCertificate temp_key_signature:CryptoSign
   = CryptoSignature;   // 4+(356+516)+516 = 520 bits+ref (1392 bits total)
 // temp_key_signature is the signature of whatever was originally intended to be signed with temp_key from certificate
 
-masterchain_block_extra#cca1
+masterchain_block_extra#cca5
   key_block:(## 1)
   shard_hashes:ShardHashes
-  prev_blk_signatures:(HashmapE 16 CryptoSignaturePair)
+  shard_fees:ShardFees
+  ^[ prev_blk_signatures:(HashmapE 16 CryptoSignaturePair)
+     recover_create_msg:(Maybe ^InMsg)
+     mint_msg:(Maybe ^InMsg) ]
   config:key_block?ConfigParams
 = McBlockExtra;
 
@@ -536,6 +545,11 @@ validators#11 utime_since:uint32 utime_until:uint32
 
 _ config_addr:bits256 = ConfigParam 0;
 _ elector_addr:bits256 = ConfigParam 1;
+_ minter_addr:bits256 = ConfigParam 2;  // ConfigParam 0 is used if absent
+_ fee_collector_addr:bits256 = ConfigParam 3;  // ConfigParam 1 is used if absent
+
+_ mint_new_price:Grams mint_add_price:Grams = ConfigParam 6;
+_ to_mint:ExtraCurrencyCollection = ConfigParam 7;
 
 wfmt_basic#1 vm_version:int32 vm_mode:uint64 = WorkchainFormat 1;
 wfmt_ext#0 min_addr_len:(## 12) max_addr_len:(## 12) addr_len_step:(## 12)
@@ -555,13 +569,21 @@ workchain#a6 enabled_since:uint32 actual_min_split:(## 8)
 
 _ workchains:(HashmapE 32 WorkchainDescr) = ConfigParam 12;
 
+block_grams_created#6b masterchain_block_fee:Grams basechain_block_fee:Grams
+  = BlockCreateFees;
+_ BlockCreateFees = ConfigParam 14;
+
+_ validators_elected_for:uint32 elections_start_before:uint32 
+  elections_end_before:uint32 stake_held_for:uint32
+  = ConfigParam 15;
+  
 _ max_validators:(## 16) max_main_validators:(## 16) min_validators:(## 16) 
   { max_validators >= max_main_validators } 
   { max_main_validators >= min_validators } 
   { min_validators >= 1 }
   = ConfigParam 16;
 
-_ min_stake:Grams max_stake:Grams max_stake_factor:uint32 = ConfigParam 17;
+_ min_stake:Grams max_stake:Grams min_total_stake:Grams max_stake_factor:uint32 = ConfigParam 17;
 
 _#cc utime_since:uint32 bit_price_ps:uint64 cell_price_ps:uint64 
   mc_bit_price_ps:uint64 mc_cell_price_ps:uint64 = StoragePrices;
@@ -595,8 +617,13 @@ config_fwd_prices#_ MsgForwardPrices = ConfigParam 25;
 
 catchain_config#c1 mc_catchain_lifetime:uint32 shard_catchain_lifetime:uint32 
   shard_validators_lifetime:uint32 shard_validators_num:uint32 = CatchainConfig;
+consensus_config#d6 round_candidates:# { round_candidates >= 1 }
+  next_candidate_delay_ms:uint32 consensus_timeout_ms:uint32
+  fast_attempts:uint32 attempt_duration:uint32 catchain_max_deps:uint32
+  max_block_bytes:uint32 max_collated_bytes:uint32 = ConsensusConfig;
 
 _ CatchainConfig = ConfigParam 28;
+_ ConsensusConfig = ConfigParam 29;
 
 _ fundamental_smc_addr:(HashmapE 256 True) = ConfigParam 31;
 _ prev_validators:ValidatorSet = ConfigParam 32;

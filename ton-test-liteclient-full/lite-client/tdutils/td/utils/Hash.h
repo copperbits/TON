@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/common.h"
@@ -5,6 +23,8 @@
 #if TD_HAVE_ABSL
 #include <absl/hash/hash.h>
 #endif
+
+#include <utility>
 
 namespace td {
 // A simple wrapper for absl::flat_hash_map, std::unordered_map and probably some our implementaion of hash map in
@@ -14,9 +34,9 @@ namespace td {
 class Hasher {
  public:
   Hasher() = default;
-  Hasher(size_t init_value) : hash_(init_value) {
+  explicit Hasher(size_t init_value) : hash_(init_value) {
   }
-  std::size_t finalize() {
+  std::size_t finalize() const {
     return hash_;
   }
 

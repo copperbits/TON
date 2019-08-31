@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #pragma once
 
 #include "td/utils/common.h"
@@ -39,17 +57,12 @@
   flag = ((flags_parse >> bit_offset_parse) & 1) != 0; \
   bit_offset_parse++
 
-#define END_PARSE_FLAGS()                                                   \
-  CHECK(bit_offset_parse < 31);                                             \
-  LOG_CHECK((flags_parse & ~((1 << bit_offset_parse) - 1)) == 0)            \
-      << flags_parse << " " << bit_offset_parse << " " << parser.version(); \
-  }                                                                         \
-  while (false)
-
-#define END_PARSE_FLAGS_GENERIC()                                                                           \
-  CHECK(bit_offset_parse < 31);                                                                             \
-  LOG_CHECK((flags_parse & ~((1 << bit_offset_parse) - 1)) == 0) << flags_parse << " " << bit_offset_parse; \
-  }                                                                                                         \
+#define END_PARSE_FLAGS()                                                                                           \
+  CHECK(bit_offset_parse < 31);                                                                                     \
+  if ((flags_parse & ~((1 << bit_offset_parse) - 1)) != 0) {                                                        \
+    parser.set_error(PSTRING() << "Invalid flags " << flags_parse << " left, current bit is " << bit_offset_parse); \
+  }                                                                                                                 \
+  }                                                                                                                 \
   while (false)
 
 namespace td {

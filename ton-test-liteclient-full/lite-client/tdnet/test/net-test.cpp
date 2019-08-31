@@ -1,3 +1,21 @@
+/*
+    This file is part of TON Blockchain Library.
+
+    TON Blockchain Library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    TON Blockchain Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with TON Blockchain Library.  If not, see <http://www.gnu.org/licenses/>.
+
+    Copyright 2017-2019 Telegram Systems LLP
+*/
 #include "td/actor/actor.h"
 #include "td/net/UdpServer.h"
 #include "td/utils/tests.h"
@@ -18,6 +36,7 @@ class PingPong : public td::actor::Actor {
   td::actor::ActorOwn<td::UdpServer> udp_server_;
   td::IPAddress dest_;
   bool is_closing_{false};
+  bool is_closing_delayed_{false};
   bool use_tcp_{false};
   enum State { Send, Receive } state_{State::Receive};
   int cnt_{0};
@@ -94,14 +113,23 @@ class PingPong : public td::actor::Actor {
     send_closure(udp_server_, &td::UdpServer::send, td::UdpMessage{dest_, td::BufferSlice(msg), {}});
 
     if (msg.size() == 4) {
-      close();
+      close_delayed();
     }
   }
 
   void alarm() override {
+    if (is_closing_delayed_) {
+      close();
+      return;
+    }
     send_closure_later(actor_id(this), &PingPong::loop);
   }
-
+  void close_delayed() {
+    // Temporary hack to avoid ECONNRESET error
+    is_closing_ = true;
+    is_closing_delayed_ = true;
+    alarm_timestamp() = td::Timestamp::in(0.1);
+  }
   void close() {
     is_closing_ = true;
     udp_server_.reset();
@@ -129,7 +157,7 @@ void run_server(int from_port, int to_port, bool is_first, bool use_tcp) {
 }
 
 TEST(Net, PingPong) {
-  SET_VERBOSITY_LEVEL(VERBOSITY_NAME(DEBUG));
+  SET_VERBOSITY_LEVEL(VERBOSITY_NAME(ERROR));
   for (auto use_tcp : {false, true}) {
     auto a = td::thread([use_tcp] { run_server(8091, 8092, true, use_tcp); });
     auto b = td::thread([use_tcp] { run_server(8092, 8091, false, use_tcp); });
