@@ -17,4 +17,4 @@ find ./ -type f -exec sed -i -e 's/tl_object_storage/tl_object_ptr/g' {} \;
 mkdir ~/liteclient-build
 cd ~/liteclient-build
 cmake ~/lite-client
-cmake --build . --target test-lite-client
+cmake --build . --target lite-client
