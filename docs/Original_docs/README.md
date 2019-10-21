@@ -52,7 +52,7 @@ The software is likely to compile and work properly on most Linux systems. It sh
 **Basic compilation and installation instructions**
 
 1. Download and unpack the newest version of this archive, available at
-https://test.ton.org/download
+https://test.ton.org/download or clone the git repository `git clone --recursive git@github.com:ton-blockchain/ton.git`,
 The TON Blockchain Test Network is updated quite often, so we cannot guarantee that older versions of the Lite Client will always work. Backward compatibility is not enforced at this development stage.
 
 2. Install the newest versions of make, cmake (version 3.0.2 or later), OpenSSL (including C header files), and g++ or clang (or another C++14-compatible compiler as appropriate for your operating system).
