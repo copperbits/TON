@@ -99,6 +99,10 @@ docker exec ton fift test.fif
 
 #### 🐧Build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ubuntu16.04.sh)
 
+
+- Look also [Bootstap file](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ton-bootstrap-v2.sh)  provided by TON Times
+
+
 ### Tutorial
 
 All educational thing we moved it to [docs](/docs) folder.
