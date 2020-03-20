@@ -9,14 +9,15 @@ This is open development community and **enthusiasts research place**. We will p
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
+
 - [About source and github repositories](#about-source-and-github-repositories)
-- [TON whitepapers:](#ton-whitepapers)
-- [TON source code](#ton-source-code)
-  - [Source code check](#source-code-check)
-- [What we already did:](#what-we-already-did)
-- [Future steps:](#future-steps)
+- [ton.org](#tonorg)
+- [What we already did](#what-we-already-did)
 - [Installation & Setup](#installation--setup)
-- [Tutorial](#tutorial)
+  - [Releases](#releases)
+    - [🍏macOS](#macos)
+    - [🐧Linux](#linux)
+  - [Tutorial](#tutorial)
 - [Contributing](#contributing)
 - [Contact us](#contact-us)
 
@@ -28,7 +29,7 @@ This is open development community and **enthusiasts research place**. We will p
 - <https://github.com/copperbits/TON> - community version with added features but sometimes outdated code and releases
 - <https://github.com/poma/ton-lite-client> - unchanged up to date version of tarball but on github. Also fresh binaries and docker container
 
-\*There is no official statement that ton.org is related to TON network. But this is only one real source of information and code at this moment.
+\*There is no official statement that ton.org is related to the TON network. But this is only one real source of information and code at this moment.
 
 ## ton.org
 
@@ -86,7 +87,7 @@ docker exec ton fift test.fif
 [Lite Client Latest release](https://github.com/copperbits/TON/releases/latest)
 
 - Download [latest release](https://github.com/copperbits/TON/releases/)
-- Go to command line, where binary placed
+- Go to the command line, where binary placed
 - Run:
 
 ```bash
@@ -97,11 +98,10 @@ docker exec ton fift test.fif
 
 - more detailed instruction you can find [here](/docs/Copperbits_docs/Mac_tutorial.md).
 
-#### 🐧Build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ubuntu16.04.sh)
+#### 🐧Linux
 
-
-- Look also [Bootstap file](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ton-bootstrap-v2.sh)  provided by TON Times
-
+- Build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ubuntu16.04.sh)
+- Look also [Bootstap file](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ton-bootstrap-v2.sh) provided by TON Times
 
 ### Tutorial
 
