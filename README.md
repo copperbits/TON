@@ -3,7 +3,8 @@
 This is open development community and **enthusiasts research place**. We will post our news and updates this project there.
 
 ---
-## Table of contents:
+
+## Table of contents
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
@@ -22,17 +23,19 @@ This is open development community and **enthusiasts research place**. We will p
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## About source and github repositories
-- http://test.ton.org/downloads.html - is the "official"* ton client tarball
-- https://github.com/copperbits/TON - community version with added features but sometimes outdated code and releases
-- https://github.com/poma/ton-lite-client - unchanged up to date version of tarball but on github. Also fresh binaries and docker container
+
+- <http://test.ton.org/downloads.html> - is the "official"* ton client tarball
+- <https://github.com/copperbits/TON> - community version with added features but sometimes outdated code and releases
+- <https://github.com/poma/ton-lite-client> - unchanged up to date version of tarball but on github. Also fresh binaries and docker container
 
 \*There is no official statement that ton.org is related to TON network. But this is only one real source of information and code at this moment.
 
-## ton.org:
+## ton.org
 
 - [List of available files](https://test.ton.org/) – List of available files
 
-## What we already did:
+## What we already did
+
 - 📖 Documentations:
   - 🐧 Added build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ubuntu16.04.sh)
   - 📩 Explain in [video on YouTube](https://www.youtube.com/watch?v=J7K2nq5lf7I) and [text on GitHub](/docs/Copperbits_docs/Mac_tutorial.md), how to start Lite Client on macOS and send transactions to TON network
@@ -78,23 +81,23 @@ docker exec ton fift test.fif
 
 ### Releases
 
-**🍏macOS**
+#### 🍏macOS
 
 [Lite Client Latest release](https://github.com/copperbits/TON/releases/latest)
 
 - Download [latest release](https://github.com/copperbits/TON/releases/)
 - Go to command line, where binary placed
 - Run:
+
 ```bash
 ./lite-client -C ton-lite-client-test1.config.json
 ```
+
 - run `help` to get started
 
-  - Detailed instruction you can find [here](/docs/Copperbits_docs/Mac_tutorial.md).
+- more detailed instruction you can find [here](/docs/Copperbits_docs/Mac_tutorial.md).
 
-**🐧Build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ubuntu16.04.sh)**
-
-
+#### 🐧Build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ubuntu16.04.sh)
 
 ### Tutorial
 
@@ -105,7 +108,6 @@ You will find here [original readme](/docs/Original_docs/README.md), with additi
 ## Contributing
 
 All this information shipped by [copperbits team](https://t.me/ton_research) and [contributors](https://github.com/copperbits/TON/graphs/contributors) :clap:
-
 
 - **Questions?** Feel free to [open an issue](https://github.com/copperbits/TON/issues/new). Or ask us on [Telegam public group](https://t.me/ton_research)
 - If you find **bugs, got suggestions**, or even feature requests: [open an issue](https://github.com/copperbits/TON/issues/new) :octocat:
