@@ -60,23 +60,23 @@ There are two options. By running Docker or precompiled binary for macOS below:
 
 The easiest way to run the node in a docker container:
 
-```
+```bash
 docker run -d copperbits/ton
 ```
 
 You might want to run in interactive mode and mount current dir into the container to be able to compile fif files:
 
-```
+```bash
 docker run -ti -v "$(pwd):/data" --name ton copperbits/ton
 ```
 
 Compile a fif file (if your container is running and current dir is mounted):
 
-```
+```bash
 docker exec ton fift test.fif
 ```
 
-###  Releases 
+### Releases
 
 **🍏macOS**
 
