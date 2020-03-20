@@ -28,26 +28,9 @@ This is open development community and **enthusiasts research place**. We will p
 
 \*There is no official statement that ton.org is related to TON network. But this is only one real source of information and code at this moment.
 
-## TON whitepapers:
+## ton.org:
 
-- [List of available files](https://test.ton.org/download.html) – List of available files
-  - [Telegram Open Network Whitepaper](https://test.ton.org/ton.pdf) – a general description
-  - [Telegram Open Network Virtual Machine](https://test.ton.org/tvm.pdf) - TON Virtual Machine description
-  - [Telegram Open Network Blockchain](https://test.ton.org/tblkch.pdf) - TON Blockchain description (possibly a bit out of date)
-  - [Fift: A Brief Introduction](https://test.ton.org/fiftbase.pdf) - A brief introduction to Fift programming language
-  - [README](https://test.ton.org/README.txt) -
-  General information, compilation and installation instructions
-  - [HOWTO](https://test.ton.org/HOWTO.txt) - Step-by-step description of creation of a new smart contract with the aid of the Lite Client
-
-## TON source code
-
-Code was downloaded from https://test.ton.org/download.html
-
-Last codebase update was performed on August 19, 2019.`sha256sum('ton-test-liteclient-full.tar.xz')`=`f50d33c79b7314a2aa81cd61a5ed7265da3af64159965f87032cac2a1724b939`.
-
-### Source code check
-
-Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a codebase to be sure it's up-to-date
+- [List of available files](https://test.ton.org/) – List of available files
 
 ## What we already did:
 - 📖 Documentations:
@@ -65,26 +48,9 @@ Run a command `./ton-test-liteclient-full/check_codebase.sh` while updating a co
   - ✨ Created [Webserver](/docs/Copperbits_docs/WEB_SERVER.md) which realizes a web client for TON
   - 🌐 [Public node](https://explorer.test.ton.cryptoprocessing.io/api) of [web client for TON](/docs/Copperbits_docs/WEB_SERVER.md)
 
-- 🎓 Now we are writing video tutorials, writing manuals / FAQ / HOWTO how to use TON.
-
 👉 _pull request and suggestions are **[very welcome](https://github.com/copperbits/TON/issues/new)**!_
 
-![CLient lunch](img/run_client.png)
-
-## Future steps:
-
-**Creating FAQ & Video tutorial (WIP):**
-_✨feel free to propose your topics_
-- Step-by-step guide: **How to build a TON client**
-- How to get test Grams
-- Development:
-  - Write first hello-world smart contract
-  - How to deploy a smart contract
-  - How to send transactions
-
-**Also, you will find there:**
-- Future releases of binaries
-- A FAQ with most popular questions (WIP)
+![Client lunch](img/run_client.png)
 
 ## Installation & Setup
 
@@ -110,7 +76,9 @@ Compile a fif file (if your container is running and current dir is mounted):
 docker exec ton fift test.fif
 ```
 
-**Releases (macOS)**
+###  Releases 
+
+**🍏macOS**
 
 [Lite Client Latest release](https://github.com/copperbits/TON/releases/latest)
 
@@ -122,13 +90,17 @@ docker exec ton fift test.fif
 ```
 - run `help` to get started
 
-More detailed instruction you can find [here](/docs/Copperbits_docs/Mac_tutorial.md).
+  - Detailed instruction you can find [here](/docs/Copperbits_docs/Mac_tutorial.md).
 
-## Tutorial
+**🐧Build instructions for [ubuntu 16.04](https://github.com/copperbits/TON/blob/master/docs/copperbits_docs/ubuntu16.04.sh)**
+
+
+
+### Tutorial
 
 All educational thing we moved it to [docs](/docs) folder.
-You will find here [original readme](/docs/Original_docs/README.md), with additions of community-based tools and educational materials.
 
+You will find here [original readme](/docs/Original_docs/README.md), with additions of community-based tools and educational materials.
 
 ## Contributing
 
